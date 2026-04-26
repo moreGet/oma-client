@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <UseWPF>true</UseWPF>
+        <UseWindowsForms>true</UseWindowsForms>
+        <RootNamespace>OhMyAgent.AiAgent.Client</RootNamespace>
+        <AssemblyName>OhMyAgent.AiAgent.Client</AssemblyName>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- MVVM 소스 생성기 -->
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+        <!-- Semantic Kernel (로컬 에이전트 액션) -->
+        <PackageReference Include="Microsoft.SemanticKernel" Version="1.14.1" />
+        <!-- JSON 직렬화 -->
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+        <!-- System.Drawing (트레이 아이콘 생성용) -->
+        <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+    </ItemGroup>
+
+</Project>

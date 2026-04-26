@@ -1,0 +1,16 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OhMyAgent.AiAgent.Client", "OhMyAgent.AiAgent.Client\OhMyAgent.AiAgent.Client.csproj", "{CA2951C0-5D62-48CE-B9F4-4E17D3B6481E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CA2951C0-5D62-48CE-B9F4-4E17D3B6481E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA2951C0-5D62-48CE-B9F4-4E17D3B6481E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA2951C0-5D62-48CE-B9F4-4E17D3B6481E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA2951C0-5D62-48CE-B9F4-4E17D3B6481E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
