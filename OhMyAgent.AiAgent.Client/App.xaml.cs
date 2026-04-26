@@ -26,6 +26,7 @@ public partial class App : Application
     private IChatWindowCoordinator?   _windowCoordinator;
     private MainViewModel?            _mainVm;
     private IRemoteAgentService?      _mcpService;
+    internal ISettingsService SettingsService => _settingsService!;
 
     protected override async void OnStartup(StartupEventArgs e)
     {

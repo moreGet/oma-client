@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows;
 using OhMyAgent.AiAgent.Client.ViewModels;
+using OhMyAgent.AiAgent.Client.Views;
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
 
@@ -85,4 +86,19 @@ public partial class MainWindow : Window
         base.OnSourceInitialized(e);
         ((App)Application.Current).RegisterMainWindowHwnd(this);
     }
+
+    private void MenuItem_HotkeySettings_Click(object sender, RoutedEventArgs e)
+    {
+        var app = (App)Application.Current;
+        var settings = app.SettingsService;
+        if (settings == null) return;
+
+        var settingsVm = new SettingsViewModel(settings);
+        var settingsWindow = new SettingsWindow(settingsVm) { Owner = this };
+        settingsWindow.Show();
+        settingsWindow.Activate();
+    }
+
+    private void MenuItem_Exit_Click(object sender, RoutedEventArgs e)
+        => ((App)Application.Current).ExitApplication();
 }

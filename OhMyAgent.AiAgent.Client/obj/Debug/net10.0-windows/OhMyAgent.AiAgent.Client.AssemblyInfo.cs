@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("OhMyAgent.AiAgent.Client")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bacc89a26507a7f961e38da9aa74a06a4497c80d")]
 [assembly: System.Reflection.AssemblyProductAttribute("OhMyAgent.AiAgent.Client")]
 [assembly: System.Reflection.AssemblyTitleAttribute("OhMyAgent.AiAgent.Client")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

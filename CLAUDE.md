@@ -15,3 +15,68 @@
 | 날짜 | 변경 내용 | 대상 | 사유 |
 |------|----------|------|------|
 | 2026-04-22 | 초기 구성 | 전체 | WPF .NET 10.0 신규 프로젝트 하네스 구축 |
+
+---
+
+## 다른 PC에서 Claude 환경 세팅
+
+### 필수 요구사항
+- **OS**: Windows 10/11 (WPF 빌드 필요)
+- **Claude Code CLI**: `npm install -g @anthropic-ai/claude-code` (Node.js 18+ 필요)
+- **.NET SDK**: 10.0 이상 (`dotnet --version`으로 확인)
+- **Anthropic API 키**: `ANTHROPIC_API_KEY` 환경변수 설정
+
+### 세팅 절차
+
+```bash
+# 1. 저장소 클론
+git clone <repo-url>
+cd OhMyAgent.AiAgent.Client
+
+# 2. Claude Code 로그인
+claude auth login
+
+# 3. 프로젝트 루트에서 Claude 실행
+claude
+```
+
+### WSL 환경 (Windows + WSL2)에서 dotnet 경로 설정
+
+`dotnet` 명령이 WSL PATH에 없는 경우 **로컬 전용** 설정 파일을 생성한다.
+이 파일은 `.gitignore`에 의해 추적되지 않는다.
+
+`.claude/settings.local.json` 예시:
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"/mnt/c/Program Files/dotnet/dotnet.exe\" *)",
+      "Bash(\"/mnt/c/Users/<USERNAME>/.dotnet/dotnet.exe\" *)"
+    ]
+  }
+}
+```
+`<USERNAME>` 을 실제 Windows 사용자명으로 교체.
+
+### 커밋된 Claude 파일 구조
+
+```
+.claude/
+├── settings.json          ← 팀 공유 설정 (포터블 권한)
+├── settings.local.json    ← 로컬 PC 전용 (gitignore됨, 직접 생성)
+├── agents/                ← 에이전트 정의 (팀 공유)
+│   ├── architect.md
+│   ├── service-engineer.md
+│   ├── viewmodel-engineer.md
+│   ├── ui-designer.md
+│   └── qa-reviewer.md
+└── skills/                ← 스킬 정의 (팀 공유)
+    ├── wpf-orchestrator/
+    ├── wpf-architect/
+    ├── wpf-service/
+    ├── wpf-viewmodel/
+    ├── wpf-ui/
+    └── wpf-qa/
+```
+
+> `_workspace*/` 디렉터리는 세션마다 재생성되므로 gitignore 처리됨.
