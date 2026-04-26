@@ -1,0 +1,74 @@
+# ── .NET 빌드 아티팩트 ────────────────────────────────────────
+bin/
+obj/
+*.dll
+*.exe
+!tools/*.exe
+*.pdb
+*.nupkg
+*.snupkg
+*.nuspec
+*.user
+*.suo
+*.userprefs
+*.userosscache
+*.sln.docstates
+
+# ── NuGet ───────────────────────────────────────────────────
+packages/
+*.lock.json
+!package-lock.json
+project.lock.json
+project.fragment.lock.json
+
+# ── IDE — Rider / JetBrains ─────────────────────────────────
+.idea/
+!.idea/.idea.*/
+!.idea/.idea.*/.idea/
+.idea/.idea.*/.idea/shelf/
+.idea/.idea.*/.idea/workspace.xml
+.idea/.idea.*/.idea/*.iml
+.idea/.idea.*/.idea/modules.xml
+
+# ── IDE — Visual Studio ──────────────────────────────────────
+.vs/
+*.vcxproj.filters
+*.pidb
+*.svclog
+*.scc
+
+# ── IDE — VS Code ────────────────────────────────────────────
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ── OS ──────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ── 런타임 데이터 (Neo4j / Docker) ──────────────────────────
+data/
+logs/
+plugins/
+import/
+
+# ── Claude Code 임시 파일 ────────────────────────────────────
+# 워크스페이스는 세션마다 재생성되는 임시 파일
+.claude/_workspace*/
+
+# 로컬 PC 전용 설정 (절대경로·사용자 토큰 등 포함)
+.claude/settings.local.json
+
+# 메모리 디렉터리 (사용자별 개인 기록)
+.claude/memory/
+
+# ── 로그 ────────────────────────────────────────────────────
+*.log

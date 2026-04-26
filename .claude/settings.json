@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet *)",
+      "Bash(\"*/dotnet.exe\" *)",
+      "Bash(mkdir *)",
+      "Bash(mv .claude/_workspace .claude/_workspace_prev)",
+      "Bash(mv .claude/_workspace .claude/_workspace_mcp)",
+      "Bash(rm -rf .claude/_workspace_prev)",
+      "Bash(rm -rf .claude/_workspace_mcp)",
+      "Bash(find * -name \"*.cs\" *)",
+      "Bash(find * -name \"*.xaml\" *)",
+      "Bash(find * -name \"*.csproj\" *)",
+      "Skill(codex:rescue)"
+    ]
+  }
+}
