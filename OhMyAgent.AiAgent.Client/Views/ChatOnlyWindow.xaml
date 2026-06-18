@@ -6,7 +6,7 @@
         xmlns:vm="clr-namespace:OhMyAgent.AiAgent.Client.ViewModels"
         xmlns:views="clr-namespace:OhMyAgent.AiAgent.Client.Views"
         mc:Ignorable="d"
-        d:DataContext="{d:DesignInstance Type=vm:MainViewModel, IsDesignTimeCreatable=False}"
+        d:DataContext="{d:DesignInstance Type=vm:AgentSessionViewModel, IsDesignTimeCreatable=False}"
         Title="OhMyAgent Chat"
         Width="420" Height="560"
         MinWidth="320" MinHeight="400"
@@ -19,79 +19,11 @@
         Opacity="{Binding WindowOpacity}">
 
     <Window.Resources>
-
-        <!-- ── 메시지 DataTemplate: 사용자 ─────────────────────────── -->
-        <DataTemplate x:Key="UserMessageTemplate" DataType="{x:Type vm:ChatMessageViewModel}">
-            <Grid Margin="40,3,8,3">
-                <Border Background="{StaticResource UserBubble}"
-                        CornerRadius="14,14,2,14"
-                        Padding="12,8"
-                        HorizontalAlignment="Right"
-                        MaxWidth="320">
-                    <TextBlock Text="{Binding Content}"
-                               Foreground="White"
-                               FontSize="13"
-                               TextWrapping="Wrap"
-                               LineHeight="20"/>
-                </Border>
-            </Grid>
-        </DataTemplate>
-
-        <!-- ── 메시지 DataTemplate: AI ─────────────────────────────── -->
-        <DataTemplate x:Key="AgentMessageTemplate" DataType="{x:Type vm:ChatMessageViewModel}">
-            <Grid Margin="8,3,40,3">
-                <StackPanel HorizontalAlignment="Left">
-                    <TextBlock Text="🤖  AI Agent"
-                               Foreground="{StaticResource TextSecondary}"
-                               FontSize="11"
-                               Margin="4,0,0,3"/>
-                    <Border Background="{StaticResource AgentBubble}"
-                            BorderBrush="{StaticResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="2,14,14,14"
-                            Padding="12,8"
-                            MaxWidth="340">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Content}"
-                                       Foreground="{StaticResource TextPrimary}"
-                                       FontSize="13"
-                                       TextWrapping="Wrap"
-                                       LineHeight="20"/>
-                            <!-- 스트리밍 커서 -->
-                            <TextBlock Text="▋"
-                                       Foreground="{StaticResource AccentBrush}"
-                                       FontSize="13"
-                                       Margin="0,2,0,0"
-                                       Visibility="{Binding IsStreaming, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Style.Triggers>
-                                            <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                                                <BeginStoryboard>
-                                                    <Storyboard RepeatBehavior="Forever">
-                                                        <DoubleAnimation
-                                                            Storyboard.TargetProperty="Opacity"
-                                                            From="1" To="0"
-                                                            Duration="0:0:0.5"
-                                                            AutoReverse="True"/>
-                                                    </Storyboard>
-                                                </BeginStoryboard>
-                                            </EventTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </Grid>
-        </DataTemplate>
-
-        <!-- ── Template Selector ────────────────────────────────────── -->
-        <views:MessageTemplateSelector x:Key="MsgSelector"
-            UserTemplate="{StaticResource UserMessageTemplate}"
-            AgentTemplate="{StaticResource AgentMessageTemplate}"/>
-
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="../Resources/TranscriptTemplates.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Grid>
@@ -106,31 +38,43 @@
                 Background="{StaticResource SurfaceBg}"
                 MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
             <Grid Margin="12,0">
-                <TextBlock Text="OhMyAgent Chat"
-                           Foreground="{StaticResource TextPrimary}"
-                           FontSize="12"
-                           FontWeight="SemiBold"
-                           VerticalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="18" Height="18" CornerRadius="6"
+                            Background="{StaticResource AccentGradient}"
+                            Margin="0,0,7,0">
+                        <TextBlock Text="✦" Foreground="White" FontSize="10"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="OhMyAgent Chat"
+                               Foreground="{StaticResource TextPrimary}"
+                               FontFamily="{StaticResource AppFont}"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
                 <Button Content="✕"
                         Click="CloseButton_Click"
                         HorizontalAlignment="Right"
-                        Width="32" Height="24"
+                        Width="30" Height="24"
                         FontSize="11"
                         Background="Transparent"
                         BorderThickness="0"
                         Foreground="{StaticResource TextSecondary}"
                         Cursor="Hand"
                         ToolTip="닫기 (Esc)">
-                    <Button.Style>
-                        <Style TargetType="Button">
-                            <Style.Triggers>
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="8">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#F85149"/>
+                                    <Setter TargetName="Root" Property="Background" Value="#FB7185"/>
                                     <Setter Property="Foreground" Value="White"/>
                                 </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
                 </Button>
             </Grid>
         </Border>
@@ -138,15 +82,23 @@
         <!-- ── 채팅 영역 ─────────────────────────────────────────── -->
         <Grid Grid.Row="1">
 
-            <!-- 정상 채팅 목록 -->
+            <!-- 에이전트 트랜스크립트 (컴팩트) -->
             <ScrollViewer x:Name="ChatScrollViewer"
                           Background="{StaticResource WindowBg}"
                           Padding="0,6"
                           Visibility="{Binding HasError, Converter={StaticResource InverseBoolToVisibility}}">
-                <ItemsControl ItemsSource="{Binding Messages}"
-                              ItemTemplateSelector="{StaticResource MsgSelector}"
+                <ItemsControl ItemsSource="{Binding Transcript}"
+                              ItemTemplateSelector="{StaticResource TranscriptSelector}"
                               Focusable="False"/>
             </ScrollViewer>
+
+            <!-- 인라인 승인 카드 -->
+            <Border VerticalAlignment="Bottom"
+                    Background="{StaticResource WindowBg}"
+                    Visibility="{Binding PendingApproval, Converter={StaticResource NullToVisibility}}">
+                <ContentControl Content="{Binding PendingApproval}"
+                                ContentTemplate="{StaticResource ApprovalCardTemplate}"/>
+            </Border>
 
             <!-- 오류 패널 -->
             <Grid Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}"
@@ -199,6 +151,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <TextBox x:Name="InputBox"
@@ -224,9 +177,9 @@
                                             <VisualBrush Stretch="None" AlignmentX="Left" AlignmentY="Center">
                                                 <VisualBrush.Visual>
                                                     <TextBlock Text="메시지를 입력하세요..."
-                                                               Foreground="#484F58"
+                                                               Foreground="#5B6273"
                                                                FontSize="13"
-                                                               Margin="12,0"/>
+                                                               Margin="14,0"/>
                                                 </VisualBrush.Visual>
                                             </VisualBrush>
                                         </Setter.Value>
@@ -238,9 +191,9 @@
                                             <VisualBrush Stretch="None" AlignmentX="Left" AlignmentY="Center">
                                                 <VisualBrush.Visual>
                                                     <TextBlock Text="메시지를 입력하세요..."
-                                                               Foreground="#484F58"
+                                                               Foreground="#5B6273"
                                                                FontSize="13"
-                                                               Margin="12,0"/>
+                                                               Margin="14,0"/>
                                                 </VisualBrush.Visual>
                                             </VisualBrush>
                                         </Setter.Value>
@@ -260,6 +213,17 @@
                         Margin="8,0,0,0"
                         FontSize="13"
                         Padding="10,6"/>
+
+                <Button Grid.Column="2"
+                        Content="중지"
+                        Command="{Binding StopCommand}"
+                        Style="{StaticResource OutlineButton}"
+                        Width="52"
+                        Height="40"
+                        Margin="6,0,0,0"
+                        FontSize="13"
+                        Padding="8,6"
+                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}"/>
             </Grid>
         </Border>
 

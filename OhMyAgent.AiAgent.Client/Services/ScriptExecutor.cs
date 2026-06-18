@@ -16,7 +16,7 @@ public class ScriptExecutor : IScriptExecutor
     private const int MaxConcurrency = 4;
     private readonly SemaphoreSlim _concurrencyLimit = new(MaxConcurrency, MaxConcurrency);
 
-    public async Task<ScriptResult> ExecutePowerShellAsync(string script, int timeoutMs = 30000, CancellationToken ct = default)
+    public async Task<ScriptResult> ExecutePowerShellAsync(string script, int timeoutMs = 30000, string? workingDirectory = null, CancellationToken ct = default)
     {
         var psi = new ProcessStartInfo
         {
@@ -29,11 +29,13 @@ public class ScriptExecutor : IScriptExecutor
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
+        if (!string.IsNullOrEmpty(workingDirectory))
+            psi.WorkingDirectory = workingDirectory;
 
         return await ExecuteAsync(psi, timeoutMs, ct).ConfigureAwait(false);
     }
 
-    public async Task<ScriptResult> ExecuteCmdAsync(string command, int timeoutMs = 30000, CancellationToken ct = default)
+    public async Task<ScriptResult> ExecuteCmdAsync(string command, int timeoutMs = 30000, string? workingDirectory = null, CancellationToken ct = default)
     {
         var psi = new ProcessStartInfo
         {
@@ -46,6 +48,8 @@ public class ScriptExecutor : IScriptExecutor
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
+        if (!string.IsNullOrEmpty(workingDirectory))
+            psi.WorkingDirectory = workingDirectory;
 
         return await ExecuteAsync(psi, timeoutMs, ct).ConfigureAwait(false);
     }

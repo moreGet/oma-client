@@ -9,15 +9,15 @@ namespace OhMyAgent.AiAgent.Client.Views;
 
 public partial class ChatOnlyWindow : Window
 {
-    public ChatOnlyWindow(MainViewModel vm)
+    public ChatOnlyWindow(AgentSessionViewModel vm)
     {
         InitializeComponent();
         DataContext = vm;
-        vm.Messages.CollectionChanged += Messages_CollectionChanged;
-        Closed += (_, _) => vm.Messages.CollectionChanged -= Messages_CollectionChanged;
+        vm.Transcript.CollectionChanged += Transcript_CollectionChanged;
+        Closed += (_, _) => vm.Transcript.CollectionChanged -= Transcript_CollectionChanged;
     }
 
-    private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private void Transcript_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.Action == NotifyCollectionChangedAction.Add)
             ChatScrollViewer.ScrollToEnd();
@@ -34,7 +34,7 @@ public partial class ChatOnlyWindow : Window
         if (e.Key != Key.Enter) return;
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) return;
         e.Handled = true;
-        if (DataContext is MainViewModel vm && vm.SendCommand.CanExecute(null))
+        if (DataContext is AgentSessionViewModel vm && vm.SendCommand.CanExecute(null))
             vm.SendCommand.Execute(null);
     }
 

@@ -10,12 +10,12 @@ namespace OhMyAgent.AiAgent.Client;
 
 public partial class MainWindow : Window
 {
-    public MainWindow(MainViewModel vm)
+    public MainWindow(AgentSessionViewModel vm)
     {
         InitializeComponent();
         DataContext = vm;
 
-        vm.Messages.CollectionChanged += Messages_CollectionChanged;
+        vm.Transcript.CollectionChanged += Transcript_CollectionChanged;
     }
 
     // Enter → 전송 / Shift+Enter → 줄바꿈
@@ -25,12 +25,12 @@ public partial class MainWindow : Window
         if (System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift)) return;
 
         e.Handled = true;
-        if (DataContext is MainViewModel vm && vm.SendCommand.CanExecute(null))
+        if (DataContext is AgentSessionViewModel vm && vm.SendCommand.CanExecute(null))
             vm.SendCommand.Execute(null);
     }
 
-    // 새 메시지 도착 시 자동 스크롤
-    private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    // 새 항목 도착 시 자동 스크롤
+    private void Transcript_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.Action == NotifyCollectionChangedAction.Add)
             ChatScrollViewer.ScrollToEnd();
@@ -91,9 +91,11 @@ public partial class MainWindow : Window
     {
         var app = (App)Application.Current;
         var settings = app.SettingsService;
-        if (settings == null) return;
+        var api = app.Api;
+        if (settings == null || api == null) return;
 
-        var settingsVm = new SettingsViewModel(settings);
+        var settingsVm = new SettingsViewModel(settings, api);
+        _ = settingsVm.InitializeAsync();
         var settingsWindow = new SettingsWindow(settingsVm) { Owner = this };
         settingsWindow.Show();
         settingsWindow.Activate();

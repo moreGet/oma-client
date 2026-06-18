@@ -1,0 +1,55 @@
+using System.IO;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using OhMyAgent.AiAgent.Client.Models;
+
+namespace OhMyAgent.AiAgent.Client.Services.Tools;
+
+public sealed class DeleteTool : ITool
+{
+    private static readonly JsonElement Schema = ToolSchemas.Parse(
+        """
+        {"type":"object","properties":{"path":{"type":"string"},"recursive":{"type":"boolean"}},"required":["path"]}
+        """);
+
+    public string Name => "delete";
+    public string Description => "Delete a file or directory within the workspace. Set recursive to delete a non-empty directory.";
+    public JsonElement ParametersSchema => Schema;
+    public ToolRisk Risk => ToolRisk.Destructive;
+
+    public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
+    {
+        var path = ToolSchemas.GetString(args, "path");
+        var recursive = ToolSchemas.GetBool(args, "recursive");
+
+        if (string.IsNullOrWhiteSpace(path))
+            return Task.FromResult(ToolResult.Fail("path 가 비어 있습니다."));
+
+        var full = ctx.Workspace.ResolvePath(path);
+
+        // R2: 작업 디렉토리 루트 자체 삭제 차단(예: path "." 또는 "sub/..").
+        if (string.Equals(
+                Path.TrimEndingDirectorySeparator(full),
+                Path.TrimEndingDirectorySeparator(ctx.Workspace.Root),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(ToolResult.Fail("작업 디렉토리 루트 자체는 삭제할 수 없습니다."));
+        }
+
+        if (File.Exists(full))
+        {
+            File.Delete(full);
+        }
+        else if (Directory.Exists(full))
+        {
+            Directory.Delete(full, recursive);
+        }
+        else
+        {
+            return Task.FromResult(ToolResult.Fail($"경로가 존재하지 않습니다: {path}"));
+        }
+
+        return Task.FromResult(ToolResult.Json(new { path, deleted = true }));
+    }
+}

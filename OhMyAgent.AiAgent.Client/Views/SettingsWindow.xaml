@@ -7,17 +7,17 @@
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel, IsDesignTimeCreatable=False}"
         Title="설정 — OhMyAgent"
-        Width="420" Height="280"
+        Width="480" Height="660"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         Background="{StaticResource WindowBg}"
         WindowStyle="None"
         AllowsTransparency="True">
 
-    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="2">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="36"/>
+                <RowDefinition Height="40"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -25,44 +25,240 @@
             <Border Grid.Row="0"
                     Background="{StaticResource SurfaceBg}"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <Grid Margin="14,0">
-                    <TextBlock Text="설정"
-                               Foreground="{StaticResource TextPrimary}"
-                               FontSize="12"
-                               FontWeight="SemiBold"
-                               VerticalAlignment="Center"/>
+                <Grid Margin="16,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="20" Height="20" CornerRadius="6"
+                                Background="{StaticResource AccentGradient}"
+                                Margin="0,0,8,0">
+                            <TextBlock Text="⚙" Foreground="White" FontSize="11"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="설정"
+                                   Foreground="{StaticResource TextPrimary}"
+                                   FontFamily="{StaticResource AppFont}"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
                     <Button Content="✕"
                             Click="CloseButton_Click"
                             HorizontalAlignment="Right"
-                            Width="32" Height="24"
+                            Width="30" Height="24"
                             FontSize="11"
                             Background="Transparent"
                             BorderThickness="0"
                             Foreground="{StaticResource TextSecondary}"
                             Cursor="Hand">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Style.Triggers>
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="8">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Background" Value="#F85149"/>
+                                        <Setter TargetName="Root" Property="Background" Value="#FB7185"/>
                                         <Setter Property="Foreground" Value="White"/>
                                     </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
                     </Button>
                 </Grid>
             </Border>
 
             <!-- ── 본문 ────────────────────────────────────────── -->
-            <StackPanel Grid.Row="1" Margin="24">
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,4,0">
+            <StackPanel Margin="22,18">
 
-                <!-- 헤더 -->
-                <TextBlock Text="채팅 단축키"
+              <!-- ═══ 카드: 에이전트 ═══════════════════════════════ -->
+              <Border Style="{StaticResource FloatingCard}" Margin="0,0,0,16">
+                <StackPanel>
+                <TextBlock Text="에이전트"
+                           Foreground="{StaticResource AccentSoftBrush}"
+                           FontFamily="{StaticResource AppFont}"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,14"/>
+
+                <!-- ════ 작업 디렉토리 ════════════════════════════ -->
+                <TextBlock Text="작업 디렉토리"
                            Foreground="{StaticResource TextPrimary}"
                            FontSize="14"
                            FontWeight="SemiBold"
-                           Margin="0,0,0,12"/>
+                           Margin="0,0,0,8"/>
+                <Grid Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             Style="{StaticResource DarkTextBox}"
+                             Text="{Binding WorkspaceRoot, Mode=OneWay}"
+                             IsReadOnly="True"
+                             FontSize="12"
+                             MinHeight="36"
+                             VerticalContentAlignment="Center"
+                             ToolTip="{Binding WorkspaceRoot}"/>
+                    <Button Grid.Column="1"
+                            Content="찾아보기..."
+                            Click="BrowseWorkspace_Click"
+                            Style="{StaticResource OutlineButton}"
+                            Padding="14,6"
+                            FontSize="12"
+                            MinHeight="36"
+                            Margin="8,0,0,0"/>
+                </Grid>
+
+                <!-- ════ 권한 모드 ════════════════════════════════ -->
+                <TextBlock Text="권한 모드"
+                           Foreground="{StaticResource TextPrimary}"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,8"/>
+                <ComboBox ItemsSource="{Binding PermissionModes}"
+                          SelectedItem="{Binding PermissionMode, Mode=TwoWay}"
+                          HorizontalAlignment="Left"
+                          MinWidth="180"/>
+                <TextBlock Text="⚠ Full-Auto: 모든 도구가 자동 승인됩니다 (파괴적 작업 포함). 주의해서 사용하세요."
+                           Foreground="{StaticResource WarningBrush}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,6,0,16"
+                           Visibility="{Binding ShowFullAutoWarning, Converter={StaticResource BoolToVisibility}}"/>
+                <Border Height="0" Margin="0,0,0,16"
+                        Visibility="{Binding ShowFullAutoWarning, Converter={StaticResource InverseBoolToVisibility}}"/>
+
+                <!-- ════ 실행 한도 ════════════════════════════════ -->
+                <TextBlock Text="실행 한도"
+                           Foreground="{StaticResource TextPrimary}"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,8"/>
+                <Grid Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="최대 반복 (1–100)"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   FontSize="11"
+                                   Margin="0,0,0,4"/>
+                        <TextBox Style="{StaticResource DarkTextBox}"
+                                 Text="{Binding MaxIterations, UpdateSourceTrigger=PropertyChanged}"
+                                 FontSize="13"
+                                 MinHeight="36"
+                                 VerticalContentAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="최대 토큰"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   FontSize="11"
+                                   Margin="0,0,0,4"/>
+                        <TextBox Style="{StaticResource DarkTextBox}"
+                                 Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}"
+                                 FontSize="13"
+                                 MinHeight="36"
+                                 VerticalContentAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+                </StackPanel>
+              </Border>
+
+              <!-- ═══ 카드: 서버 설정 ══════════════════════════════ -->
+              <Border Style="{StaticResource FloatingCard}" Margin="0,0,0,16">
+                <StackPanel>
+                <TextBlock Text="서버 설정"
+                           Foreground="{StaticResource AccentSoftBrush}"
+                           FontFamily="{StaticResource AppFont}"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,14"/>
+
+                <TextBlock Text="서버 URL"
+                           Foreground="{StaticResource TextSecondary}"
+                           FontSize="11"
+                           Margin="0,0,0,4"/>
+                <TextBox Style="{StaticResource DarkTextBox}"
+                         Text="{Binding ServerBaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                         FontSize="13"
+                         MinHeight="36"
+                         Margin="0,0,0,10"
+                         VerticalContentAlignment="Center"/>
+
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="인증 방식"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   FontSize="11"
+                                   Margin="0,0,0,4"/>
+                        <ComboBox ItemsSource="{Binding AuthSchemes}"
+                                  SelectedItem="{Binding AuthScheme, Mode=TwoWay}"
+                                  MinWidth="120"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="인증 토큰"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   FontSize="11"
+                                   Margin="0,0,0,4"/>
+                        <PasswordBox x:Name="AuthTokenBox"
+                                     PasswordChanged="AuthTokenBox_PasswordChanged"
+                                     Style="{StaticResource DarkPasswordBox}"
+                                     FontSize="13"
+                                     MinHeight="36"/>
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock Text="모델 ID"
+                           Foreground="{StaticResource TextSecondary}"
+                           FontSize="11"
+                           Margin="0,0,0,4"/>
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox Grid.Column="0"
+                              IsEditable="True"
+                              ItemsSource="{Binding AvailableModels}"
+                              Text="{Binding ModelId, UpdateSourceTrigger=PropertyChanged}"
+                              MinHeight="36"
+                              VerticalContentAlignment="Center"/>
+                    <Button Grid.Column="1"
+                            Content="모델 불러오기"
+                            Command="{Binding LoadModelsCommand}"
+                            Style="{StaticResource OutlineButton}"
+                            Padding="12,6"
+                            FontSize="12"
+                            MinHeight="36"
+                            Margin="8,0,0,0"/>
+                </Grid>
+
+                <Button Content="서버 설정 저장"
+                        Command="{Binding SaveServerConfigCommand}"
+                        Style="{StaticResource PrimaryButton}"
+                        HorizontalAlignment="Right"
+                        Padding="18,7"
+                        FontSize="12"
+                        Margin="0,4,0,0"/>
+                </StackPanel>
+              </Border>
+
+              <!-- ═══ 카드: 채팅 단축키 ════════════════════════════ -->
+              <Border Style="{StaticResource FloatingCard}" Margin="0,0,0,4">
+                <StackPanel>
+                <TextBlock Text="채팅 단축키"
+                           Foreground="{StaticResource AccentSoftBrush}"
+                           FontFamily="{StaticResource AppFont}"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,14"/>
 
                 <!-- 단축키 표시 + 캡처/취소 버튼 -->
                 <Grid Margin="0,0,0,8">
@@ -83,7 +279,7 @@
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsCapturing}" Value="True">
                                         <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                                        <Setter Property="Background" Value="#1C2A3A"/>
+                                        <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -138,15 +334,18 @@
                     </TextBlock.Style>
                 </TextBlock>
 
-                <!-- 저장 버튼 -->
-                <Button Content="저장"
+                <!-- 단축키 저장 버튼 -->
+                <Button Content="단축키 저장"
                         Command="{Binding SaveCommand}"
                         Style="{StaticResource PrimaryButton}"
                         HorizontalAlignment="Right"
                         Margin="0,16,0,0"
                         Padding="22,8"
                         FontSize="13"/>
+                </StackPanel>
+              </Border>
             </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Border>
 </Window>

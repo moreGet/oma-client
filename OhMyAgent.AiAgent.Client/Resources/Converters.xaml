@@ -7,4 +7,13 @@
     <views:InverseBoolConverter             x:Key="InverseBool"/>
     <views:BoolToStatusBrushConverter       x:Key="BoolToStatusBrush"/>
 
+    <!-- ── Agent transcript / approval ─────────────────────────────── -->
+    <views:NullToVisibilityConverter        x:Key="NullToVisibility"/>
+    <views:StringToVisibilityConverter      x:Key="StringToVisibility"/>
+    <views:ToolRiskToBrushConverter         x:Key="ToolRiskToBrush"/>
+    <views:ToolRiskToTextConverter          x:Key="ToolRiskToText"/>
+    <views:ToolCallStatusToBrushConverter   x:Key="ToolCallStatusToBrush"/>
+    <views:ToolCallStatusToTextConverter    x:Key="ToolCallStatusToText"/>
+    <views:EnumEqualsConverter              x:Key="EnumEquals"/>
+
 </ResourceDictionary>

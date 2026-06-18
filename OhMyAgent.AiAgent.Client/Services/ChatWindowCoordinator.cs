@@ -7,15 +7,15 @@ namespace OhMyAgent.AiAgent.Client.Services;
 public class ChatWindowCoordinator : IChatWindowCoordinator
 {
     private readonly Func<MainWindow>             _getMainWindow;
-    private readonly Func<MainViewModel>          _getMainVm;
+    private readonly Func<AgentSessionViewModel>  _getMainVm;
     private readonly ITrayNotificationService     _trayNotification;
 
     private ChatOnlyWindow? _chatOnlyWindow;
 
     public ChatWindowCoordinator(
-        Func<MainWindow>          getMainWindow,
-        Func<MainViewModel>       getMainVm,
-        ITrayNotificationService  trayNotification)
+        Func<MainWindow>            getMainWindow,
+        Func<AgentSessionViewModel> getMainVm,
+        ITrayNotificationService    trayNotification)
     {
         _getMainWindow    = getMainWindow    ?? throw new ArgumentNullException(nameof(getMainWindow));
         _getMainVm        = getMainVm        ?? throw new ArgumentNullException(nameof(getMainVm));

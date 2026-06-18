@@ -41,12 +41,21 @@ public class SettingsService : ISettingsService
                     var loaded = JsonConvert.DeserializeObject<AppSettings>(json);
                     Current = loaded ?? new AppSettings();
 
-                    // 스키마 마이그레이션
-                    if (Current.SchemaVersion < 2)
+                    // 스키마 마이그레이션 (v2 -> v3): MCP 필드 drop, Phase 1 필드 기본값.
+                    // McpPort/McpEnabled 는 AppSettings 에서 제거되어 역직렬화 시 자동 무시된다.
+                    if (Current.SchemaVersion < 3)
                     {
-                        Current.McpPort       = 3000;
-                        Current.McpEnabled    = true;
-                        Current.SchemaVersion = 2;
+                        if (string.IsNullOrEmpty(Current.ServerBaseUrl))
+                            Current.ServerBaseUrl = "http://localhost:8080";
+                        if (Current.MaxIterations <= 0)
+                            Current.MaxIterations = 25;
+                        if (Current.MaxTokens <= 0)
+                            Current.MaxTokens = 4096;
+                        if (string.IsNullOrEmpty(Current.AuthScheme))
+                            Current.AuthScheme = "Bearer";
+                        if (string.IsNullOrEmpty(Current.ModelId))
+                            Current.ModelId = "corp-llm-32b";
+                        Current.SchemaVersion = 3;
                         return true;
                     }
                     return false;
@@ -97,6 +106,32 @@ public class SettingsService : ISettingsService
     public async Task UpdateOpacityAsync(double opacity)
     {
         Current.Opacity = opacity;
+        await SaveAsync().ConfigureAwait(false);
+        RaiseSettingsChanged();
+    }
+
+    public async Task UpdateWorkspaceRootAsync(string path)
+    {
+        Current.WorkspaceRoot = path ?? "";
+        await SaveAsync().ConfigureAwait(false);
+        RaiseSettingsChanged();
+    }
+
+    public async Task UpdatePermissionModeAsync(PermissionMode mode)
+    {
+        Current.PermissionMode = mode;
+        await SaveAsync().ConfigureAwait(false);
+        RaiseSettingsChanged();
+    }
+
+    public async Task UpdateServerConfigAsync(string baseUrl, string scheme, string token, string modelId, int maxIterations, int maxTokens)
+    {
+        Current.ServerBaseUrl  = baseUrl ?? "";
+        Current.AuthScheme     = scheme  ?? "Bearer";
+        Current.AuthToken      = token   ?? "";
+        Current.ModelId        = modelId ?? "";
+        Current.MaxIterations  = maxIterations;
+        Current.MaxTokens      = maxTokens;
         await SaveAsync().ConfigureAwait(false);
         RaiseSettingsChanged();
     }

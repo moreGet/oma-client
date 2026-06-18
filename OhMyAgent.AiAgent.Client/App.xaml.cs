@@ -6,6 +6,7 @@ using System.Windows.Interop;
 using FontStyle = System.Drawing.FontStyle;
 using System.Windows.Forms;
 using OhMyAgent.AiAgent.Client.Services;
+using OhMyAgent.AiAgent.Client.Services.Tools;
 using OhMyAgent.AiAgent.Client.ViewModels;
 using OhMyAgent.AiAgent.Client.Views;
 using Application = System.Windows.Application;
@@ -24,70 +25,93 @@ public partial class App : Application
     private IGlobalHotkeyService?     _globalHotkey;
     private ITrayNotificationService? _trayNotification;
     private IChatWindowCoordinator?   _windowCoordinator;
-    private MainViewModel?            _mainVm;
-    private IRemoteAgentService?      _mcpService;
+    private AgentSessionViewModel?    _mainVm;
+    private IAgentApiClient?          _api;
     internal ISettingsService SettingsService => _settingsService!;
+    internal IAgentApiClient? Api => _api;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        // 1) Infra
-        _httpClient = new HttpClient
-        {
-            BaseAddress = new Uri("http://localhost:8080"),
-            Timeout     = Timeout.InfiniteTimeSpan
-        };
-
-        // 2) Settings 먼저 로드
+        // 1) Settings 먼저 로드 — 모두가 이를 읽는다.
         _settingsService = new SettingsService();
         await _settingsService.LoadAsync();
 
-        // 3) Domain services
-        var chatService        = new ChatService(_httpClient);
-        var agentActionService = new AgentActionService();
+        // 2) Infra (BaseAddress 는 로드된 설정에서)
+        _httpClient = new HttpClient
+        {
+            BaseAddress = new Uri(_settingsService.Current.ServerBaseUrl),
+            Timeout     = Timeout.InfiniteTimeSpan
+        };
 
-        // 4) MCP 서비스 생성
-        _mcpService = new McpRemoteAgentService(
-            settings:  _settingsService!,
-            sseServer: new McpSseServer(),
-            executor:  new ScriptExecutor());
+        // 3) Workspace 샌드박스
+        var workspace = new WorkspaceContext(_settingsService);
 
-        // 4-1) ViewModel (MCP 포함)
-        _mainVm = new MainViewModel(chatService, agentActionService, _settingsService, _mcpService);
+        // 4) 스크립트 실행기 (run_command 엔진)
+        var scriptExec = new ScriptExecutor();
 
-        // 5) Main Window
+        // 5) 11개 MVP 도구 (배열 순서 = 표시 순서)
+        var tools = new ITool[]
+        {
+            new RunCommandTool(scriptExec),
+            new ReadFileTool(),
+            new WriteFileTool(),
+            new EditFileTool(),
+            new ListDirectoryTool(),
+            new GlobTool(),
+            new GrepTool(),
+            new CreateDirectoryTool(),
+            new MoveTool(),
+            new CopyTool(),
+            new DeleteTool(),
+        };
+
+        // 6) 도구 레지스트리
+        var registry = new ToolRegistry(tools);
+
+        // 7) 권한 게이트
+        var permissions = new PermissionService(_settingsService);
+
+        // 8) API 클라이언트
+        _api = new AgentApiClient(_httpClient, _settingsService);
+
+        // 9) 오케스트레이터 (에이전트 루프)
+        var orchestrator = new AgentOrchestrator(_api, registry, permissions, workspace, _settingsService);
+
+        // 10) 루트 ViewModel
+        _mainVm = new AgentSessionViewModel(orchestrator, _api, permissions, workspace, _settingsService);
+
+        // 11) Main Window
         _mainWindow = new MainWindow(_mainVm);
         MainWindow  = _mainWindow;
 
-        // 6) Tray icon + Notification
+        // 12) Tray icon + Notification
         InitializeTrayIcon();
         _trayNotification = new TrayNotificationService(_trayIcon!);
 
-        // 7) Window Coordinator
+        // 13) Window Coordinator
         _windowCoordinator = new ChatWindowCoordinator(
             () => _mainWindow!,
             () => _mainVm!,
             _trayNotification);
 
-        // 8) Global Hotkey 서비스 생성 (HWND는 SourceInitialized 후 획득)
+        // 14) Global Hotkey 서비스 생성 (HWND는 SourceInitialized 후 획득)
         _globalHotkey = new GlobalHotkeyService();
         _globalHotkey.HotkeyPressed += (_, _) =>
             Dispatcher.Invoke(_windowCoordinator.ToggleChatOnly);
 
-        // 9) 설정 변경 시 핫키 재등록
+        // 15) 설정 변경 시 workspace 동기화 + 핫키 재등록
         _settingsService.SettingsChanged += (_, s) =>
         {
+            workspace.SetRoot(s.WorkspaceRoot);
             _globalHotkey!.Unregister();
             _globalHotkey.Register(s.Hotkey);
         };
 
+        // 16) 표시 + 초기화
         _mainWindow.Show();
         _ = _mainVm.InitializeAsync();
-
-        // MCP 서버 시작
-        if (_settingsService!.Current.McpEnabled)
-            _ = _mcpService.StartAsync();
     }
 
     /// MainWindow의 HWND가 확보된 시점에 호출. 글로벌 핫키 후크를 건다.
@@ -105,20 +129,8 @@ public partial class App : Application
         _trayNotification?.ShowHideHint(_settingsService?.Current.Hotkey.ToDisplayString() ?? "Ctrl+Space");
     }
 
-    protected override async void OnExit(ExitEventArgs e)
+    protected override void OnExit(ExitEventArgs e)
     {
-        try
-        {
-            if (_mcpService != null)
-            {
-                await _mcpService.StopAsync();
-                await _mcpService.DisposeAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"MCP shutdown error: {ex}");
-        }
         _globalHotkey?.Dispose();
         _trayIcon?.Dispose();
         _httpClient?.Dispose();
@@ -146,8 +158,8 @@ public partial class App : Application
         var settingsItem = new ToolStripMenuItem("Settings");
         settingsItem.Click += (_, _) =>
         {
-            if (_settingsService == null) return;
-            var settingsVm     = new SettingsViewModel(_settingsService);
+            if (_settingsService == null || _api == null) return;
+            var settingsVm     = new SettingsViewModel(_settingsService, _api);
             var settingsWindow = new SettingsWindow(settingsVm);
             settingsWindow.Show();
             settingsWindow.Activate();

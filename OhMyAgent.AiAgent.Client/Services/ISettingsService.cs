@@ -14,4 +14,9 @@ public interface ISettingsService
     Task SaveAsync();
     Task UpdateHotkeyAsync(HotkeySettings hotkey);
     Task UpdateOpacityAsync(double opacity);
+
+    // Phase 1
+    Task UpdateWorkspaceRootAsync(string path);
+    Task UpdatePermissionModeAsync(PermissionMode mode);
+    Task UpdateServerConfigAsync(string baseUrl, string scheme, string token, string modelId, int maxIterations, int maxTokens);
 }

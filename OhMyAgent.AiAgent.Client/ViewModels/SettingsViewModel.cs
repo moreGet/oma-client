@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -9,20 +10,111 @@ namespace OhMyAgent.AiAgent.Client.ViewModels;
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly ISettingsService _settings;
+    private readonly IAgentApiClient _api;
 
+    // ── Hotkey capture (existing) ──────────────────────────────────────
     [ObservableProperty] private HotkeyModifiers _modifiers;
     [ObservableProperty] private System.Windows.Input.Key _key;
     [ObservableProperty] private string _displayText = string.Empty;
     [ObservableProperty] private bool _isCapturing;
     [ObservableProperty] private string? _validationError;
 
-    public SettingsViewModel(ISettingsService settings)
+    // ── Workspace ──────────────────────────────────────────────────────
+    [ObservableProperty] private string _workspaceRoot = string.Empty;
+
+    // ── Permission mode ────────────────────────────────────────────────
+    [ObservableProperty] private PermissionMode _permissionMode = PermissionMode.Manual;
+
+    public IReadOnlyList<PermissionMode> PermissionModes { get; } =
+        [PermissionMode.Manual, PermissionMode.AutoSafe, PermissionMode.FullAuto];
+
+    /// <summary>Warning shown when Full-Auto is selected (all tools auto-approved).</summary>
+    public bool ShowFullAutoWarning => PermissionMode == PermissionMode.FullAuto;
+
+    // ── Iteration / token budget ───────────────────────────────────────
+    [ObservableProperty] private int _maxIterations = 25;
+    [ObservableProperty] private int _maxTokens = 4096;
+
+    // ── Server config ──────────────────────────────────────────────────
+    [ObservableProperty] private string _serverBaseUrl = "http://localhost:8080";
+    [ObservableProperty] private string _authScheme = "Bearer";
+    [ObservableProperty] private string _authToken = string.Empty;
+    [ObservableProperty] private string _modelId = string.Empty;
+
+    public IReadOnlyList<string> AuthSchemes { get; } = ["Bearer", "ApiKey"];
+
+    /// <summary>Model ids fetched from the server (free-text fallback in the View).</summary>
+    public ObservableCollection<string> AvailableModels { get; } = [];
+
+    public SettingsViewModel(ISettingsService settings, IAgentApiClient api)
     {
-        _settings   = settings;
-        Modifiers   = settings.Current.Hotkey.Modifiers;
-        Key         = (System.Windows.Input.Key)settings.Current.Hotkey.KeyCode;
-        DisplayText = settings.Current.Hotkey.ToDisplayString();
+        _settings = settings;
+        _api = api;
+
+        var c = settings.Current;
+        Modifiers = c.Hotkey.Modifiers;
+        Key = (System.Windows.Input.Key)c.Hotkey.KeyCode;
+        DisplayText = c.Hotkey.ToDisplayString();
+
+        WorkspaceRoot = c.WorkspaceRoot;
+        PermissionMode = c.PermissionMode;
+        MaxIterations = c.MaxIterations;
+        MaxTokens = c.MaxTokens;
+        ServerBaseUrl = c.ServerBaseUrl;
+        AuthScheme = c.AuthScheme;
+        AuthToken = c.AuthToken;
+        ModelId = c.ModelId;
     }
+
+    public async Task InitializeAsync()
+    {
+        await LoadModelsAsync();
+    }
+
+    // ── Workspace picker ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Called by the View after a folder dialog returns a path. Persists immediately.
+    /// </summary>
+    public async Task SetWorkspaceRootAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        WorkspaceRoot = path;
+        await _settings.UpdateWorkspaceRootAsync(path);
+    }
+
+    partial void OnPermissionModeChanged(PermissionMode value)
+    {
+        OnPropertyChanged(nameof(ShowFullAutoWarning));
+        _ = _settings.UpdatePermissionModeAsync(value);
+    }
+
+    // ── Server config ──────────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task LoadModelsAsync()
+    {
+        try
+        {
+            var models = await _api.GetModelsAsync();
+            AvailableModels.Clear();
+            foreach (var m in models)
+                AvailableModels.Add(m.Id);
+        }
+        catch
+        {
+            // Endpoint absent / offline — free-text fallback in the View.
+        }
+    }
+
+    [RelayCommand]
+    private async Task SaveServerConfigAsync()
+    {
+        await _settings.UpdateServerConfigAsync(
+            ServerBaseUrl, AuthScheme, AuthToken, ModelId, MaxIterations, MaxTokens);
+    }
+
+    // ── Hotkey capture (existing behavior, preserved) ──────────────────
 
     partial void OnIsCapturingChanged(bool value)
         => SaveCommand.NotifyCanExecuteChanged();
@@ -30,7 +122,7 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void StartCapture()
     {
-        IsCapturing     = true;
+        IsCapturing = true;
         ValidationError = null;
     }
 
@@ -38,11 +130,9 @@ public partial class SettingsViewModel : ObservableObject
     private void CancelCapture()
     {
         IsCapturing = false;
-
-        // 현재 저장된 값으로 복원
-        Modifiers       = _settings.Current.Hotkey.Modifiers;
-        Key             = (System.Windows.Input.Key)_settings.Current.Hotkey.KeyCode;
-        DisplayText     = _settings.Current.Hotkey.ToDisplayString();
+        Modifiers = _settings.Current.Hotkey.Modifiers;
+        Key = (System.Windows.Input.Key)_settings.Current.Hotkey.KeyCode;
+        DisplayText = _settings.Current.Hotkey.ToDisplayString();
         ValidationError = null;
     }
 
@@ -52,7 +142,7 @@ public partial class SettingsViewModel : ObservableObject
         await _settings.UpdateHotkeyAsync(new HotkeySettings
         {
             Modifiers = Modifiers,
-            KeyCode   = (int)Key,
+            KeyCode = (int)Key,
         });
         IsCapturing = false;
     }
@@ -70,10 +160,8 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (!IsCapturing) return;
 
-        // Esc → 캡처 취소
         if (key == System.Windows.Input.Key.Escape) { CancelCapture(); return; }
 
-        // 단독 수정키는 무시
         if (key == System.Windows.Input.Key.LeftCtrl  || key == System.Windows.Input.Key.RightCtrl  ||
             key == System.Windows.Input.Key.LeftAlt   || key == System.Windows.Input.Key.RightAlt   ||
             key == System.Windows.Input.Key.LeftShift || key == System.Windows.Input.Key.RightShift ||
@@ -91,11 +179,11 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        Modifiers       = newMods;
-        Key             = key;
-        DisplayText     = new HotkeySettings { Modifiers = newMods, KeyCode = (int)key }.ToDisplayString();
+        Modifiers = newMods;
+        Key = key;
+        DisplayText = new HotkeySettings { Modifiers = newMods, KeyCode = (int)key }.ToDisplayString();
         ValidationError = null;
-        IsCapturing     = false;
+        IsCapturing = false;
         SaveCommand.NotifyCanExecuteChanged();
     }
 }

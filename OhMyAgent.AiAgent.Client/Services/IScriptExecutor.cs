@@ -6,6 +6,6 @@ namespace OhMyAgent.AiAgent.Client.Services;
 
 public interface IScriptExecutor
 {
-    Task<ScriptResult> ExecutePowerShellAsync(string script, int timeoutMs = 30000, CancellationToken ct = default);
-    Task<ScriptResult> ExecuteCmdAsync(string command, int timeoutMs = 30000, CancellationToken ct = default);
+    Task<ScriptResult> ExecutePowerShellAsync(string script, int timeoutMs = 30000, string? workingDirectory = null, CancellationToken ct = default);
+    Task<ScriptResult> ExecuteCmdAsync(string command, int timeoutMs = 30000, string? workingDirectory = null, CancellationToken ct = default);
 }

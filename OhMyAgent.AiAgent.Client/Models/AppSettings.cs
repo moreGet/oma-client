@@ -2,9 +2,22 @@ namespace OhMyAgent.AiAgent.Client.Models;
 
 public class AppSettings
 {
+    // 기존 — 유지
     public HotkeySettings Hotkey { get; set; } = HotkeySettings.Default;
     public double Opacity { get; set; } = 1.0;
-    public int SchemaVersion { get; set; } = 2;
-    public int McpPort { get; set; } = 3000;
-    public bool McpEnabled { get; set; } = true;
+    public int SchemaVersion { get; set; } = 3;   // bump 2 -> 3
+
+    // MCP 서버 은퇴로 제거됨 (v3 마이그레이션에서 drop):
+    //   public int  McpPort    { get; set; } = 3000;
+    //   public bool McpEnabled { get; set; } = true;
+
+    // 신규 (Phase 1)
+    public string WorkspaceRoot { get; set; } = "";            // empty => Desktop fallback
+    public PermissionMode PermissionMode { get; set; } = PermissionMode.Manual;
+    public int MaxIterations { get; set; } = 25;
+    public string ServerBaseUrl { get; set; } = "http://localhost:8080";
+    public string AuthScheme { get; set; } = "Bearer";          // "Bearer" | "ApiKey"
+    public string AuthToken { get; set; } = "";
+    public string ModelId { get; set; } = "corp-llm-32b";
+    public int MaxTokens { get; set; } = 4096;
 }
