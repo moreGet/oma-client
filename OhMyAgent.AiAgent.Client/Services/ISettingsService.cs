@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using OhMyAgent.AiAgent.Client.Models;
 
@@ -19,4 +20,8 @@ public interface ISettingsService
     Task UpdateWorkspaceRootAsync(string path);
     Task UpdatePermissionModeAsync(PermissionMode mode);
     Task UpdateServerConfigAsync(string baseUrl, string scheme, string token, string modelId, int maxIterations, int maxTokens);
+
+    // Phase D
+    Task UpdateUserDisplayNameAsync(string name);                                    // F
+    Task UpdateRecentWorkspacesAsync(IReadOnlyList<WorkspaceHistoryEntry> entries);  // B
 }

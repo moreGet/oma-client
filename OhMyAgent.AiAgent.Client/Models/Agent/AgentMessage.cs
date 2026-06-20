@@ -27,6 +27,13 @@ public sealed record AgentMessage
     [JsonPropertyName("is_error")]
     public bool? IsError { get; init; }
 
+    /// <summary>
+    /// 예약 필드 — 클라이언트 첨부 메타. 서버 소비는 미래(API_CONTRACT §8). null이면 직렬화 생략.
+    /// AgentJson.Options(WhenWritingNull)이므로 첨부 없으면 바이트 단위로 기존 요청 불변.
+    /// </summary>
+    [JsonPropertyName("attachments")]
+    public IReadOnlyList<Attachment>? Attachments { get; init; }
+
     public static AgentMessage System(string content) =>
         new() { Role = MessageRole.System, Content = content };
 

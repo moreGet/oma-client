@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace OhMyAgent.AiAgent.Client.Models;
 
 public class AppSettings
@@ -5,7 +7,7 @@ public class AppSettings
     // 기존 — 유지
     public HotkeySettings Hotkey { get; set; } = HotkeySettings.Default;
     public double Opacity { get; set; } = 1.0;
-    public int SchemaVersion { get; set; } = 3;   // bump 2 -> 3
+    public int SchemaVersion { get; set; } = 4;   // bump 3 -> 4
 
     // MCP 서버 은퇴로 제거됨 (v3 마이그레이션에서 drop):
     //   public int  McpPort    { get; set; } = 3000;
@@ -20,4 +22,8 @@ public class AppSettings
     public string AuthToken { get; set; } = "";
     public string ModelId { get; set; } = "corp-llm-32b";
     public int MaxTokens { get; set; } = 4096;
+
+    // 신규 (Phase D)
+    public string UserDisplayName { get; set; } = "";                       // empty => Environment.UserName fallback (F)
+    public List<WorkspaceHistoryEntry> RecentWorkspaces { get; set; } = []; // 최근순, 상한 10 (B)
 }

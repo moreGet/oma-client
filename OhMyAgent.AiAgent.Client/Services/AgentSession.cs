@@ -16,6 +16,19 @@ public sealed class AgentSession
 
     public Usage? LastUsage { get; set; }
 
+    /// <summary>새 빈 세션. (기존 경로 보존)</summary>
+    public AgentSession() { }
+
+    /// <summary>
+    /// 디스크에서 복원한 세션 재구성용. Id가 get-only이므로 ctor로 주입한다.
+    /// (ChatSessionRecord → VM RestoreSession 경로에서 사용.)
+    /// </summary>
+    public AgentSession(string id, IEnumerable<AgentMessage> messages)
+    {
+        Id = id;
+        Messages.AddRange(messages);
+    }
+
     public static string DefaultSystemPrompt(string workspaceRoot, PermissionMode mode) =>
         $"""
         You are a Windows desktop automation agent embedded in a WPF client.

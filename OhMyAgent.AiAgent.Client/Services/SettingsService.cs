@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using Newtonsoft.Json;
@@ -41,7 +43,11 @@ public class SettingsService : ISettingsService
                     var loaded = JsonConvert.DeserializeObject<AppSettings>(json);
                     Current = loaded ?? new AppSettings();
 
-                    // 스키마 마이그레이션 (v2 -> v3): MCP 필드 drop, Phase 1 필드 기본값.
+                    // 스키마 마이그레이션 — 누적형: 각 버전 블록은 return하지 않고 fall-through하며
+                    // migrated 플래그만 세운다. 마지막에 한 번만 반환해 모든 버전 블록이 순차 적용된다.
+                    var migrated = false;
+
+                    // v2 -> v3: MCP 필드 drop, Phase 1 필드 기본값.
                     // McpPort/McpEnabled 는 AppSettings 에서 제거되어 역직렬화 시 자동 무시된다.
                     if (Current.SchemaVersion < 3)
                     {
@@ -56,9 +62,19 @@ public class SettingsService : ISettingsService
                         if (string.IsNullOrEmpty(Current.ModelId))
                             Current.ModelId = "corp-llm-32b";
                         Current.SchemaVersion = 3;
-                        return true;
+                        migrated = true;
                     }
-                    return false;
+
+                    // v3 -> v4: Phase D 필드 기본값 시드(RecentWorkspaces, UserDisplayName).
+                    if (Current.SchemaVersion < 4)
+                    {
+                        Current.RecentWorkspaces ??= [];
+                        Current.UserDisplayName ??= "";   // 빈 값 유지 → VM에서 Environment.UserName 폴백
+                        Current.SchemaVersion = 4;
+                        migrated = true;
+                    }
+
+                    return migrated;
                 }
                 catch (Exception ex)
                 {
@@ -132,6 +148,20 @@ public class SettingsService : ISettingsService
         Current.ModelId        = modelId ?? "";
         Current.MaxIterations  = maxIterations;
         Current.MaxTokens      = maxTokens;
+        await SaveAsync().ConfigureAwait(false);
+        RaiseSettingsChanged();
+    }
+
+    public async Task UpdateUserDisplayNameAsync(string name)
+    {
+        Current.UserDisplayName = name ?? "";
+        await SaveAsync().ConfigureAwait(false);
+        RaiseSettingsChanged();
+    }
+
+    public async Task UpdateRecentWorkspacesAsync(IReadOnlyList<WorkspaceHistoryEntry> entries)
+    {
+        Current.RecentWorkspaces = entries is null ? [] : entries.ToList();
         await SaveAsync().ConfigureAwait(false);
         RaiseSettingsChanged();
     }

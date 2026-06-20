@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,6 +27,10 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     private readonly IPermissionService _permissions;
     private readonly IWorkspaceContext _workspace;
     private readonly ISettingsService _settings;
+    private readonly IWorkspaceHistoryService _workspaceHistory;
+    private readonly IChatHistoryService _chatHistory;
+    private readonly IFileAttachmentService _attachmentService;
+    private readonly ISuggestionService _suggestions;
 
     private AgentSession _session = new();
     private CancellationTokenSource? _cts;
@@ -48,6 +53,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]
     [NotifyCanExecuteChangedFor(nameof(StopCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenWorkspaceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(LoadChatSessionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(AttachFileCommand))]
     private bool _isBusy;
 
     [ObservableProperty] private bool _isConnected;
@@ -60,9 +68,32 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     [ObservableProperty] private ApprovalRequestViewModel? _pendingApproval;
     [ObservableProperty] private string _lastUsageText = string.Empty;
 
+    // ── Phase D observable state ───────────────────────────────────────
+
+    /// <summary>F — greeting heading: "{name}님 안녕하세요, 어떤 업무를 시작할까요?".</summary>
+    [ObservableProperty] private string _greetingText = string.Empty;
+
+    /// <summary>F — raw display name (settings UserDisplayName ?? Environment.UserName).</summary>
+    [ObservableProperty] private string _userDisplayName = string.Empty;
+
+    /// <summary>D — convenience flag mirroring <c>Attachments.Count &gt; 0</c>.</summary>
+    [ObservableProperty] private bool _hasAttachments;
+
     // ── Collections ────────────────────────────────────────────────────
 
     public ObservableCollection<ITranscriptItem> Transcript { get; } = [];
+
+    /// <summary>B — recent workspace history shown in the sidebar "프로젝트" list.</summary>
+    public ObservableCollection<WorkspaceHistoryEntry> RecentWorkspaces { get; } = [];
+
+    /// <summary>C — saved chat session summaries shown in the sidebar "채팅" list.</summary>
+    public ObservableCollection<ChatSessionSummary> ChatSessions { get; } = [];
+
+    /// <summary>D — attachment chips bound by the composer.</summary>
+    public ObservableCollection<Attachment> Attachments { get; } = [];
+
+    /// <summary>G — welcome-screen action hints (empty until the suggestion service is wired).</summary>
+    public ObservableCollection<Suggestion> Suggestions { get; } = [];
 
     /// <summary>Selectable permission modes for the header selector.</summary>
     public IReadOnlyList<PermissionMode> PermissionModes { get; } =
@@ -75,18 +106,33 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         IAgentApiClient api,
         IPermissionService permissions,
         IWorkspaceContext workspace,
-        ISettingsService settings)
+        ISettingsService settings,
+        IWorkspaceHistoryService workspaceHistory,
+        IChatHistoryService chatHistory,
+        IFileAttachmentService attachments,
+        ISuggestionService suggestions)
     {
         _orchestrator = orchestrator;
         _api = api;
         _permissions = permissions;
         _workspace = workspace;
         _settings = settings;
+        _workspaceHistory = workspaceHistory;
+        _chatHistory = chatHistory;
+        _attachmentService = attachments;
+        _suggestions = suggestions;
 
         // Surface Manual-mode approvals through the inline approval card.
         _permissions.SetApprovalHandler(RequestApprovalAsync);
 
+        // B — keep the sidebar workspace list in sync with persisted history.
+        _workspaceHistory.HistoryChanged += OnWorkspaceHistoryChanged;
+
+        // D — mirror attachment count onto HasAttachments.
+        Attachments.CollectionChanged += (_, _) => HasAttachments = Attachments.Count > 0;
+
         SeedFromSettings();
+        RefreshWorkspaceList();
     }
 
     // ── Property change reactions ──────────────────────────────────────
@@ -114,6 +160,11 @@ public sealed partial class AgentSessionViewModel : ObservableObject
             WorkspaceRoot = string.IsNullOrWhiteSpace(s.WorkspaceRoot) ? _workspace.Root : s.WorkspaceRoot;
             CurrentPermissionMode = s.PermissionMode;
             WindowOpacity = s.Opacity;
+
+            // F — greeting from settings display name, falling back to the OS user name.
+            var rawName = string.IsNullOrWhiteSpace(s.UserDisplayName) ? Environment.UserName : s.UserDisplayName;
+            UserDisplayName = rawName;
+            GreetingText = $"{rawName}님 안녕하세요, 어떤 업무를 시작할까요?";
         }
         finally
         {
@@ -124,12 +175,50 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     public async Task InitializeAsync()
     {
         SeedFromSettings();
+        RefreshWorkspaceList();
         await RetryConnectionAsync();
         if (IsConnected)
             Transcript.Add(new SystemNoticeViewModel
             {
                 Text = "에이전트 서버에 연결되었습니다. 무엇을 도와드릴까요?",
             });
+
+        // C — populate the sidebar chat list from local history.
+        await RefreshChatSessionsAsync();
+
+        // G — fetch action hints (currently a stubbed empty list).
+        _ = LoadSuggestionsAsync();
+    }
+
+    /// <summary>B — refresh <see cref="RecentWorkspaces"/> from the history service snapshot.</summary>
+    private void RefreshWorkspaceList()
+    {
+        var recent = _workspaceHistory.GetRecent();
+        RecentWorkspaces.Clear();
+        foreach (var w in recent)
+            RecentWorkspaces.Add(w);
+    }
+
+    private void OnWorkspaceHistoryChanged(object? sender, EventArgs e)
+        => _ = UiInvokeAsync(RefreshWorkspaceList);
+
+    /// <summary>G — load action hints for the current workspace (stub: empty list).</summary>
+    private async Task LoadSuggestionsAsync()
+    {
+        try
+        {
+            var items = await _suggestions.GetSuggestionsAsync(WorkspaceRoot).ConfigureAwait(false);
+            await UiInvokeAsync(() =>
+            {
+                Suggestions.Clear();
+                foreach (var s in items)
+                    Suggestions.Add(s);
+            }).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Suggestions are best-effort; ignore failures (endpoint absent / offline).
+        }
     }
 
     // ── Commands ───────────────────────────────────────────────────────
@@ -149,6 +238,12 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         _toolCards.Clear();
 
         Transcript.Add(new UserTurnViewModel { Text = goal });
+
+        // D — attachments are managed/displayed client-side only. Actual payload
+        // attachment to the outgoing message is deferred until the §8 server
+        // contract is finalized (orchestrator signature is kept unchanged), so we
+        // simply clear the composer chips after dispatching the turn.
+        Attachments.Clear();
 
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
@@ -189,6 +284,10 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                     a.IsStreaming = false;
                 IsBusy = false;
             }).ConfigureAwait(false);
+
+            // C — persist the (now-appended) session and refresh the sidebar list.
+            await SaveCurrentSessionAsync().ConfigureAwait(false);
+            await RefreshChatSessionsAsync().ConfigureAwait(false);
         }
     }
 
@@ -219,17 +318,264 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Clear()
+    private async Task ClearAsync()
     {
+        // C — save the current session before starting a fresh chat.
+        await SaveCurrentSessionAsync().ConfigureAwait(false);
+
+        await UiInvokeAsync(() =>
+        {
+            Transcript.Clear();
+            _toolCards.Clear();
+            _currentAssistant = null;
+            _session = new AgentSession();
+            Attachments.Clear();
+            _permissions.ClearSessionRules();
+            HasError = false;
+            ErrorMessage = string.Empty;
+            LastUsageText = string.Empty;
+            StatusText = IsConnected ? "Connected" : "Disconnected";
+        }).ConfigureAwait(false);
+
+        await RefreshChatSessionsAsync().ConfigureAwait(false);
+    }
+
+    // ── Phase D commands ───────────────────────────────────────────────
+
+    private bool CanOpenWorkspace(WorkspaceHistoryEntry? e) => e is not null && !IsBusy;
+
+    /// <summary>B — switch the active workspace to a history entry.</summary>
+    [RelayCommand(CanExecute = nameof(CanOpenWorkspace))]
+    private async Task OpenWorkspaceAsync(WorkspaceHistoryEntry? entry)
+    {
+        if (entry is null) return;
+        _workspace.SetRoot(entry.Path);
+        await _settings.UpdateWorkspaceRootAsync(entry.Path).ConfigureAwait(false);
+        await _workspaceHistory.TouchAsync(entry.Path).ConfigureAwait(false);
+        await UiInvokeAsync(() =>
+        {
+            WorkspaceRoot = entry.Path;
+            var rawName = string.IsNullOrWhiteSpace(_settings.Current.UserDisplayName)
+                ? Environment.UserName
+                : _settings.Current.UserDisplayName;
+            GreetingText = $"{rawName}님 안녕하세요, 어떤 업무를 시작할까요?";
+        }).ConfigureAwait(false);
+    }
+
+    private bool CanRemoveWorkspace(WorkspaceHistoryEntry? e) => e is not null;
+
+    /// <summary>B — drop a workspace from history.</summary>
+    [RelayCommand(CanExecute = nameof(CanRemoveWorkspace))]
+    private async Task RemoveWorkspaceAsync(WorkspaceHistoryEntry? entry)
+    {
+        if (entry is null) return;
+        await _workspaceHistory.RemoveAsync(entry.Path).ConfigureAwait(false);
+    }
+
+    private bool CanLoadChatSession(ChatSessionSummary? s) => s is not null && !IsBusy;
+
+    /// <summary>C — save the current chat, then restore the selected session.</summary>
+    [RelayCommand(CanExecute = nameof(CanLoadChatSession))]
+    private async Task LoadChatSessionAsync(ChatSessionSummary? summary)
+    {
+        if (summary is null) return;
+        await SaveCurrentSessionAsync().ConfigureAwait(false);
+
+        var record = await _chatHistory.LoadAsync(summary.Id).ConfigureAwait(false);
+        if (record is null) return;
+
+        await UiInvokeAsync(() => RestoreSession(record)).ConfigureAwait(false);
+        await RefreshChatSessionsAsync().ConfigureAwait(false);
+    }
+
+    private bool CanDeleteChatSession(ChatSessionSummary? s) => s is not null;
+
+    /// <summary>C — delete a saved session; clear the view if it is the active one.</summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteChatSession))]
+    private async Task DeleteChatSessionAsync(ChatSessionSummary? summary)
+    {
+        if (summary is null) return;
+        var wasActive = string.Equals(summary.Id, _session.Id, StringComparison.Ordinal);
+
+        await _chatHistory.DeleteAsync(summary.Id).ConfigureAwait(false);
+
+        if (wasActive)
+        {
+            await UiInvokeAsync(() =>
+            {
+                Transcript.Clear();
+                _toolCards.Clear();
+                _currentAssistant = null;
+                _session = new AgentSession();
+                Attachments.Clear();
+                _permissions.ClearSessionRules();
+                LastUsageText = string.Empty;
+            }).ConfigureAwait(false);
+        }
+
+        await RefreshChatSessionsAsync().ConfigureAwait(false);
+    }
+
+    private bool CanAttachFile() => !IsBusy;
+
+    /// <summary>
+    /// D — gate-only command for the composer "+" button. The actual
+    /// <c>OpenFileDialog</c> is invoked from MainWindow code-behind, which then
+    /// calls <see cref="AddAttachmentPublic"/> for each selected path.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanAttachFile))]
+    private void AttachFile()
+    {
+        // No-op: dialog is owned by the View (MVVM-safe). See AddAttachmentPublic.
+    }
+
+    private bool CanRemoveAttachment(Attachment? a) => a is not null;
+
+    /// <summary>D — remove a chip from the composer.</summary>
+    [RelayCommand(CanExecute = nameof(CanRemoveAttachment))]
+    private void RemoveAttachment(Attachment? attachment)
+    {
+        if (attachment is null) return;
+        Attachments.Remove(attachment);
+    }
+
+    /// <summary>D — public entry point invoked by MainWindow code-behind after the file dialog.</summary>
+    public void AddAttachmentPublic(string path) => AddAttachment(path);
+
+    // ── Phase D private helpers ────────────────────────────────────────
+
+    private void AddAttachment(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        // Ignore duplicate paths (case-insensitive).
+        if (Attachments.Any(a => string.Equals(a.FilePath, path, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        try
+        {
+            var meta = _attachmentService.CreateFromPath(path);
+            Attachments.Add(meta);
+        }
+        catch (AgentException)
+        {
+            // File missing / unreadable — skip silently.
+        }
+    }
+
+    /// <summary>C — upsert the current session to disk. No-op when there are no messages.</summary>
+    private async Task SaveCurrentSessionAsync()
+    {
+        var messages = _session.Messages.ToList();
+        if (messages.Count == 0) return;
+
+        var record = new ChatSessionRecord
+        {
+            Id = _session.Id,
+            Title = _chatHistory.BuildTitle(messages),
+            CreatedUtc = DateTimeOffset.UtcNow,
+            UpdatedUtc = DateTimeOffset.UtcNow,
+            WorkspaceRoot = WorkspaceRoot,
+            Messages = messages,
+        };
+
+        try
+        {
+            await _chatHistory.SaveAsync(record).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Persistence is best-effort; do not surface IO failures to the user mid-turn.
+        }
+    }
+
+    /// <summary>C — rebuild <see cref="ChatSessions"/> from local history (UI thread).</summary>
+    private async Task RefreshChatSessionsAsync()
+    {
+        IReadOnlyList<ChatSessionSummary> list;
+        try
+        {
+            list = await _chatHistory.ListAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            return;
+        }
+
+        await UiInvokeAsync(() =>
+        {
+            ChatSessions.Clear();
+            foreach (var s in list)
+                ChatSessions.Add(s);
+        }).ConfigureAwait(false);
+    }
+
+    /// <summary>C — replace the active session and re-project its transcript (UI thread).</summary>
+    private void RestoreSession(ChatSessionRecord record)
+    {
+        _session = new AgentSession(record.Id, record.Messages);
+
         Transcript.Clear();
         _toolCards.Clear();
         _currentAssistant = null;
-        _session = new AgentSession();
-        _permissions.ClearSessionRules();
+        Attachments.Clear();
         HasError = false;
         ErrorMessage = string.Empty;
         LastUsageText = string.Empty;
         StatusText = IsConnected ? "Connected" : "Disconnected";
+
+        // Map persisted messages back onto transcript cards. Tool messages pair
+        // with the preceding assistant ToolCalls (best-effort per §4.1.1).
+        foreach (var msg in record.Messages)
+        {
+            switch (msg.Role)
+            {
+                case MessageRole.User:
+                    Transcript.Add(new UserTurnViewModel { Text = msg.Content ?? string.Empty });
+                    break;
+
+                case MessageRole.Assistant:
+                    if (!string.IsNullOrEmpty(msg.Content))
+                    {
+                        Transcript.Add(new AssistantTurnViewModel
+                        {
+                            Text = msg.Content!,
+                            IsStreaming = false,
+                        });
+                    }
+
+                    if (msg.ToolCalls is { Count: > 0 } calls)
+                    {
+                        foreach (var call in calls)
+                        {
+                            var card = new ToolCallViewModel
+                            {
+                                CallId = call.Id,
+                                ToolName = call.Name,
+                                ArgsPreview = RenderArgs(call.Arguments),
+                                Status = ToolCallStatus.Succeeded,
+                            };
+                            _toolCards[call.Id] = card;
+                            Transcript.Add(card);
+                        }
+                    }
+                    break;
+
+                case MessageRole.Tool:
+                    if (msg.ToolCallId is { } id && _toolCards.TryGetValue(id, out var toolCard))
+                    {
+                        var isError = msg.IsError ?? false;
+                        toolCard.ResultText = msg.Content ?? string.Empty;
+                        toolCard.IsError = isError;
+                        toolCard.Status = isError ? ToolCallStatus.Failed : ToolCallStatus.Succeeded;
+                    }
+                    break;
+
+                case MessageRole.System:
+                    // System prompt is not surfaced in the transcript.
+                    break;
+            }
+        }
     }
 
     // ── Approval surfacing (PermissionService handler) ─────────────────

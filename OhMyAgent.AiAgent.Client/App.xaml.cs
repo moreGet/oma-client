@@ -27,6 +27,7 @@ public partial class App : Application
     private IChatWindowCoordinator?   _windowCoordinator;
     private AgentSessionViewModel?    _mainVm;
     private IAgentApiClient?          _api;
+    private IWorkspaceHistoryService? _workspaceHistory;
     internal ISettingsService SettingsService => _settingsService!;
     internal IAgentApiClient? Api => _api;
 
@@ -76,11 +77,22 @@ public partial class App : Application
         // 8) API 클라이언트
         _api = new AgentApiClient(_httpClient, _settingsService);
 
+        // 8b) 워크스페이스 히스토리 (settings 기반, Phase D — B)
+        var workspaceHistory = new WorkspaceHistoryService(_settingsService);
+        _workspaceHistory = workspaceHistory;
+
         // 9) 오케스트레이터 (에이전트 루프)
         var orchestrator = new AgentOrchestrator(_api, registry, permissions, workspace, _settingsService);
 
+        // 9b) 채팅 히스토리 / 첨부 / 제안 (Phase D — C, D, G)
+        var chatHistory = new ChatHistoryService();
+        var attachments = new FileAttachmentService();
+        var suggestions = new StubSuggestionService();
+
         // 10) 루트 ViewModel
-        _mainVm = new AgentSessionViewModel(orchestrator, _api, permissions, workspace, _settingsService);
+        _mainVm = new AgentSessionViewModel(
+            orchestrator, _api, permissions, workspace, _settingsService,
+            workspaceHistory, chatHistory, attachments, suggestions);
 
         // 11) Main Window
         _mainWindow = new MainWindow(_mainVm);
@@ -101,10 +113,13 @@ public partial class App : Application
         _globalHotkey.HotkeyPressed += (_, _) =>
             Dispatcher.Invoke(_windowCoordinator.ToggleChatOnly);
 
-        // 15) 설정 변경 시 workspace 동기화 + 핫키 재등록
+        // 15) 설정 변경 시 workspace 동기화 + 워크스페이스 히스토리 자동 기록 + 핫키 재등록
         _settingsService.SettingsChanged += (_, s) =>
         {
             workspace.SetRoot(s.WorkspaceRoot);
+            if (!string.IsNullOrWhiteSpace(s.WorkspaceRoot))
+                // AddAsync는 RaiseSettingsChanged를 호출하지 않으므로 이 핸들러로 재진입하지 않는다.
+                _ = workspaceHistory.AddAsync(s.WorkspaceRoot);
             _globalHotkey!.Unregister();
             _globalHotkey.Register(s.Hotkey);
         };

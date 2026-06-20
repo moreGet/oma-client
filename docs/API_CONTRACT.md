@@ -284,4 +284,43 @@ public sealed record ErrorEvent(string Code, string Message)               : Age
 
 ---
 
+## 8. Phase D 확장 — 향후 서버 기능 (클라이언트 stub/예약 필드 선반영)
+
+> 아래 3기능은 클라이언트가 인터페이스/DTO/예약 필드를 **미리** 정의했고, 서버 구현 시 그대로 연동된다.
+> 현재 클라이언트 동작: 동작 힌트=빈 목록 stub, 첨부=로컬 관리만(전송 미연결), 채팅 히스토리=로컬 영속.
+
+### 8.1 GET /api/v1/agent/suggestions — 동작 힌트 (요구 G)
+- Query: `?workspace_root={path}` (선택)
+- 200 Response:
+  ```json
+  { "suggestions": [ { "text": "현재 프로젝트의 버그를 찾아 수정해 보세요", "prompt": "이 워크스페이스의 버그를 점검해줘", "icon": "E9D5" } ] }
+  ```
+- 클라이언트: `ISuggestionService.GetSuggestionsAsync(workspaceRoot, ct)` → `IReadOnlyList<Suggestion>`. 엔드포인트 부재 시 빈 목록(현 stub `StubSuggestionService`).
+- DTO: `Suggestion(text, prompt?, icon?)` — `Models/Suggestion.cs`.
+
+### 8.2 첨부 전송 — POST /api/v1/agent/chat 확장 (요구 D 서버측)
+- 요청 §4.1 `messages[].` 에 **`attachments[]` 필드 예약**(현재 클라이언트가 직렬화하나 서버 미소비):
+  ```json
+  { "role": "user", "content": "이 파일 분석해줘",
+    "attachments": [ { "file_name": "report.pdf", "content_type": "application/pdf", "size_bytes": 10240, "data_base64": "..." } ] }
+  ```
+- 클라이언트 현재: `AgentMessage.Attachments`(file_path/file_name/size_bytes/content_type)만 보유, `data_base64`는 미전송(`IFileAttachmentService.ReadAsBase64Async` stub).
+- `AgentMessage.Attachments`는 null이면 직렬화 생략(`AgentJson.Options` WhenWritingNull)이므로 기존 요청 바이트 불변 — 서버 회귀 없음.
+- 서버 합의 필요: 최대 파일 크기, 허용 MIME, base64 inline vs 멀티파트 업로드 엔드포인트(`POST /api/v1/agent/attachments` 별도 권장).
+
+### 8.3 채팅 히스토리 서버 동기화 (요구 C 서버측, 선택)
+- 현재 로컬 `%APPDATA%/OhMyAgent/sessions/{id}.json` 단독. 미래 동기화용 엔드포인트 초안:
+  - `GET /api/v1/agent/sessions` → `ChatSessionSummary[]`
+  - `GET /api/v1/agent/sessions/{id}` → `ChatSessionRecord`
+  - `PUT /api/v1/agent/sessions/{id}` (upsert) / `DELETE /api/v1/agent/sessions/{id}`
+- DTO: `ChatSessionRecord(id, title, created_utc, updated_utc, workspace_root?, messages[])`, `ChatSessionSummary(id, title, updated_utc, workspace_root?, message_count)`.
+- 클라이언트: `IChatHistoryService`가 추상화 경계 — 로컬 구현(`ChatHistoryService`)을 서버 구현으로 교체 가능. 현재 미연동.
+
+### 8.4 서버팀 결정 요청
+1. 동작 힌트 엔드포인트 제공 여부/스키마.
+2. 첨부 전송 방식(inline base64 vs 별도 업로드) + 한도.
+3. 채팅 히스토리 서버 보관 정책(클라 단독 유지 vs 동기화).
+
+---
+
 > 관련 문서: [AGENT_ARCHITECTURE_PLAN.md](./AGENT_ARCHITECTURE_PLAN.md) — 전체 전환 계획

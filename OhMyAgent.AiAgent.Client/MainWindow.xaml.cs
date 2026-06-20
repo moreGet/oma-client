@@ -36,6 +36,24 @@ public partial class MainWindow : Window
             ChatScrollViewer.ScrollToEnd();
     }
 
+    // + 버튼 → 파일 첨부 다이얼로그 (MVVM 안전: 선택 경로를 VM 진입점으로 전달)
+    private void AttachButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not AgentSessionViewModel vm) return;
+
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "첨부할 파일 선택",
+            Multiselect = true
+        };
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            foreach (var path in dialog.FileNames)
+                vm.AddAttachmentPublic(path);
+        }
+    }
+
     // 타이틀바 드래그 이동
     private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
         => DragMove();

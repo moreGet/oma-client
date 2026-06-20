@@ -72,6 +72,28 @@ public sealed class StringToVisibilityConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>Count &gt; 0 =&gt; Visible (transcript present), 0 =&gt; Collapsed. Used to switch to the transcript view.</summary>
+[ValueConversion(typeof(int), typeof(Visibility))]
+public sealed class CountToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object p, CultureInfo c)
+        => value is int n && n > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type t, object p, CultureInfo c)
+        => throw new NotSupportedException();
+}
+
+/// <summary>Count == 0 =&gt; Visible (empty transcript ⇒ welcome screen), &gt; 0 =&gt; Collapsed.</summary>
+[ValueConversion(typeof(int), typeof(Visibility))]
+public sealed class EmptyCountToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object p, CultureInfo c)
+        => value is int n && n > 0 ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object value, Type t, object p, CultureInfo c)
+        => throw new NotSupportedException();
+}
+
 /// <summary>Maps a <see cref="ToolRisk"/> to an accent brush for tool-call card headers.</summary>
 [ValueConversion(typeof(ToolRisk), typeof(SolidColorBrush))]
 public sealed class ToolRiskToBrushConverter : IValueConverter

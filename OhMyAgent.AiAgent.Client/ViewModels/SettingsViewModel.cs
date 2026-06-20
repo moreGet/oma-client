@@ -22,6 +22,9 @@ public partial class SettingsViewModel : ObservableObject
     // ── Workspace ──────────────────────────────────────────────────────
     [ObservableProperty] private string _workspaceRoot = string.Empty;
 
+    // ── User profile (F) ───────────────────────────────────────────────
+    [ObservableProperty] private string _userDisplayName = string.Empty;
+
     // ── Permission mode ────────────────────────────────────────────────
     [ObservableProperty] private PermissionMode _permissionMode = PermissionMode.Manual;
 
@@ -57,6 +60,7 @@ public partial class SettingsViewModel : ObservableObject
         DisplayText = c.Hotkey.ToDisplayString();
 
         WorkspaceRoot = c.WorkspaceRoot;
+        UserDisplayName = c.UserDisplayName;
         PermissionMode = c.PermissionMode;
         MaxIterations = c.MaxIterations;
         MaxTokens = c.MaxTokens;
@@ -112,6 +116,14 @@ public partial class SettingsViewModel : ObservableObject
     {
         await _settings.UpdateServerConfigAsync(
             ServerBaseUrl, AuthScheme, AuthToken, ModelId, MaxIterations, MaxTokens);
+    }
+
+    // ── User profile (F) ───────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task SaveUserProfileAsync()
+    {
+        await _settings.UpdateUserDisplayNameAsync(UserDisplayName);
     }
 
     // ── Hotkey capture (existing behavior, preserved) ──────────────────

@@ -523,4 +523,154 @@
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
+    <!-- ══════════════════════════════════════════════════════════════
+         Codex 레이아웃 — 사이드바 / 컴포저 스타일
+         ══════════════════════════════════════════════════════════════ -->
+
+    <!-- 사이드바 near-black 서피스 -->
+    <SolidColorBrush x:Key="SidebarBg" Color="#070910"/>
+
+    <!-- 사이드바 네비 항목 (아이콘 + 텍스트, 호버 하이라이트) -->
+    <Style x:Key="SidebarItemButton" TargetType="Button">
+        <Setter Property="Background"      Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground"      Value="{StaticResource TextSecondary}"/>
+        <Setter Property="FontFamily"      Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize"        Value="13"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Cursor"          Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="9"
+                            Padding="10,8"
+                            Margin="0,1">
+                        <ContentPresenter VerticalAlignment="Center"
+                                          HorizontalAlignment="Left"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface2Bg}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface3Bg}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 사이드바 섹션 헤더 캡션 -->
+    <Style x:Key="SidebarSectionHeader" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{StaticResource TextMuted}"/>
+        <Setter Property="FontFamily"  Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize"    Value="11"/>
+        <Setter Property="FontWeight"  Value="SemiBold"/>
+        <Setter Property="Margin"      Value="10,16,0,4"/>
+    </Style>
+
+    <!-- 컴포저 원형 전송 버튼 (위 화살표) -->
+    <Style x:Key="ComposerSendButton" TargetType="Button">
+        <Setter Property="Background"      Value="{StaticResource AccentGradient}"/>
+        <Setter Property="Foreground"      Value="White"/>
+        <Setter Property="Width"           Value="34"/>
+        <Setter Property="Height"          Value="34"/>
+        <Setter Property="Cursor"          Value="Hand"/>
+        <Setter Property="FontSize"        Value="16"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="17">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource AccentPressedBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface3Bg}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 컴포저 툴바 둥근 아이콘 버튼 (+, 마이크 등) -->
+    <Style x:Key="ComposerIconButton" TargetType="Button">
+        <Setter Property="Background"      Value="Transparent"/>
+        <Setter Property="Foreground"      Value="{StaticResource TextSecondary}"/>
+        <Setter Property="Width"           Value="32"/>
+        <Setter Property="Height"          Value="32"/>
+        <Setter Property="FontSize"        Value="16"/>
+        <Setter Property="Cursor"          Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="16">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface3Bg}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 컴포저 인라인 칩 버튼 (승인요청 ⌄, 모델, My project ⌄) -->
+    <Style x:Key="ComposerChipButton" TargetType="Button">
+        <Setter Property="Background"      Value="Transparent"/>
+        <Setter Property="Foreground"      Value="{StaticResource TextSecondary}"/>
+        <Setter Property="FontFamily"      Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize"        Value="12"/>
+        <Setter Property="Cursor"          Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="9"
+                            Padding="9,5">
+                        <ContentPresenter VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface3Bg}"/>
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource BorderLight}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 제안 항목 행 (아이콘 + 텍스트, 호버 하이라이트) -->
+    <Style x:Key="SuggestionItemButton" TargetType="Button" BasedOn="{StaticResource SidebarItemButton}">
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+    </Style>
+
 </ResourceDictionary>

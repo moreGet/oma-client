@@ -10,6 +10,8 @@
     <!-- ── Agent transcript / approval ─────────────────────────────── -->
     <views:NullToVisibilityConverter        x:Key="NullToVisibility"/>
     <views:StringToVisibilityConverter      x:Key="StringToVisibility"/>
+    <views:CountToVisibilityConverter       x:Key="CountToVisibility"/>
+    <views:EmptyCountToVisibilityConverter  x:Key="EmptyCountToVisibility"/>
     <views:ToolRiskToBrushConverter         x:Key="ToolRiskToBrush"/>
     <views:ToolRiskToTextConverter          x:Key="ToolRiskToText"/>
     <views:ToolCallStatusToBrushConverter   x:Key="ToolCallStatusToBrush"/>

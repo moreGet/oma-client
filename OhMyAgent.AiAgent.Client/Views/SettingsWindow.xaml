@@ -70,6 +70,42 @@
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,4,0">
             <StackPanel Margin="22,18">
 
+              <!-- ═══ 카드: 사용자 프로필 ══════════════════════════ -->
+              <Border Style="{StaticResource FloatingCard}" Margin="0,0,0,16">
+                <StackPanel>
+                <TextBlock Text="사용자 프로필"
+                           Foreground="{StaticResource AccentSoftBrush}"
+                           FontFamily="{StaticResource AppFont}"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,14"/>
+
+                <TextBlock Text="사용자 이름"
+                           Foreground="{StaticResource TextSecondary}"
+                           FontSize="11"
+                           Margin="0,0,0,4"/>
+                <TextBox Style="{StaticResource DarkTextBox}"
+                         Text="{Binding UserDisplayName, UpdateSourceTrigger=PropertyChanged}"
+                         FontSize="13"
+                         MinHeight="36"
+                         Margin="0,0,0,4"
+                         VerticalContentAlignment="Center"/>
+                <TextBlock Text="환영 화면 인사말에 표시됩니다. 비워두면 Windows 사용자명이 사용됩니다."
+                           Foreground="{StaticResource TextMuted}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,8"/>
+
+                <Button Content="프로필 저장"
+                        Command="{Binding SaveUserProfileCommand}"
+                        Style="{StaticResource PrimaryButton}"
+                        HorizontalAlignment="Right"
+                        Padding="18,7"
+                        FontSize="12"
+                        Margin="0,4,0,0"/>
+                </StackPanel>
+              </Border>
+
               <!-- ═══ 카드: 에이전트 ═══════════════════════════════ -->
               <Border Style="{StaticResource FloatingCard}" Margin="0,0,0,16">
                 <StackPanel>
