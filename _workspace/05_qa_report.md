@@ -1,101 +1,100 @@
-# 05 — QA Report: Phase 0 (Cleanup) + Phase 1 (Agent Loop)
+# 05. QA 검증 리포트 — 바이너리 무결성 검사 기능
 
-## 검증 결과: **PASS**
-
-전 레이어(Models/Services/ViewModels/Views) 교차 검증 완료. 빌드 0 오류, 명세(01_architect_spec.md)·API_CONTRACT 준수 확인. 보안 핵심 항목(샌드박스·권한 게이트)·에이전트 루프·SSE 파서 모두 계약대로 동작. 클린업(Phase 0)으로 삭제된 타입에 대한 잔존 참조 0건. **직접 수정한 항목 없음** — 명백한 결함(컴파일 오류/널 안전/디스패처 위반/샌드박스 탈출/루프·파싱 버그)이 발견되지 않았다.
-
----
-
-## 빌드 결과
-
-```
-빌드: 오류 0개, 경고 2개
-```
-
-- 명령: `dotnet build OhMyAgent.AiAgent.Client.csproj` (net10.0-windows)
-- 경고 2건 모두 **NU1510** — `System.Drawing.Common` 패키지가 SDK에 내장되어 pruning되지 않는다는 정보성 경고. 트레이 아이콘 생성(`Bitmap`/`Icon`, App.xaml.cs)에 실제로 사용되므로 제거 불가 또는 무해. **블로커 아님.**
+> 작성자: QAReviewer 에이전트
+> 검증 대상: Models(8) / Services(4) / ViewModels(2) / Views(1+cs) / Colors.xaml / App.xaml.cs
+> 입력: 01_architect_spec / 03_viewmodel_summary / 04_ui_summary (02_service_summary 부재)
 
 ---
 
-## 검증 항목별 결과
+## 1. 종합 판정: **PASS**
 
-| # | 검증 항목 | 결과 | 비고 |
-|---|----------|------|------|
-| 1 | 빌드 무결성 | PASS | 0 오류 / 경고 2(NU1510, 무해) |
-| 2 | 에이전트 루프 정확성 (AgentOrchestrator) | PASS | send→parse→tool_use 분기→권한 게이트+레지스트리 실행→tool 결과 append→재요청→end_turn/MaxIterations 종료 전부 계약대로 |
-| 3 | SSE 파싱 (AgentApiClient) | PASS | event:/data: 라인 버퍼, 빈 줄 경계 dispatch, 멀티 data: 라인 `\n` 결합, 스트림 종료 시 tail dispatch 모두 정상 |
-| 4 | 권한 게이트 (Manual) | PASS | ReadOnly 자동허용 / Write·Execute·Destructive 승인필요 / AlwaysAllow 세션 지속 / Deny→오류 ToolResult 피드백(크래시 아님) |
-| 5 | 워크스페이스 샌드박스 (WorkspaceContext) | PASS | `..`·절대경로 탈출 차단(GetFullPath + 대소문자 무시 prefix StartsWith). 심볼릭/정션은 한계 → 권고 R1 |
-| 6 | 11개 도구 구현 | PASS | 스키마↔파라미터 파싱 일치, 널 안전, 예외→ToolResult(is_error) 변환(오케스트레이터 중앙 처리), run_command가 ScriptExecutor+SecurityValidator를 workingDirectory=workspace로 재사용 |
-| 7 | MVVM / WPF 정합성 | PASS | toolkit 제너레이터 INotifyPropertyChanged, ObservableCollection을 Dispatcher로 마샬, AsyncRelayCommand, XAML 바인딩↔VM 멤버 일치, DataTemplateSelector 배선 정상 |
-| 8 | Dead 참조 (삭제 타입) | PASS | MainViewModel/ChatService/AgentActionService/McpSseServer/McpRemoteAgentService/SemanticKernel/Mcp* 참조 0건 |
+빌드 0 error. 서비스↔VM 계약, XAML 바인딩, MVVM 단방향, 비동기/취소/진행률, null 안전성 전 항목 정합 확인. 빌드를 막던 2건의 컴파일 오류는 직접 수정 완료.
 
 ---
 
-## 발견된 문제 (직접 수정)
+## 2. 빌드 결과
 
-없음. 명백한 결함이 발견되지 않아 코드 수정을 수행하지 않았다.
+| 항목 | 값 |
+|---|---|
+| 명령어 | `"/mnt/c/Program Files/dotnet/dotnet.exe" build OhMyAgent.AiAgent.Client/OhMyAgent.AiAgent.Client.csproj -c Debug` |
+| 최종 결과 | **빌드 성공 (오류 0개)** |
+| 경고 | 5개 — 모두 기능 외 기존 경고 |
 
----
+### 경고 상세 (모두 본 기능과 무관, 블로커 아님)
+- `NU1510`: `System.Drawing.Common` 패키지 prune 안내 (프로젝트 전역, 기존).
+- `CS8767` (×): `Services/ToolRegistry.cs(26)` `TryGet` out 파라미터 nullable 불일치 (기존 코드, 본 기능 무관).
 
-## 상세 검증 노트
+> 무결성 기능 관련 신규 경고는 **0개**.
 
-### 에이전트 루프 (AgentOrchestrator.cs)
-- 시스템 프롬프트 시드(세션 비었을 때만) → user goal append → `while (iteration < max && !ct.IsCancellationRequested)`. **MaxIterations 캡이 while 조건에서 실제로 루프를 멈춘다.** 루프 정상 탈출 후 `iteration >= max`면 `AgentError("max_iterations", ...)` 방출.
-- `MessageStop.StopReason == "tool_use"` (또는 tool_call 1개 이상 수신 시 방어적 OR)일 때만 도구 실행 후 `iteration++` 하고 재요청. 그 외(`end_turn`/`max_tokens`/없음)는 `AgentDone` 방출 후 `yield break`. CONTRACT §4.2 stop_reason 표와 일치.
-- **Stateless 대화 기록**: `BuildRequest`가 매 반복마다 `session.Messages` 전체 스냅샷을 전송(CONTRACT §4). assistant 턴(text+tool_calls)·tool 결과 턴이 순서대로 append되어 멀티턴 도구 추론 가능.
-- **CancellationToken 전파**: Stop→`_cts.Cancel()`이 `RunAsync`/`SendAsync`/`ExecuteAsync`로 전파. 스트림 루프·도구 루프·연결 단계에서 `ct.IsCancellationRequested` 체크 후 `AgentError("cancelled", ...)` 방출하고 enumerable 밖으로 예외를 재던지지 않음(C.5 5번 준수). `OperationCanceledException`은 `ExecuteCallAsync`와 `SafeStream`에서 흡수.
-- `SafeStream` 래퍼로 `yield` 내부 try/catch 제약을 우회하면서 연결 실패(AgentException)·스트림 오류를 안전하게 단일 `StreamFailure`로 전환 — 견고한 설계.
-
-### SSE 파서 (AgentApiClient.cs)
-- 라인 단위 read, `event:`/`data:` 접두 파싱, 빈 줄에서 이벤트 경계 dispatch, 여러 `data:` 라인은 `\n`으로 결합(부분/멀티라인 버그 없음). 스트림 EOF 시 잔여 버퍼 마지막 dispatch.
-- `data:` 페이로드는 JSON이므로 `TrimStart()`가 선행 공백을 제거해도 JSON 의미는 보존된다(텍스트 토큰 내부 공백은 JSON 문자열 값으로 안전). `content_delta` 토큰 손실 없음.
-- 비2xx HTTP는 `{error:{code,message}}` 파싱 후 단일 `ErrorEvent` 방출, 전송 실패만 `AgentException` throw(C.1 결정사항 준수). `message_stop`의 usage 누락 시 `Usage(0,0)` 폴백.
-
-### 샌드박스 (WorkspaceContext.cs)
-- `ResolvePath`: 상대경로는 Root와 결합, `Path.GetFullPath`로 `..` 정규화, `IsInsideWorkspace` 실패 시 `AgentException` throw. 절대경로가 Root 밖이면 차단.
-- `IsInsideWorkspace`: Root 자기 자신 허용 + `Root + DirectorySeparator` prefix 대소문자 무시 StartsWith. 형제 디렉토리 prefix 오탐(`proj` vs `proj_evil`) 방지됨(구분자 강제).
-- 11개 도구 전부 파일 경로 인자를 `ctx.Workspace.ResolvePath(...)`로 통과시켜 탈출 차단. Glob/Grep도 ResolvePath된 baseDir 하위만 열거.
-
-### 권한 게이트 (PermissionService.cs)
-- FullAuto→항상 Allow / ReadOnly→Manual·AutoSafe 모두 자동 Allow / 세션 AlwaysAllow(HashSet<도구명>, 락 보호) / 핸들러 없으면 gated risk는 Deny(headless 안전). AlwaysAllow 결정 시 `call.Name` 세션 등록.
-- `ApprovalRequestViewModel.WaitForDecisionAsync`가 `ct` 취소를 Deny로 처리(크래시 아님). Deny→오케스트레이터가 `ToolResultMsg(..., isError:true)` append하여 모델에 피드백.
-
-### MVVM/WPF (AgentSessionViewModel.cs 외)
-- 오케스트레이터는 thread-free, VM이 `UiInvokeAsync`로 모든 Transcript/프로퍼티 변경을 Dispatcher에 마샬(CheckAccess 분기). ObservableCollection 변경이 UI 스레드에서만 발생.
-- `[ObservableProperty]`/`[RelayCommand]` 제너레이터로 INPC·커맨드 생성. `CanSend`/`CanStop`가 `[NotifyCanExecuteChangedFor]`로 갱신.
-- XAML 바인딩 ↔ VM 멤버 전수 대조: MainWindow/ChatOnlyWindow(AgentSessionViewModel), SettingsWindow(SettingsViewModel), TranscriptTemplates(전 Transcript VM + ApprovalRequestViewModel) 전부 일치. 컨버터 리소스·DataTemplate 키·TranscriptItemTemplateSelector 배선 모두 정상.
-- App.xaml.cs DI 배선이 명세 Part F 구성 순서와 정확히 일치. `OnExit` 비동기 제거·MCP 블록 제거 완료. SettingsViewModel에 `IAgentApiClient` 주입(GetModelsAsync용).
-
-### Phase 0 클린업
-- 삭제 대상 13개 파일 전부 디스크에서 제거 확인. 삭제 타입 참조 0건(AppSettings/SettingsService의 주석 처리된 McpPort/McpEnabled 언급은 마이그레이션 문서용 — 무해).
-- `.csproj`에서 Microsoft.SemanticKernel PackageReference 제거 확인. 남은 참조: CommunityToolkit.Mvvm 8.3.2, Newtonsoft.Json 13.0.3, System.Drawing.Common 8.0.0.
-- SettingsService v2→v3 마이그레이션: McpPort/McpEnabled는 Newtonsoft 역직렬화 시 자동 무시, 신규 필드 기본값 세팅 후 저장. 정상.
+### 초기 빌드에서 발견되어 수정한 오류 2건 (아래 §4)
+1. `MC3024` — IntegrityWindow.xaml(238): `Border.Style` 중복 설정.
+2. `CS0104` — IntegrityWindow.xaml.cs(57): `MessageBox` 모호 참조(WinForms vs WPF).
 
 ---
 
-## 권고 사항 (블로커 아님 — Phase 2 후보)
+## 3. 항목별 검증 결과
 
-- **R1 (보안, Medium):** `WorkspaceContext.ResolvePath`는 `Path.GetFullPath`로 `..`·절대경로 탈출을 막지만, **심볼릭 링크/정션(junction)** 은 해석하지 않는다. 워크스페이스 내부에 외부를 가리키는 정션이 존재하면 파일 도구가 그 정션을 통해 외부에 쓸 수 있다. 명세의 Phase 1 바인딩 계약(GetFullPath + StartsWith)은 충족하나, 강화하려면 해석 후 경로(`new DirectoryInfo(full).ResolveLinkTarget(true)` 또는 `File.ResolveLinkTarget`)를 재검증할 것을 Phase 2에 권고.
-- **R2 (안전, Low):** `DeleteTool`/`MoveTool`이 워크스페이스 **루트 자체**(`path: "."` 또는 `""`)에 대한 삭제/이동을 별도로 막지 않는다. `ResolvePath("")`는 Root를 반환하므로 `delete`에 빈 경로가 오면 루트 삭제 시도가 가능(`recursive:true` 시 워크스페이스 전체 삭제). 루트 동일 경로일 때 거부하는 가드 추가를 권고.
-- **R3 (정합성, Low):** 도구 내부에 개별 try/catch가 없고 IO 예외를 오케스트레이터 `ExecuteCallAsync`가 중앙에서 `ToolResult.Fail`로 변환한다. 요구사항(예외→is_error 변환, 크래시 아님)은 **충족**되나, 명세 C.6 문구("On exception return ToolResult.Fail")는 도구별 처리를 가정. 현재 중앙 처리도 유효하므로 변경 불필요 — 설계 의도 기록용.
-- **R4 (정리, Low):** `Views/MessageTemplateSelector.cs`, `ViewModels/ChatMessageViewModel.cs`, `Models/UserMessagesDto.cs`/`AgentResponsesDto.cs`는 구 채팅 잔재(명세상 KEEP, harmless)로 현재 미사용. Phase 2에서 사용 여부 재확인 후 제거 검토.
+### 3.1 서비스 ↔ VM 계약 정합성 (최우선) — PASS
+`IBinaryIntegrityService`의 7개 멤버를 VM 호출부와 1:1 대조:
+
+| 인터페이스 시그니처 | VM 호출부 | 정합 |
+|---|---|---|
+| `GetDefaultTargetDirectory()` | 생성자: `TargetDirectory = _integrity.GetDefaultTargetDirectory()` | ✅ |
+| `GetManifestPath(string)` | `GetManifestPath()` → `_integrity.GetManifestPath(TargetDirectory)` | ✅ |
+| `ManifestExists(string)` | 생성자/`RefreshManifestState()` | ✅ |
+| `LoadManifestAsync(string, ct)` | (VM 미사용 — VerifyAsync 내부 로드) | ✅ (의도적) |
+| `GenerateBaselineAsync(options, progress?, ct)` | `RunScanAsync`: `GenerateBaselineAsync(options, _progress, token)` | ✅ optional 3인자 일치 |
+| `VerifyAsync(options, manifest?, progress?, ct)` | `VerifyAsync(options, null, _progress, token)` | ✅ manifest=null 전달 |
+| `ComputeSha256Async(string, ct)` | (VM 미사용, 보조 API) | ✅ |
+
+반환 타입 `IntegrityScanResult`의 VM 소비(`OkCount`/`ModifiedCount`/`CorruptedCount`/`MissingCount`/`UnexpectedCount`/`IsIntact`/`Files`)와 `IntegrityProgress`(`Fraction`/`ProcessedFiles`/`TotalFiles`/`CurrentFile`) 필드 모두 모델 정의와 일치. `IntegrityScanOptions` 빌드(`TargetDirectory`/`IncludeExtensions`/`Recursive`/`VerifySignatures`/`ExcludeManifestFile`) 정합.
+
+### 3.2 XAML 바인딩 정합성 — PASS
+- VM 바인딩(`TargetDirectory`, `RecursiveOption`, `VerifySignaturesOption`, `IncludeExtensionsText`, `IsScanning`, `ProgressFraction`, `ProgressText`, `HasResult`, `HasManifest`, `IsIntact`, `Ok/Modified/Corrupted/Missing/UnexpectedCount`, `Files`, `ScanCommand`, `CancelCommand`, `StatusMessage`) — 모두 VM 실제 public 멤버에 존재. `[RelayCommand]` → `ScanCommand`/`CancelCommand` 자동 생성 확인.
+- 행 바인딩(`Status`, `StatusText`, `RelativePath`, `ExpectedSha256Short`, `ActualSha256Short`, `SizeText`, `SignatureText`, `Detail`) — `FileIntegrityItemViewModel` 멤버와 일치.
+- `x:Static models:IntegrityStatus.{Ok,Modified,Corrupted,Missing,Unexpected}` — `models:` = `OhMyAgent.AiAgent.Client.Models`, enum 위치 일치 → 빌드 통과로 해석 검증됨.
+- 리소스 키 전수 확인: 브러시 5종(`IntegrityOk/Modified/Corrupted/Missing/UnexpectedBrush`) Colors.xaml 존재. 스타일(`FloatingCard`, `PrimaryButton`, `OutlineButton`, `CaptionButton`, `DarkTextBox`, `Chip`) 및 폰트(`AppFont`, `MonoFont`), 컨버터(`BoolToVisibility`, `InverseBool`), 색상(`AccentSoftBrush`, `AccentSubtleBrush`, `Surface2Bg`, `Surface3Bg`, `AccentBrush`, `TextMuted` 등) 모두 Resources에 존재.
+
+### 3.3 MVVM 패턴 — PASS
+- 단방향 의존(View→VM→Service→Model) 준수. VM에 `Window`/`UIElement`/`Dispatcher`/`MessageBox` 참조 없음.
+- 다이얼로그/셸은 코드비하인드가 소유하고 `SetTargetDirectory`/`GetManifestPath`/`GenerateBaselineCommand` public 멤버에 위임 — 게이트 패턴 정확.
+- `sealed partial class : ObservableObject` + `[ObservableProperty]`/`[RelayCommand]` 소스 생성기 정합.
+- `MessageBox.Show`는 View 코드비하인드에만 존재(설계 §5.1 허용 — 덮어쓰기 확인).
+
+### 3.4 비동기 / 취소 / 진행률 — PASS
+- `_cts` 생명주기: `RunScanAsync` 진입 시 기존 dispose 후 새로 생성, `finally`에서 dispose & null. 정상.
+- `OperationCanceledException` → "검사 취소됨", `AgentException`/일반 예외 → "오류: {msg}" 분기 정확.
+- `IProgress<IntegrityProgress>`를 생성자(UI 스레드)에서 `Progress<T>`로 생성 → 콜백 UI 스레드 마샬링. `OnProgress`에서 직접 프로퍼티 갱신(Dispatcher 직접 호출 없음). 정확.
+- 서비스 측: 해싱 루프 `ct.ThrowIfCancellationRequested()` + `SHA256.HashDataAsync(stream, ct)` 취소 전달. `async void`는 `IntegrityWindow_Loaded` 이벤트 핸들러뿐(허용).
+
+### 3.5 null 안전성 / 메모리 누수 — PASS
+- Nullable enable 환경에서 신규 코드 nullable 경고 0.
+- `FileStream`/SHA256는 `await using`/`HashDataAsync`로 누수 없음. `AllocHGlobal`은 `finally`에서 `FreeHGlobal`, WinVerifyTrust 상태 핸들도 `WTD_STATEACTION_CLOSE`로 정리.
+- 이벤트 구독: VM은 서비스/외부 이벤트 구독 없음(`Loaded`만 View 측). static 이벤트 핸들러 누수 없음 → IDisposable 불필요.
+
+### 3.6 빌드 검증 — PASS
+실제 WSL→Windows dotnet으로 빌드. 최초 2 error 발견 후 직접 수정, 재빌드 0 error 확인.
 
 ---
 
-## 사용자 판단 필요 항목
+## 4. 직접 수정한 항목
 
-없음. Phase 1 범위 내 블로커 없음.
+| 파일:라인 | 문제(심각도) | 수정 내용 |
+|---|---|---|
+| `Views/IntegrityWindow.xaml:238` | `MC3024` Border.Style 중복(Critical, 빌드 실패) | 종합 배지 `Border`에서 attribute `Style="{StaticResource Chip}"`와 `Padding="14,7"`를 제거. 인라인 `<Border.Style>`(이미 `BasedOn=Chip`이며 Padding 14,7 Setter 포함)이 유일한 Style 지정이 되도록 정리. |
+| `Views/IntegrityWindow.xaml.cs:1-9` | `CS0104` MessageBox 모호 참조(Critical, 빌드 실패) | `UseWindowsForms=true`로 `System.Windows.Forms`가 암시 import되어 `MessageBox`/`MessageBoxButton`/`MessageBoxImage`/`MessageBoxResult`가 WPF/WinForms 간 모호. 4개 심볼에 `using X = System.Windows.X;` 별칭 추가. |
 
 ---
 
-## R1~R4 반영 결과 (2026-06-18)
+## 5. 미해결 / 사용자 결정 필요 항목
 
-모두 반영 완료. 빌드 에러 0개(경고 2건 NU1510, 기존과 동일).
+없음. 모든 빌드 블로커는 해결됨.
 
-| 권고 | 처리 | 변경 파일 |
-|------|------|-----------|
-| R1 (보안) | `WorkspaceContext`에 `RealPath()` 추가 — 심볼릭/정션 링크 최종 대상을 해석해 `_realRoot` 기준 실제 경로 재검증. 미존재 경로는 존재하는 조상까지 해석 후 tail 결합. `ResolvePath`/`IsInsideWorkspace` 모두 2단(사전적+실제) 검증. | `Services/WorkspaceContext.cs` |
-| R2 (안전) | `DeleteTool`·`MoveTool`에 워크스페이스 루트 자체 삭제/이동/덮어쓰기 차단 가드 추가(`path:"."`·`sub/..` 포함). | `Services/Tools/DeleteTool.cs`, `MoveTool.cs` |
-| R3 (정합성) | 코드 동작 변경 없음(요구 충족). 중앙 예외처리 설계 의도를 `ExecuteCallAsync`에 주석 기록. | `Services/AgentOrchestrator.cs` |
-| R4 (정리) | 미사용 채팅 잔재 제거: `MessageTemplateSelector`, `ChatMessageViewModel`, `UserMessagesDto`, `AgentResponsesDto`(참조 0 확인 후 삭제). | 4개 파일 삭제 |
+---
+
+## 6. 권장 후속 작업 (블로커 아님)
+
+- **(Low) 매니페스트 자기위조 방지**: 설계 §8.1 보안 메모대로 현재 매니페스트가 검사 대상 폴더 내부에 저장되어 변조자가 함께 갱신 가능. 강한 보장이 필요하면 `%APPDATA%` 저장 또는 매니페스트 HMAC/서명을 후속 단계로 고려(설계상 의도적 1차 범위 제외).
+- **(Low) `IncludeExtensionsText` 빈 입력 시 모든 파일 검사**: `bin`/`obj` 등 대상에서 `.pdb`/임시파일 대량 오탐 가능. UI 툴팁에 이미 안내됨. 동작은 설계 의도와 일치.
+- **(Info) 기존 경고 정리(선택)**: `ToolRegistry.TryGet` CS8767, `System.Drawing.Common` NU1510 — 본 기능과 무관하나 별도 정리 권장.
+- **(Info) `LoadManifestAsync`/`ComputeSha256Async`는 VM 미사용**: 인터페이스 계약상 보조 API로 유지(설계 §4 명시). 제거 불필요.

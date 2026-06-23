@@ -48,6 +48,13 @@
     <SolidColorBrush x:Key="ErrorDot"      Color="#FB7185"/>
     <SolidColorBrush x:Key="WarningBrush"  Color="#FBBF24"/>
 
+    <!-- ── 무결성 상태색 (정상/변조/손상/누락/추가) ──────────────── -->
+    <SolidColorBrush x:Key="IntegrityOkBrush"         Color="#34D399"/>  <!-- 녹색 · 정상 -->
+    <SolidColorBrush x:Key="IntegrityModifiedBrush"   Color="#FBBF24"/>  <!-- 주황 · 변조 -->
+    <SolidColorBrush x:Key="IntegrityCorruptedBrush"  Color="#FB7185"/>  <!-- 적색 · 손상 -->
+    <SolidColorBrush x:Key="IntegrityMissingBrush"    Color="#9CA3B4"/>  <!-- 회색 · 누락 -->
+    <SolidColorBrush x:Key="IntegrityUnexpectedBrush" Color="#60A5FA"/>  <!-- 청색 · 추가 -->
+
     <!-- ── 테두리 ─────────────────────────────────────────────────── -->
     <SolidColorBrush x:Key="BorderBrush"   Color="#262B38"/>
     <SolidColorBrush x:Key="BorderLight"   Color="#363C4C"/>

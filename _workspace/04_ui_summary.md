@@ -1,65 +1,126 @@
-# 04 — View 레이어 구현 요약 (UIDesigner)
+# 04. UI 레이어 구현 요약 — 바이너리 무결성 검사 화면
 
-> Namespace: `OhMyAgent.AiAgent.Client.Views`. 다크 테마(Resources/Colors·Styles·Converters) 재사용.
-> 빌드 상태: **`dotnet build` 오류 0개** (전체 솔루션 컴파일 성공).
+> 작성자: UIDesigner
+> 담당: 명세 §6 / §11 `IntegrityWindow.xaml(.cs)` + 상태 브러시 리소스
+> 바인딩 계약 기준: `_workspace/03_viewmodel_summary.md` (IntegrityViewModel / FileIntegrityItemViewModel)
 
-## 생성/수정된 파일
+---
 
-### 생성 (CREATE)
-- `Views/TranscriptItemTemplateSelector.cs` — `ITranscriptItem` 구체 타입(User/Assistant/System/ToolCall)별 DataTemplate 선택.
-- `Resources/TranscriptTemplates.xaml` — 트랜스크립트 4종 DataTemplate + `TranscriptSelector` + 인라인 승인 카드 템플릿(`ApprovalCardTemplate`). MainWindow·ChatOnlyWindow 양쪽이 머지하여 재사용(중복 제거).
+## 생성 / 수정 파일
 
-### 수정 (MODIFY)
-- `MainWindow.xaml` / `MainWindow.xaml.cs` — d:DataContext + ctor `AgentSessionViewModel`. 기존 chat list → `Transcript` ItemsControl(셀렉터). 권한모드 ComboBox, 작업디렉토리/사용량 라벨, Send/Stop 버튼, 진행 ProgressBar, 인라인 승인 카드. 자동 스크롤은 `Transcript.CollectionChanged` 로 전환. 핫키 설정 메뉴를 `SettingsViewModel(settings, api)` 신규 ctor에 맞춤(+ `InitializeAsync`).
-- `Views/ChatOnlyWindow.xaml` / `.xaml.cs` — d:DataContext + ctor `AgentSessionViewModel`. 컴팩트 `Transcript` 뷰 + 인라인 승인 카드 + Stop 버튼. always-on-top/no-taskbar/opacity/Esc-hide/OnClosing 동작 보존.
-- `Views/SettingsWindow.xaml` / `.xaml.cs` — 작업디렉토리 폴더피커(`FolderBrowserDialog`→`SetWorkspaceRootAsync`), 권한모드 ComboBox(+Full-Auto 경고), MaxIterations/MaxTokens, ServerBaseUrl, AuthScheme ComboBox, AuthToken PasswordBox(바인딩 불가→코드비하인드로 `vm.AuthToken` 푸시 + 초기 시드), ModelId 편집형 ComboBox(+`LoadModelsCommand`), `SaveServerConfigCommand`. 기존 핫키 캡처 UI 보존(ScrollViewer로 감싸고 창 크기 480×660). 창은 NoResize 유지.
-- `Views/Converters.cs` — 신규 컨버터: `NullToVisibilityConverter`(PendingApproval), `StringToVisibilityConverter`, `ToolRiskToBrushConverter`, `ToolRiskToTextConverter`, `ToolCallStatusToBrushConverter`, `ToolCallStatusToTextConverter`, `EnumEqualsConverter`.
-- `Resources/Converters.xaml` — 위 컨버터 등록(키: NullToVisibility, StringToVisibility, ToolRiskToBrush, ToolRiskToText, ToolCallStatusToBrush, ToolCallStatusToText, EnumEquals).
+| 파일 | 구분 | 내용 |
+|------|------|------|
+| `OhMyAgent.AiAgent.Client/Views/IntegrityWindow.xaml` | 신규 | 무결성 검사 독립 윈도우. SettingsWindow 테마 차용(WindowStyle=None, AllowsTransparency, 공유 StaticResource). |
+| `OhMyAgent.AiAgent.Client/Views/IntegrityWindow.xaml.cs` | 신규 | 코드비하인드(타이틀바 드래그/닫기/Loaded·다이얼로그·셸 위임). |
+| `OhMyAgent.AiAgent.Client/Resources/Colors.xaml` | 수정 | 무결성 상태 브러시 5종 추가(아래 참조). |
 
-## 주요 바인딩 경로 (모두 03 요약의 정확한 멤버명 사용)
+> `Views/Converters.cs` 및 `Resources/Converters.xaml`은 **수정하지 않음** — 필요한 컨버터(`BoolToVisibility`, `InverseBool`)가 이미 존재. 신규 컨버터 불필요.
 
-### MainWindow / ChatOnlyWindow ← AgentSessionViewModel
-| XAML 요소 | Binding | 멤버 |
+---
+
+## 추가한 리소스 키 (Colors.xaml)
+
+상태 색상은 권장안 **(A) DataTrigger 방식**으로 행 표시를 구현했고, 동시에
+요약 칩/상태 점에서도 재사용할 수 있도록 5종 브러시를 팔레트 기존 색에서 정의했다.
+이 키들은 `FileIntegrityItemViewModel.StatusBrushKey`가 반환하는 문자열과 **정확히 일치**하므로
+추후 (B) StatusBrushKey 룩업 방식으로 전환해도 그대로 호환된다.
+
+| 리소스 키 | 색상 | 의미 |
 |---|---|---|
-| ItemsControl | `Transcript` | ObservableCollection<ITranscriptItem> |
-| 입력 TextBox | `InputText` (TwoWay) | InputText |
-| 전송 Button | `SendCommand` | SendCommand |
-| 중지 Button (+Visibility) | `StopCommand`, `IsBusy` | StopCommand / IsBusy |
-| ProgressBar Visibility | `IsBusy` | IsBusy |
-| 연결 점 | `IsConnected` (BoolToStatusBrush) | IsConnected |
-| 상태 텍스트 | `StatusText` | StatusText |
-| 작업디렉토리 라벨 | `WorkspaceRoot` | WorkspaceRoot |
-| 사용량 라벨 | `LastUsageText` (StringToVisibility) | LastUsageText |
-| 권한 ComboBox | `PermissionModes` / `CurrentPermissionMode` (TwoWay) | PermissionModes / CurrentPermissionMode |
-| 초기화 Button | `ClearCommand` | ClearCommand |
-| 오류 패널 | `HasError` / `ErrorMessage` / `RetryConnectionCommand` | 동일 |
-| 창 투명도 | `WindowOpacity` (TwoWay) | WindowOpacity |
-| 인라인 승인 카드 | `PendingApproval` (NullToVisibility) | PendingApproval |
+| `IntegrityOkBrush`         | `#34D399` (녹색) | 정상 |
+| `IntegrityModifiedBrush`   | `#FBBF24` (주황) | 변조 |
+| `IntegrityCorruptedBrush`  | `#FB7185` (적색) | 손상 |
+| `IntegrityMissingBrush`    | `#9CA3B4` (회색) | 누락 |
+| `IntegrityUnexpectedBrush` | `#60A5FA` (청색) | 추가 |
 
-### Transcript item 템플릿
-| 타입 | 바인딩 |
+> 모두 기존 팔레트(상태색/텍스트색) 톤과 일치. 신규 색 임의 도입 최소화.
+
+---
+
+## 사용한 바인딩 / 커맨드 (모두 03 요약 계약과 일치)
+
+### 입력/옵션 (양방향)
+| XAML 요소 | Binding | 모드 |
+|---|---|---|
+| 대상 경로 TextBox | `TargetDirectory` | OneWay (ReadOnly) |
+| 재귀 CheckBox | `RecursiveOption` | TwoWay |
+| 서명 검사 CheckBox | `VerifySignaturesOption` | TwoWay |
+| 확장자 TextBox | `IncludeExtensionsText` | TwoWay (PropertyChanged) |
+
+### 상태/진행률 (읽기)
+| XAML 요소 | Binding | 컨버터/용도 |
+|---|---|---|
+| 옵션 카드 IsEnabled | `IsScanning` | `InverseBool` (스캔 중 입력 잠금) |
+| 진행률 영역 Visibility | `IsScanning` | `BoolToVisibility` |
+| 취소 버튼 Visibility | `IsScanning` | `BoolToVisibility` (스캔 중에만 표시) |
+| ProgressBar Value | `ProgressFraction` | Min=0 Max=1 |
+| 진행 텍스트 | `ProgressText` | — |
+| 요약 영역 Visibility | `HasResult` | `BoolToVisibility` |
+| 카운트 칩 | `OkCount`/`ModifiedCount`/`CorruptedCount`/`MissingCount`/`UnexpectedCount` | — |
+| 종합 배지 색/텍스트 | `IsIntact` | DataTrigger (양호=녹색/경고=적색) |
+| 매니페스트 열기 IsEnabled | `HasManifest` | — |
+| 상태표시줄 | `StatusMessage` | — |
+
+### 컬렉션 / 결과 그리드 (DataGrid, `ItemsSource={Binding Files}`)
+- 행 가상화(`EnableRowVirtualization`/`EnableColumnVirtualization`) — 대용량 대응.
+- 컬럼: **상태**(색상 점 + `StatusText`), **상대 경로**(`RelativePath`), **기대 해시**(`ExpectedSha256Short`), **실제 해시**(`ActualSha256Short`), **크기**(`SizeText`), **서명**(`SignatureText`), **비고**(`Detail`).
+- 상태 점 색상: `FileIntegrityItemViewModel.Status`(enum) 값으로 `DataTrigger` 분기 — `{x:Static models:IntegrityStatus.Xxx}` 매칭. (`models:` = `clr-namespace:OhMyAgent.AiAgent.Client.Models`.)
+
+### 커맨드 / 코드비하인드 위임
+| 동작 | 처리 방식 |
 |---|---|
-| UserTurnViewModel | `Text` |
-| AssistantTurnViewModel | `Text`, `IsStreaming`(스트리밍 커서) |
-| SystemNoticeViewModel | `Text` |
-| ToolCallViewModel | `ToolName`, `Risk`(→brush/text), `Status`(→brush/text), `ArgsPreview`, `ResultText`, `IsError`, `IsExpanded`(TwoWay, 접이식 ToggleButton) |
+| 검사 시작 | `Command={Binding ScanCommand}` (직접 바인딩) |
+| 취소 | `Command={Binding CancelCommand}` |
+| 기준 생성 | 버튼 `Click` → 코드비하인드에서 덮어쓰기 확인 MessageBox 후 `GenerateBaselineCommand.Execute` 호출 |
+| 찾아보기 | 버튼 `Click` → `FolderBrowserDialog` → `vm.SetTargetDirectory(path)` |
+| 매니페스트 열기 | 버튼 `Click` → `vm.GetManifestPath()` → `explorer.exe /select` |
 
-### 승인 카드 ← ApprovalRequestViewModel (PendingApproval)
-`ToolName`, `Risk`, `ArgsPreview` 표시 + `AllowCommand` / `DenyCommand` / `AlwaysAllowCommand`.
+> `BrowseTargetCommand`/`OpenManifestLocationCommand`(게이트 no-op)는 바인딩하지 않고, 03 요약 권장대로 코드비하인드가 다이얼로그/셸을 소유하고 VM public 메서드에 위임한다.
 
-### SettingsWindow ← SettingsViewModel
-`WorkspaceRoot`(읽기+폴더피커→`SetWorkspaceRootAsync`), `PermissionModes`/`PermissionMode`(TwoWay), `ShowFullAutoWarning`, `MaxIterations`, `MaxTokens`, `ServerBaseUrl`, `AuthSchemes`/`AuthScheme`, `AuthToken`(PasswordBox 코드비하인드), `AvailableModels`/`ModelId`, `LoadModelsCommand`, `SaveServerConfigCommand`. 기존: `DisplayText`/`IsCapturing`/`ValidationError`/`StartCaptureCommand`/`CancelCaptureCommand`/`SaveCommand`/`ApplyCapturedKey` 보존.
+---
 
-## 범위 밖이지만 빌드를 막던 선행 오류 2건 수정 (다른 레이어 — 보고용)
-ServiceEngineer/ViewModelEngineer 산출물에 컴파일 오류가 남아 있어 **내 View 레이어 검증(빌드)이 불가**했음. `UseWPF`+`UseWindowsForms`+`ImplicitUsings`가 모두 켜진 조합에서만 드러나는 잠복 오류였고, 둘 다 1줄 최소 수정:
-1. `Services/AgentOrchestrator.cs:216` — `catch` 절 안에서 `yield return` (CS1631 금지). → 실패 메시지를 플래그에 담고 catch 밖에서 yield 하도록 재구성.
-2. `ViewModels/AgentSessionViewModel.cs:361` — 맨 `Application` 가 `System.Windows.Forms.Application` 과 `System.Windows.Application` 사이에서 모호(CS0104). → `System.Windows.Application.Current` 로 정규화.
+## 코드비하인드 의존성 (생성자 시그니처)
 
-> 두 파일 모두 git 미추적 신규 파일이며 내가 만든 게 아님(선행 산출물). QAReviewer/오케스트레이터가 소유 레이어 차원에서 재검토 권장.
+```csharp
+public IntegrityWindow(IntegrityViewModel vm)
+```
 
-## 가정 / 비고
-1. **App.xaml 머지 사전은 그대로 둠.** `TranscriptTemplates.xaml` 은 각 Window의 `Window.Resources` 에서 머지(앱 전역 리소스만 참조하므로 안전).
-2. **App.xaml.cs 에 `internal IAgentApiClient? Api` 1줄 추가** — MainWindow의 기존 "단축키 설정" 메뉴가 신규 `SettingsViewModel(settings, api)` ctor 를 호출하려면 api 접근자가 필요. 기존 `SettingsService` 접근자와 동일 패턴의 최소 노출.
-3. PasswordBox 는 바인딩 불가 → `AuthTokenBox_PasswordChanged` 에서 `vm.AuthToken` 으로 푸시, ctor 에서 초기 시드.
-4. 03 요약의 모든 멤버명을 그대로 바인딩 — 누락된 바인딩 타깃 없음. (MainWindow 구버전의 `Domains/SelectedDomain/IsMcpRunning/McpStatusText/ClearMessagesCommand` 는 신규 VM에 없어 제거/대체함.)
-5. `Views/MessageTemplateSelector.cs` 와 `ChatMessageViewModel` 은 spec상 KEEP 이라 유지(현재 뷰에서 미사용·무해).
+- `Loaded` 이벤트에서 `await vm.InitializeAsync()` 호출(매니페스트 상태 갱신).
+- `System.Windows.Forms.FolderBrowserDialog` 사용 — 프로젝트 `UseWindowsForms=true` 확인됨.
+- `Process.Start("explorer.exe", ...)`로 매니페스트 폴더 열기(예외는 `Debug.WriteLine` 흡수).
+
+---
+
+## App.xaml.cs 진입점 안내 (Orchestrator용)
+
+명세 §7 패턴. 서비스 수동 주입 후 윈도우를 띄운다:
+
+```csharp
+IAuthenticodeVerifier? authenticode = new AuthenticodeVerifier(); // 선택, null 가능
+var binaryIntegrity = new BinaryIntegrityService(authenticode);
+
+// 트레이 메뉴 / 설정 버튼 핸들러에서:
+var vm  = new IntegrityViewModel(binaryIntegrity); // ⚠ UI 스레드에서 생성(Progress<T> 마샬링)
+var win = new IntegrityWindow(vm);
+win.Show();
+```
+
+- `IntegrityViewModel`은 **UI 스레드에서 생성** 필수(생성자에서 `Progress<T>` 캡처).
+- `App.xaml` MergedDictionaries는 이미 Colors/Styles/Converters를 병합하므로 추가 등록 불필요.
+- `IntegrityWindow.Owner` 설정은 진입점 재량(모달 아님, `Show()`).
+
+---
+
+## 명세/계약 준수 체크
+- [x] SettingsWindow 테마 차용(WindowStyle=None + AllowsTransparency + 공유 StaticResource: WindowBg/SurfaceBg/BorderBrush/AccentGradient/TextPrimary 등).
+- [x] 기존 스타일 재사용(`FloatingCard`, `PrimaryButton`, `OutlineButton`, `CaptionButton`, `DarkTextBox`, `CheckBox`, `Chip`). 인라인 하드코딩 색 미도입(상태 브러시만 팔레트에 추가).
+- [x] 모든 바인딩 경로를 IntegrityViewModel / FileIntegrityItemViewModel 실제 멤버와 대조 검증.
+- [x] DataContext 생성자 주입(SettingsWindow 패턴), `d:DataContext` 디자인 인스턴스 설정.
+- [x] 컨버터 중복 정의 없음(기존 `BoolToVisibility`/`InverseBool` 재사용).
+- [x] 코드비하인드 최소화 — 프레임워크 이벤트(Loaded/드래그/Click) + 다이얼로그/셸 위임만.
+- [x] DataGrid 행/열 가상화로 대용량(엣지 #9) 대응.
+- [x] 빌드 검증 미수행(지시 사항).
+
+## 후속 참고
+- 빌드는 미수행. 통합 빌드 시 `models:` x:Static 참조(`IntegrityStatus`)가 `OhMyAgent.AiAgent.Client.Models` 네임스페이스로 해석되는지 확인(현재 enum 위치 확인 완료).
+- 진입점(트레이 메뉴 vs 설정 버튼) 최종 선택과 App.xaml.cs 등록은 Orchestrator 담당.

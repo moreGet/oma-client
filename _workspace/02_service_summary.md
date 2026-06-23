@@ -1,71 +1,153 @@
-# 02 — ServiceEngineer Summary (Models + Services + Phase 0 + App wiring)
+# 02. Service Summary — 바이너리 무결성 검사 Model + Service 레이어
 
-## PART A — Phase 0 cleanup (완료)
-**삭제(12 파일):** Services/{AgentActionService, IAgentActionService, McpSseServer, IMcpSseServer, McpRemoteAgentService, IRemoteAgentService, ChatService, IChatService}.cs + Models/Mcp/{McpRequest, McpResponse, McpError, McpTool}.cs.
-- `ViewModels/MainViewModel.cs` 는 ViewModelEngineer 가 이미 삭제함 (내가 건드리지 않음).
-- KEEP: ScriptExecutor, SecurityValidator, Models/Mcp/{ScriptResult, ScriptType, ValidationResult}.
+> 작성자: ServiceEngineer 에이전트
+> 담당 범위: §3 모델 8종 + §4 `IBinaryIntegrityService`/`BinaryIntegrityService`(+선택 Authenticode)
+> 빌드 검증 미수행(병렬 작업). 컴파일 가능 코드 작성에 집중.
 
-**csproj:** `Microsoft.SemanticKernel` PackageReference 제거. CommunityToolkit.Mvvm / Newtonsoft.Json / System.Drawing.Common 유지.
+---
 
-**ScriptExecutor / IScriptExecutor:** `ExecutePowerShellAsync`/`ExecuteCmdAsync` 에 `string? workingDirectory = null` 파라미터 추가 (CancellationToken 뒤로 이동 → 이제 `(script, timeoutMs, workingDirectory, ct)`). 기존 호출 호환은 named-arg 로 처리.
+## 1. 생성 완료 파일
 
-**ChatWindowCoordinator:** `Func<MainViewModel>` → `Func<AgentSessionViewModel>` 로 제네릭 변경.
+### Models (네임스페이스: `OhMyAgent.AiAgent.Client.Models` — 폴더가 Integrity여도 동일)
+- `Models/Integrity/IntegrityStatus.cs` — `enum` (Ok/Modified/Corrupted/Missing/Unexpected)
+- `Models/Integrity/SignatureStatus.cs` — `enum` (NotChecked/Valid/Invalid/Unsigned)
+- `Models/Integrity/IntegrityManifestEntry.cs` — `sealed record` (`[JsonPropertyName(snake_case)]`)
+- `Models/Integrity/IntegrityManifest.cs` — `sealed record` (JSON 직렬화 대상)
+- `Models/Integrity/FileIntegrityResult.cs` — `sealed record`
+- `Models/Integrity/IntegrityScanResult.cs` — `sealed record` (요약 카운트 + 파생 `IsIntact`)
+- `Models/Integrity/IntegrityProgress.cs` — `readonly record struct` (파생 `Fraction`)
+- `Models/Integrity/IntegrityScanOptions.cs` — `sealed record`
 
-## PART B — Models (Models/Agent/, namespace ...Models)
-- AgentEnums.cs: MessageRole, ToolRisk, PermissionMode, PermissionDecision, StopReason
-- AgentMessage.cs (sealed record + System/User/Assistant/ToolResultMsg 팩토리)
-- ToolCall.cs, ToolSchema.cs, RequestMetadata.cs, AgentRequest.cs, Usage.cs, ModelInfo.cs
-- AgentStreamEvent.cs (MessageStart/ContentDelta/ToolCallEvent/MessageStop/ErrorEvent)
-- AgentEvent.cs (AgentTextDelta/AssistantMessageComplete/ToolCallStarted/AwaitingApproval/ToolCallResult/IterationAdvanced/Done/Error)
-- ToolResult.cs (Ok/Fail/Json 팩토리; Json 은 AgentJson.Options 사용)
-- AppSettings.cs: McpPort/McpEnabled 제거, SchemaVersion=3, WorkspaceRoot/PermissionMode/MaxIterations/ServerBaseUrl/AuthScheme/AuthToken/ModelId/MaxTokens 추가.
+### Services (네임스페이스: `OhMyAgent.AiAgent.Client.Services`)
+- `Services/IBinaryIntegrityService.cs` — `interface`
+- `Services/BinaryIntegrityService.cs` — `sealed class : IBinaryIntegrityService`
+- `Services/IAuthenticodeVerifier.cs` — `interface` (선택)
+- `Services/AuthenticodeVerifier.cs` — `sealed class : IAuthenticodeVerifier` (WinVerifyTrust P/Invoke)
 
-> 모든 와이어 DTO 는 System.Text.Json + `[JsonPropertyName]` snake_case. AppSettings 만 Newtonsoft(기존 유지).
+---
 
-## PART C — Services (namespace ...Services)
-- **AgentJson.cs**: 공유 JsonSerializerOptions (Web defaults + JsonStringEnumConverter(SnakeCaseLower) + ignore null).
-- **IAgentApiClient/AgentApiClient**: POST /api/v1/agent/chat SSE 파싱(event/data 라인 버퍼링, blank-line dispatch), message_start/content_delta/tool_call/message_stop/error 매핑. Auth: Bearer→Authorization, ApiKey→X-Api-Key (토큰 비면 생략). HTTP non-2xx → `{error:{code,message}}` 파싱해 단일 ErrorEvent yield. 전송 실패는 AgentException. CheckHealthAsync, GetModelsAsync({models:[]} 파싱, 실패 시 빈 목록).
-- **ITool / IToolRegistry / ToolRegistry**: ToolRegistry(IEnumerable<ITool>) — name→tool 사전(대소문자 무시), ToSchemas() 캐시.
-- **ToolContext.cs** (Services 레이어, 서비스 참조 보유): record(IWorkspaceContext, PermissionMode).
-- **IWorkspaceContext/WorkspaceContext**: Root 정규화(빈 값→Desktop), ResolvePath(상대→Root 결합, GetFullPath, 탈출 시 AgentException), IsInsideWorkspace(대소문자 무시 prefix), SetRoot.
-- **IPermissionService/PermissionService**: FullAuto→Allow; ReadOnly→Manual/AutoSafe 모두 Allow; 그 외 세션 AlwaysAllow(도구명 HashSet) → 없으면 핸들러; 핸들러 없으면 Deny. AlwaysAllow 결정은 set 추가 후 Allow 반환. ClearSessionRules.
-- **IAgentOrchestrator/AgentOrchestrator**: 전체 루프 (system 시드 → user → MaxIterations 캡 → SSE 스트림 → tool_use 판정 → 도구 실행/권한/승인 이벤트 → tool 결과 append → 재요청). 취소→AgentError("cancelled"), 최대반복→AgentError("max_iterations"). yield-내-try/catch 제약 회피용 `SafeStream` 내부 래퍼 사용.
-- **AgentSession.cs** (Services): Id/Messages/LastUsage + DefaultSystemPrompt(workspaceRoot, mode).
-- **SettingsService/ISettingsService**: v2→v3 마이그레이션(MCP 필드 drop, 신규 기본값), UpdateWorkspaceRootAsync/UpdatePermissionModeAsync/UpdateServerConfigAsync 추가.
+## 2. 모델 공개 API (ViewModel 바인딩 참조용)
 
-### Tools (Services/Tools/) — 11개 ITool + 헬퍼
-ToolSchemas.cs(Parse/Get*), GlobMatcher.cs(경량 **/*/? glob, 외부 라이브러리 없음).
-| 도구 | Risk |
-|------|------|
-| run_command | Execute (SecurityValidator + ScriptExecutor, WorkingDirectory=Root) |
-| read_file | ReadOnly (1-based 라인 슬라이스, ~200KB 캡) |
-| write_file | Write (부모 디렉토리 생성, UTF-8 no-BOM) |
-| edit_file | Write (old_string 유일성 검증, replace_all) |
-| list_directory | ReadOnly |
-| glob | ReadOnly (1000 캡) |
-| grep | ReadOnly (정규식, 500 매치 캡) |
-| create_directory | Write |
-| move / copy / delete | Destructive |
+### enum `IntegrityStatus`
+`Ok, Modified, Corrupted, Missing, Unexpected`
 
-## PART F — App.xaml.cs (DI 재배선)
-PART F 순서대로: SettingsService.LoadAsync → HttpClient(BaseAddress=ServerBaseUrl) → WorkspaceContext → ScriptExecutor → 11 tools → ToolRegistry → PermissionService → AgentApiClient → AgentOrchestrator → AgentSessionViewModel → MainWindow → Tray → ChatWindowCoordinator → GlobalHotkey → SettingsChanged(workspace.SetRoot + 핫키 재등록) → Show + InitializeAsync.
-- `_mcpService` 필드 제거, `_mainVm` 타입 AgentSessionViewModel, `_api` 필드 추가.
-- OnExit 동기화(MCP 블록 제거).
-- 트레이 Settings 메뉴: `new SettingsViewModel(_settingsService, _api)`.
+### enum `SignatureStatus`
+`NotChecked, Valid, Invalid, Unsigned`
 
-## ViewModelEngineer 가 지켜야 할(이미 일치 확인됨) 계약
-- `AgentSessionViewModel(IAgentOrchestrator, IAgentApiClient, IPermissionService, IWorkspaceContext, ISettingsService)` — App.xaml.cs 가 이 시그니처로 생성. **현재 코드와 일치 확인.**
-- `SettingsViewModel(ISettingsService, IAgentApiClient)` — App.xaml.cs 가 이 시그니처로 생성. **현재 코드와 일치 확인.**
-- PermissionService.SetApprovalHandler 시그니처: `Func<ToolCall, ToolRisk, CancellationToken, Task<PermissionDecision>>` (VM 의 RequestApprovalAsync 와 일치).
+### `IntegrityManifestEntry` (sealed record)
+- `required string RelativePath`  — '/' 구분 상대경로
+- `required string Sha256`        — 대문자 hex 64자
+- `long Size`
 
-## 빌드 상태
-Services/Models/App 컴파일 오류 0. 남은 빌드 오류는 **UIDesigner 소유** 파일 2개뿐:
-- MainWindow.xaml.cs(13): `MainViewModel` 미존재 → AgentSessionViewModel 로 변경 필요.
-- Views/ChatOnlyWindow.xaml.cs(12): 동일.
-이는 PART E(UIDesigner) 작업 범위이며 내 레이어와 무관.
+### `IntegrityManifest` (sealed record)
+- `int SchemaVersion` = 1
+- `DateTimeOffset CreatedUtc`
+- `string? RootLabel`
+- `string Algorithm` = "SHA256"
+- `IReadOnlyList<IntegrityManifestEntry> Entries` = []
 
-## 추가 결정/가정
-- `Path.GetRelativePath` 슬래시 정규화 후 glob 매칭. GlobMatcher 는 외부 의존성 없이 정규식 변환.
-- write_file/edit_file 는 UTF-8(BOM 없음)으로 기록.
-- AppSettings 의 PermissionMode 는 Newtonsoft 기본(정수) 직렬화 — 라운드트립 무해.
-- ScriptExecutor 시그니처 변경으로 파라미터 순서가 `(…, workingDirectory, ct)` 가 됨 — 기존 호출처는 모두 삭제됐고 신규 호출(RunCommandTool)은 named-arg 사용.
+### `FileIntegrityResult` (sealed record) — 그리드 1행 소스
+- `required string RelativePath`
+- `required IntegrityStatus Status`
+- `string? ExpectedSha256`  — Unexpected면 null
+- `string? ActualSha256`    — Missing/Corrupted면 null
+- `long? ActualSize`
+- `SignatureStatus Signature` = NotChecked
+- `string? Detail`          — 오류/부가 설명("해시 불일치", "파일 없음", "접근 거부" 등)
+
+### `IntegrityScanResult` (sealed record) — 요약 바인딩 소스
+- `required IReadOnlyList<FileIntegrityResult> Files`
+- `required DateTimeOffset ScannedUtc`
+- `required string TargetDirectory`
+- `bool IsBaselineOnly`
+- `int OkCount / ModifiedCount / CorruptedCount / MissingCount / UnexpectedCount`
+- `bool IsIntact` (파생, getter 전용) = Modified==0 && Corrupted==0 && Missing==0 && Unexpected==0
+
+### `IntegrityProgress` (readonly record struct) — `IProgress<T>` 페이로드
+- `int ProcessedFiles`
+- `int TotalFiles`
+- `string? CurrentFile`
+- `double Fraction` (파생, getter 전용) = TotalFiles<=0 ? 0 : Processed/Total  (0.0~1.0)
+
+### `IntegrityScanOptions` (sealed record) — VM이 빌드해서 서비스에 전달
+- `required string TargetDirectory`
+- `IReadOnlyList<string> IncludeExtensions` = [".exe", ".dll"]  — 소문자+점 포함. **빈 목록이면 모든 파일**.
+- `bool Recursive` = true
+- `bool VerifySignatures` = false
+- `bool ExcludeManifestFile` = true
+
+> VM 옵션 빌드 시 주의: `IncludeExtensionsText`("exe,dll") 파싱 시 각 항목에 점을 붙여(".exe") 소문자로 정규화할 것. 점 없는 "exe"는 `Path.GetExtension`이 ".exe"를 반환하므로 매칭되지 않는다.
+
+---
+
+## 3. 서비스 인터페이스 계약 (ViewModelEngineer 필독)
+
+### `IBinaryIntegrityService`
+모든 메서드 시그니처 (CancellationToken은 항상 마지막, default):
+
+| 메서드 | 시그니처 | 반환 | 비고 |
+|---|---|---|---|
+| `GetDefaultTargetDirectory` | `string GetDefaultTargetDirectory()` | `string` | `AppDomain.CurrentDomain.BaseDirectory`. 동기. |
+| `GetManifestPath` | `string GetManifestPath(string targetDirectory)` | `string` | `{dir}/integrity.manifest.json`. 동기. |
+| `ManifestExists` | `bool ManifestExists(string targetDirectory)` | `bool` | 동기. null/공백이면 false. |
+| `LoadManifestAsync` | `Task<IntegrityManifest?> LoadManifestAsync(string targetDirectory, CancellationToken ct = default)` | `Task<IntegrityManifest?>` | 없거나 손상 시 **null**(예외 아님). |
+| `GenerateBaselineAsync` | `Task<IntegrityScanResult> GenerateBaselineAsync(IntegrityScanOptions options, IProgress<IntegrityProgress>? progress = null, CancellationToken ct = default)` | `Task<IntegrityScanResult>` | 매니페스트 생성+원자적 저장. 결과 `IsBaselineOnly=true`, 정상 파일은 Status=Ok. |
+| `VerifyAsync` | `Task<IntegrityScanResult> VerifyAsync(IntegrityScanOptions options, IntegrityManifest? manifest = null, IProgress<IntegrityProgress>? progress = null, CancellationToken ct = default)` | `Task<IntegrityScanResult>` | manifest null이면 디스크에서 로드 시도. 그래도 없으면 **AgentException**. |
+| `ComputeSha256Async` | `Task<string> ComputeSha256Async(string filePath, CancellationToken ct = default)` | `Task<string>` | 대문자 hex. 실패 시 **AgentException**. |
+
+### `IAuthenticodeVerifier` (선택)
+- `SignatureStatus Verify(string filePath)` — 동기, 예외 없이 흡수. **VM은 이 인터페이스를 직접 의존하지 않음** (서비스 내부 주입).
+
+---
+
+## 4. DI 등록에 필요한 생성자 시그니처 (App.xaml.cs — Orchestrator용)
+
+```csharp
+// 서명 검증기는 선택: null 가능. Windows 전용 WinVerifyTrust 사용.
+IAuthenticodeVerifier? authenticode = new AuthenticodeVerifier();   // 또는 null
+IBinaryIntegrityService binaryIntegrity = new BinaryIntegrityService(authenticode);
+// 서명 검사 불필요 시: new BinaryIntegrityService()  (authenticode 기본값 null)
+```
+
+- `AuthenticodeVerifier()` — 매개변수 없는 생성자.
+- `BinaryIntegrityService(IAuthenticodeVerifier? authenticode = null)` — 선택 주입. null이면 서명 검사 전부 `NotChecked`.
+
+ViewModel 생성자 (참고, ViewModelEngineer 담당):
+```csharp
+var vm = new IntegrityViewModel(binaryIntegrity);   // 서비스만 의존
+```
+
+---
+
+## 5. 동작/계약 세부 (VM 처리 분기에 영향)
+
+- **취소**: 취소 시 `OperationCanceledException` 전파(흡수 안 함). VM에서 catch → `StatusMessage="검사 취소됨"`. 부분 결과는 반환되지 않음.
+- **매니페스트 없음**: `VerifyAsync`는 `AgentException("매니페스트 없음 — '기준 생성'을 먼저 실행하세요.")` throw. VM은 catch → 안내.
+- **매니페스트 손상**: `LoadManifestAsync`는 null 반환(Debug 로그). VM이 미리 로드해 null이면 "손상 — 재생성" 안내 후, `VerifyAsync(opts, null, ...)` 호출 시 다시 AgentException 발생하므로 분기 주의.
+- **대상 디렉토리 없음**: `VerifyAsync`/`GenerateBaselineAsync` 진입 시 `Directory.Exists` 확인 → `AgentException("대상 디렉토리 없음: {root}")`.
+- **개별 파일 오류**: 스캔 중단 안 함. 읽기 실패 → `Corrupted` + `Detail`("파일 잠김/읽기 실패", "접근 거부"). 접근 거부 하위 디렉토리는 열거에서 자동 스킵(`EnumerationOptions.IgnoreInaccessible=true`).
+- **누락+추가 동일 경로(파일 교체)**: 같은 상대경로면 해시 비교로 `Modified` 처리됨(설계대로).
+- **빈 디렉토리/대상 0개**: 빈 `Files`, 카운트 0, `IsIntact=true`. VM은 "검사 대상 없음" 안내 가능.
+- **진행률 보고**: 파일당 1회 `progress.Report`. `VerifyAsync`의 TotalFiles = (매니페스트 엔트리 수 + Unexpected 디스크 파일 수). `GenerateBaselineAsync`의 TotalFiles = 대상 파일 수.
+- **서명 검사 옵션 OFF 또는 verifier 미주입**: 모든 `Signature = NotChecked`.
+
+---
+
+## 6. 구현 결정 / 명세와의 차이 기록
+
+1. **해싱 API**: 명세 §4.2는 `SHA256.Create()` + `ComputeHashAsync`를 예시로 들었으나, 더 간결하고 동등한 `SHA256.HashDataAsync(stream, ct)`(static, 인스턴스 disposal 불필요)를 사용. 결과 동일(대문자 hex, `Convert.ToHexString`).
+2. **디렉토리 열거**: `Directory.EnumerateFiles` + 수동 try/catch 대신 `EnumerationOptions { IgnoreInaccessible=true, AttributesToSkip=ReparsePoint }` 사용 → 접근 거부 하위 자동 스킵 + 심볼릭 링크/정션 미추적(§9 #4, #13 충족)을 한 번에 처리.
+3. **AuthenticodeVerifier**: `X509Certificate.CreateFromSignedFile`(존재만 확인) 대신 신뢰 체인까지 검증하는 **WinVerifyTrust(wintrust.dll) P/Invoke**로 구현. HRESULT를 `SignatureStatus`로 매핑(SUCCESS→Valid, TRUST_E_NOSIGNATURE/SUBJECT_FORM_UNKNOWN/PROVIDER_UNKNOWN→Unsigned, 그 외→Invalid). 모든 예외 내부 흡수. 비-Windows에서는 `NotChecked` 반환.
+4. **이중 안전망**: 서비스 내부 `VerifySignature`에서도 verifier 호출을 try/catch로 한 번 더 감쌈(verifier가 계약을 어겨 예외를 던져도 스캔 중단 방지).
+5. `BinaryIntegrityService.ManifestFileName`(public const = "integrity.manifest.json") 노출 — 필요 시 VM/View에서 참조 가능.
+
+---
+
+## 7. ViewModelEngineer 체크리스트 (계약 요약)
+
+- `using OhMyAgent.AiAgent.Client.Models;` + `using OhMyAgent.AiAgent.Client.Services;`
+- 생성자 주입: `IBinaryIntegrityService` 1개만.
+- `IProgress<IntegrityProgress>`는 UI 스레드에서 `new Progress<>(...)` 생성(생성자에서). 콜백에서 `ProgressFraction=p.Fraction`, `ProgressText=$"{p.ProcessedFiles} / {p.TotalFiles} — {p.CurrentFile}"`, `CurrentFile=p.CurrentFile`.
+- 예외 분기: `OperationCanceledException`(취소), `AgentException`(도메인 오류 — msg 표시), 기타 일반 예외.
+- 옵션 빌드: 확장자 텍스트 파싱 시 점 접두 + 소문자 정규화 필수(5절/§2 참고).
+```

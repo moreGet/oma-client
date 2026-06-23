@@ -28,6 +28,7 @@ public partial class App : Application
     private AgentSessionViewModel?    _mainVm;
     private IAgentApiClient?          _api;
     private IWorkspaceHistoryService? _workspaceHistory;
+    private IBinaryIntegrityService?  _binaryIntegrity;
     internal ISettingsService SettingsService => _settingsService!;
     internal IAgentApiClient? Api => _api;
 
@@ -83,6 +84,9 @@ public partial class App : Application
 
         // 9) 오케스트레이터 (에이전트 루프)
         var orchestrator = new AgentOrchestrator(_api, registry, permissions, workspace, _settingsService);
+
+        // 9a) 바이너리 무결성 검사 서비스 (설치 디렉토리 SHA256 검증, Windows 전용)
+        _binaryIntegrity = new BinaryIntegrityService(new AuthenticodeVerifier());
 
         // 9b) 채팅 히스토리 / 첨부 / 제안 (Phase D — C, D, G)
         var chatHistory = new ChatHistoryService();
@@ -180,11 +184,23 @@ public partial class App : Application
             settingsWindow.Activate();
         };
 
+        var integrityItem = new ToolStripMenuItem("무결성 검사");
+        integrityItem.Click += (_, _) =>
+        {
+            if (_binaryIntegrity == null) return;
+            // IntegrityViewModel은 UI 스레드에서 생성(Progress<T> 마샬링 캡처).
+            var integrityVm     = new IntegrityViewModel(_binaryIntegrity);
+            var integrityWindow = new IntegrityWindow(integrityVm);
+            integrityWindow.Show();
+            integrityWindow.Activate();
+        };
+
         var exitItem = new ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) => ExitApplication();
 
         menu.Items.Add(showItem);
         menu.Items.Add(settingsItem);
+        menu.Items.Add(integrityItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
 

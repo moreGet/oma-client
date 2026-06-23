@@ -1,792 +1,604 @@
-# 01 — Architect Spec: Phase 0 (Cleanup) + Phase 1 (Agent Loop)
+# 01. Architect Spec — 설치 디렉토리 바이너리 무결성 검사 (Binary Integrity Verification)
 
-> Target: `net10.0-windows`, `Nullable=enable`, `ImplicitUsings=enable`, CommunityToolkit.Mvvm 8.x source generators.
-> Namespace convention: `OhMyAgent.AiAgent.Client.{Layer}`.
-> Paths below are relative to the **inner project dir**: `OhMyAgent.AiAgent.Client/OhMyAgent.AiAgent.Client/`.
-> JSON: server DTOs use `System.Text.Json` (new code). Existing `Newtonsoft.Json` stays for settings persistence only — do NOT mix on the same type.
-
-## 기능 명세 (one-line)
-Transform the WPF chat client into a Claude-Code-style autonomous agent: an SSE tool-calling API client + an agent loop orchestrator that executes a registry of 11 sandboxed Windows tools inside a user-chosen workspace, gated by a Manual permission service, surfaced through a transcript ViewModel.
+> 작성자: Architect 에이전트
+> 대상 프로젝트: OhMyAgent.AiAgent.Client (net10.0-windows, WPF, MVVM)
+> 산출물 범위: **설계 명세만**. .cs / .xaml 구현 파일은 후속 엔지니어 에이전트가 작성한다.
 
 ---
 
-## PART A — PHASE 0: CODE CLEANUP
+## 0. 코드베이스 현황 / 컨벤션 확인 (설계 전제)
 
-### A.1 Files to DELETE (8 files)
+설계는 아래 실제 코드베이스 관찰 결과에 맞춘다.
 
-| # | File (under inner project dir) | Type removed |
-|---|--------------------------------|--------------|
-| 1 | `Services/AgentActionService.cs` | `AgentActionService` + `FileCreationPlugin` (SemanticKernel) |
-| 2 | `Services/IAgentActionService.cs` | `IAgentActionService` |
-| 3 | `Services/McpSseServer.cs` | `McpSseServer` |
-| 4 | `Services/IMcpSseServer.cs` | `IMcpSseServer` |
-| 5 | `Services/McpRemoteAgentService.cs` | `McpRemoteAgentService` |
-| 6 | `Services/IRemoteAgentService.cs` | `IRemoteAgentService` |
-| 7 | `Models/Mcp/McpRequest.cs` | `McpRequest` |
-| 8 | `Models/Mcp/McpResponse.cs` | `McpResponse` |
-| 9 | `Models/Mcp/McpError.cs` | `McpError` |
-| 10 | `Models/Mcp/McpTool.cs` | `McpTool` |
+- **DI 컨테이너 없음.** `App.xaml.cs > OnStartup`에서 인터페이스+구현을 수동 인스턴스화한다.
+  서비스 등록 지점은 기존 `var chatHistory = new ChatHistoryService();` 인근(아래 §7 참조).
+- **인터페이스(IFoo) + sealed 구현(Foo) 패턴.** 예: `IChatHistoryService` / `ChatHistoryService`.
+- **JSON 직렬화는 `System.Text.Json` + `AgentJson.Options`가 사실상 표준.**
+  `ChatHistoryService`가 record를 `JsonSerializer.Serialize(record, AgentJson.Options)`로 저장/로드한다.
+  (`Newtonsoft.Json`은 `AppSettings`(settings.json) 직렬화에만 쓰인다.)
+  → **본 기능의 매니페스트는 `System.Text.Json` + `AgentJson.Options`로 통일한다.** record + `[JsonPropertyName]` 스타일을 따른다.
+- **모델은 `sealed record` + `required` + `[JsonPropertyName(snake_case)]`.** (예: `ChatSessionRecord`, `WorkspaceHistoryEntry`.)
+- **서비스 구현 관용구**: 무거운 IO는 `await Task.Run(() => { ... }, ct)`, `ConfigureAwait(false)`,
+  파일 손상은 `Debug.WriteLine`으로 스킵, 치명적 실패는 `throw new AgentException(...)`, 원자적 쓰기는 `tmp → File.Move(overwrite:true)`.
+- **ViewModel**: `partial class : ObservableObject`, `[ObservableProperty]`, `[RelayCommand]`(소스 생성기), 생성자 주입.
+- **View(XAML)**: `WindowStyle=None` + `AllowsTransparency=True` + 커스텀 타이틀바, 공유 StaticResource 테마
+  (`WindowBg`, `SurfaceBg`, `BorderBrush`, `TextPrimary`, `TextSecondary`, `AccentGradient`, `AppFont`). `SettingsWindow`를 레퍼런스 삼는다.
+- **취소/진행률**: 기존 서비스는 `CancellationToken ct = default`를 마지막 파라미터로 둔다. 본 기능은 추가로 `IProgress<T>`를 사용한다.
 
-> NOTE: `ChatService.cs` / `IChatService.cs` are **refactored, not deleted** (see A.5). They MAY be deleted if you instead create `AgentApiClient.cs` / `IAgentApiClient.cs` as new files and remove the old ones — recommended path is **create new + delete old** so MainViewModel's old streaming surface vanishes cleanly. Decision: **DELETE `ChatService.cs` + `IChatService.cs`**, CREATE `AgentApiClient.cs` + `IAgentApiClient.cs`.
-
-So total Phase 0 deletions = 10 MCP/Action files **+ `Services/ChatService.cs` + `Services/IChatService.cs`** = 12 files.
-
-### A.2 Files to KEEP & REUSE (do NOT touch in Phase 0 except where noted)
-
-| File | Status |
-|------|--------|
-| `Services/ScriptExecutor.cs`, `Services/IScriptExecutor.cs` | KEEP — becomes `run_command` engine |
-| `Services/SecurityValidator.cs` | KEEP — extended later (Phase 2); used by `run_command` now |
-| `Models/Mcp/ScriptResult.cs` | KEEP — folder name `Mcp` is now a misnomer but leave it to avoid churn; do NOT move |
-| `Models/Mcp/ScriptType.cs` | KEEP |
-| `Models/Mcp/ValidationResult.cs` | KEEP |
-| `Services/SettingsService.cs`, `Services/ISettingsService.cs` | KEEP + EXTEND (A.6) |
-| `Services/GlobalHotkeyService.cs` (+ I), `TrayNotificationService.cs` (+ I), `ChatWindowCoordinator.cs` (+ I) | KEEP — tray/hotkey/floating window |
-| `Services/AgentException.cs` | KEEP — reused for API client failures |
-| `Views/ChatOnlyWindow.*`, `Views/SettingsWindow.*`, `Views/Converters.cs`, `Views/MessageTemplateSelector.cs` | KEEP (Settings extended in Part E) |
-| `Resources/Colors.xaml`, `Converters.xaml`, `Styles.xaml` (dark theme) | KEEP |
-| `ViewModels/ChatMessageViewModel.cs`, `SettingsViewModel.cs` | KEEP |
-| `Models/AppSettings.cs` | KEEP + EXTEND (A.6) |
-| `Models/HotkeySettings.cs`, `HotkeyModifiers.cs`, `DomainOptions.cs` | KEEP |
-| `Models/UserMessagesDto.cs`, `AgentResponsesDto.cs` | KEEP (legacy chat DTOs — harmless; may be deleted later if unused) |
-
-### A.3 `.csproj` edit — remove SemanticKernel
-
-`OhMyAgent.AiAgent.Client.csproj`, delete lines 17–18:
-```xml
-        <!-- Semantic Kernel (로컬 에이전트 액션) -->
-        <PackageReference Include="Microsoft.SemanticKernel" Version="1.14.1" />
-```
-Keep CommunityToolkit.Mvvm, Newtonsoft.Json, System.Drawing.Common. (System.Text.Json ships with the SDK — no PackageReference needed.)
-
-### A.4 `App.xaml.cs` edits — remove all deleted-type references
-
-`App.xaml.cs`. Apply these exact removals/replacements (full DI rewrite is in Part F; Phase 0 minimal version below):
-
-- **Line 28**: DELETE `private IRemoteAgentService? _mcpService;`
-- **Lines 47–48**: REPLACE
-  ```csharp
-  var chatService        = new ChatService(_httpClient);
-  var agentActionService = new AgentActionService();
-  ```
-  → with the new wiring from Part F (constructs `WorkspaceContext`, `ScriptExecutor`, tools, `ToolRegistry`, `PermissionService`, `AgentApiClient`, `AgentOrchestrator`).
-- **Lines 50–54**: DELETE the entire `_mcpService = new McpRemoteAgentService(...)` block.
-- **Line 57**: REPLACE
-  ```csharp
-  _mainVm = new MainViewModel(chatService, agentActionService, _settingsService, _mcpService);
-  ```
-  → new `AgentSessionViewModel` construction (Part F). MainViewModel is retired (see D.4).
-- **Lines 88–90**: DELETE the MCP startup block:
-  ```csharp
-  if (_settingsService!.Current.McpEnabled)
-      _ = _mcpService.StartAsync();
-  ```
-- **Lines 112–116**: DELETE the MCP shutdown block inside `OnExit`:
-  ```csharp
-  if (_mcpService != null)
-  {
-      await _mcpService.StopAsync();
-      await _mcpService.DisposeAsync();
-  }
-  ```
-  After removal `OnExit` keeps `_globalHotkey?.Dispose(); _trayIcon?.Dispose(); _httpClient?.Dispose();`. The `try/catch` wrapper can be dropped (nothing throws now) — keep `OnExit` non-async if no awaits remain, but leaving `async` is harmless. **Decision:** make `OnExit` synchronous (remove `async`), since no awaited cleanup remains.
-- The `MainWindow` field type (`_mainWindow`) is unaffected. `InitializeTrayIcon`, `CreateAppIcon`, hotkey wiring (lines 74–83, 93–106), `RegisterMainWindowHwnd` are UNCHANGED.
-
-### A.5 `MainViewModel.cs` — RETIRE, replaced by `AgentSessionViewModel`
-
-The string-parsing `[ACTION:CREATE_FILE]` hack and the whole single-shot chat loop are gone. **Decision: delete `MainViewModel.cs`** and replace with `AgentSessionViewModel` (Part D). All references to the deleted types live only in `MainViewModel.cs` (lines 12–15, 55–72, 108–118, 175, 189–193) and `App.xaml.cs` — both are rewritten. After Part D + Part F there are **zero** dangling references to: `IChatService`, `ChatService`, `IAgentActionService`, `AgentActionService`, `IRemoteAgentService`, `McpRemoteAgentService`, `McpSseServer`, `IMcpSseServer`, `McpRequest/Response/Error/Tool`, `Microsoft.SemanticKernel`.
-
-> `MainWindow(_mainVm)` constructor param type changes `MainViewModel` → `AgentSessionViewModel`; update `MainWindow.xaml.cs` ctor + `MainWindow.xaml` `d:DataContext` (UIDesigner). `ChatWindowCoordinator` references the VM via `Func<MainViewModel>` — change its generic to `AgentSessionViewModel` (it only needs the VM for window coordination; verify what members it touches and keep them or stub them on the new VM).
-
-### A.6 `AppSettings` + `SettingsService` extension
-
-`Models/AppSettings.cs` — ADD fields (preserve all existing), and REMOVE the now-orphaned MCP fields:
-```csharp
-public class AppSettings
-{
-    // existing — KEEP
-    public HotkeySettings Hotkey { get; set; } = HotkeySettings.Default;
-    public double Opacity { get; set; } = 1.0;
-    public int SchemaVersion { get; set; } = 3;   // bump 2 -> 3
-
-    // REMOVE (MCP server retired):
-    //   public int  McpPort    { get; set; } = 3000;
-    //   public bool McpEnabled { get; set; } = true;
-
-    // NEW (Phase 1)
-    public string WorkspaceRoot { get; set; } = "";            // empty => prompt user / default to Desktop
-    public PermissionMode PermissionMode { get; set; } = PermissionMode.Manual;
-    public int MaxIterations { get; set; } = 25;
-    public string ServerBaseUrl { get; set; } = "http://localhost:8080";
-    public string AuthScheme { get; set; } = "Bearer";          // "Bearer" | "ApiKey"
-    public string AuthToken { get; set; } = "";
-    public string ModelId { get; set; } = "corp-llm-32b";
-    public int MaxTokens { get; set; } = 4096;
-}
-```
-`SettingsService.cs` — schema migration v2→v3: drop `McpPort`/`McpEnabled`, default the new fields. Add async updaters mirroring the existing pattern:
-```csharp
-Task UpdateWorkspaceRootAsync(string path);
-Task UpdatePermissionModeAsync(PermissionMode mode);
-Task UpdateServerConfigAsync(string baseUrl, string scheme, string token, string modelId, int maxIterations, int maxTokens);
-```
-Keep existing `UpdateHotkeyAsync`, `UpdateOpacityAsync`, `LoadAsync`, `SaveAsync`, `Current`, `SettingsChanged`. `ISettingsService` gains the new method signatures + `Current` already exposes the new props.
-
-> `App.xaml.cs` line 38 `BaseAddress = new Uri("http://localhost:8080")` → after settings load, set `_httpClient.BaseAddress = new Uri(_settingsService.Current.ServerBaseUrl)` (Part F).
+> **가정 1.** Authenticode 서명 검증은 "best-effort 선택 기능"으로 둔다. 1차 검증 축은 SHA256 해시이며, 서명 검증은 파일별 부가 메타로 노출하되 해시 불일치를 대체하지 않는다.
+> **가정 2.** 매니페스트가 없을 때 "기준 생성(Baseline)" 모드로 현재 디렉토리 상태를 캡처해 매니페스트를 만든다(최초 1회). 이후 실행은 "검증(Verify)" 모드.
+> **가정 3.** 메뉴/트레이/별도 윈도우 중 어디서 띄울지는 UIDesigner 재량이나, 본 스펙은 `SettingsWindow`와 동일한 독립 `IntegrityWindow`를 기본으로 한다.
 
 ---
 
-## PART B — MODELS LAYER (all NEW unless noted)
+## 1. 기능 개요 및 사용 시나리오
 
-All under `Models/` (or `Models/Agent/` subfolder — **Decision: `Models/Agent/`** to keep the new domain grouped). Namespace `OhMyAgent.AiAgent.Client.Models`. Use `System.Text.Json.Serialization.JsonPropertyName` for wire DTOs. Records are `sealed` and immutable.
+### 1.1 개요
+현재 실행 중인 WPF 앱이 **자기 자신의 설치 디렉토리(`AppDomain.CurrentDomain.BaseDirectory`) 내부의 바이너리(.exe/.dll 등) 파일 무결성**을 SHA256 해시 기준으로 검사한다. 기준 매니페스트(파일별 기대 해시 목록)와 디스크 실제 상태를 비교해 각 파일을 **정상 / 변조 / 손상 / 누락 / 추가** 로 분류하고, 진행률·요약과 함께 UI로 표시한다.
 
-### B.1 Enums — `Models/Agent/AgentEnums.cs`
-```csharp
-public enum MessageRole { System, User, Assistant, Tool }
-
-public enum ToolRisk { ReadOnly, Write, Execute, Destructive }
-
-public enum PermissionMode { Manual, AutoSafe, FullAuto }
-
-public enum PermissionDecision { Allow, Deny, AlwaysAllow }
-
-public enum StopReason { ToolUse, EndTurn, MaxTokens, Error, Unknown }
+### 1.2 핵심 흐름(상태 머신)
 ```
-> Wire `stop_reason` strings (`"tool_use"`,`"end_turn"`,`"max_tokens"`,`"error"`) are parsed to `StopReason` by `AgentApiClient`; `MessageStop.StopReason` is kept as the raw `string` (per API_CONTRACT §6) for forward-compat, orchestrator maps it.
-
-### B.2 Conversation / request DTOs — `Models/Agent/AgentMessage.cs`
-```csharp
-// One conversation turn. Serialized into AgentRequest.Messages.
-public sealed record AgentMessage
-{
-    [JsonPropertyName("role")]    public required MessageRole Role { get; init; }
-    [JsonPropertyName("content")] public string? Content { get; init; }
-
-    // assistant turns only
-    [JsonPropertyName("tool_calls")]
-    public IReadOnlyList<ToolCall>? ToolCalls { get; init; }
-
-    // tool turns only
-    [JsonPropertyName("tool_call_id")]
-    public string? ToolCallId { get; init; }
-
-    [JsonPropertyName("is_error")]
-    public bool? IsError { get; init; }   // tool turns only
-
-    // factory helpers (no logic in model otherwise)
-    public static AgentMessage System(string content);
-    public static AgentMessage User(string content);
-    public static AgentMessage Assistant(string? content, IReadOnlyList<ToolCall>? toolCalls = null);
-    public static AgentMessage ToolResultMsg(string toolCallId, string content, bool isError);
-}
-```
-> `MessageRole` must serialize lower-case (`system/user/assistant/tool`). Provide a `JsonStringEnumConverter` with naming policy = snake/lower, OR a custom converter. **Decision:** register `JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower)` in the shared `JsonSerializerOptions` (ServiceEngineer owns a `static AgentJson.Options`). Same converter handles `StopReason` if ever serialized.
-
-### B.3 `Models/Agent/ToolCall.cs`
-```csharp
-public sealed record ToolCall(
-    [property: JsonPropertyName("id")]        string Id,
-    [property: JsonPropertyName("name")]      string Name,
-    [property: JsonPropertyName("arguments")] JsonElement Arguments);
-```
-> `Arguments` is the raw JSON object the model produced; tools parse it. `JsonElement` round-trips fine through System.Text.Json.
-
-### B.4 `Models/Agent/ToolSchema.cs`
-```csharp
-public sealed record ToolSchema(
-    [property: JsonPropertyName("name")]        string Name,
-    [property: JsonPropertyName("description")] string Description,
-    [property: JsonPropertyName("parameters")]  JsonElement Parameters);  // JSON Schema object
+[Idle]
+  │ ScanCommand (매니페스트 존재 → Verify / 없음 → 안내)
+  ▼
+[Hashing] ──(IProgress 진행률)──► [Comparing] ──► [Completed: 요약+파일별결과]
+  │                                                  │
+  └─(Cancel)──► [Cancelled]              [GenerateBaselineCommand]──► 매니페스트 저장 ──► [Completed]
 ```
 
-### B.5 `Models/Agent/RequestMetadata.cs`
-```csharp
-public sealed record RequestMetadata(
-    [property: JsonPropertyName("os")]             string Os,            // "windows"
-    [property: JsonPropertyName("workspace")]      string Workspace,     // resolved root
-    [property: JsonPropertyName("client_version")] string ClientVersion);
-```
-
-### B.6 `Models/Agent/AgentRequest.cs`
-```csharp
-public sealed record AgentRequest(
-    [property: JsonPropertyName("model")]      string Model,
-    [property: JsonPropertyName("stream")]     bool Stream,
-    [property: JsonPropertyName("max_tokens")] int MaxTokens,
-    [property: JsonPropertyName("messages")]   IReadOnlyList<AgentMessage> Messages,
-    [property: JsonPropertyName("tools")]      IReadOnlyList<ToolSchema> Tools,
-    [property: JsonPropertyName("metadata")]   RequestMetadata Metadata);
-```
-
-### B.7 `Models/Agent/Usage.cs` + `ModelInfo.cs`
-```csharp
-public sealed record Usage(
-    [property: JsonPropertyName("input_tokens")]  int InputTokens,
-    [property: JsonPropertyName("output_tokens")] int OutputTokens);
-
-public sealed record ModelInfo(
-    [property: JsonPropertyName("id")]              string Id,
-    [property: JsonPropertyName("display_name")]    string DisplayName,
-    [property: JsonPropertyName("supports_tools")]  bool SupportsTools,
-    [property: JsonPropertyName("supports_vision")] bool SupportsVision);
-```
-
-### B.8 SSE stream events — `Models/Agent/AgentStreamEvent.cs`
-Wire-facing; emitted by `IAgentApiClient`. (Per API_CONTRACT §6, signatures fixed.)
-```csharp
-public abstract record AgentStreamEvent;
-public sealed record MessageStart(string Id, string Model)                    : AgentStreamEvent;
-public sealed record ContentDelta(string Text)                               : AgentStreamEvent;
-public sealed record ToolCallEvent(string Id, string Name, JsonElement Args) : AgentStreamEvent;
-public sealed record MessageStop(string StopReason, Usage Usage)             : AgentStreamEvent;
-public sealed record ErrorEvent(string Code, string Message)                 : AgentStreamEvent;
-```
-
-### B.9 Tool execution support — `Models/Agent/ToolResult.cs`, `ToolContext.cs`
-```csharp
-// Returned by ITool.ExecuteAsync. Content is the string that becomes the `tool` message content.
-public sealed record ToolResult(string Content, bool IsError)
-{
-    public static ToolResult Ok(string content)    => new(content, false);
-    public static ToolResult Fail(string message)  => new(message, true);
-    // Convenience: serialize a structured object to JSON content
-    public static ToolResult Json(object payload)  => new(JsonSerializer.Serialize(payload, AgentJson.Options), false);
-}
-
-// Passed to every tool: ambient execution context (no DI inside tools).
-public sealed record ToolContext(
-    IWorkspaceContext Workspace,
-    PermissionMode PermissionMode);
-```
-> `ToolContext` lives in Models but references `IWorkspaceContext` (Services). To keep MVVM purity (Model knows no layer), **Decision: define `ToolContext` in `Services/` namespace** (`OhMyAgent.AiAgent.Client.Services`) since it carries a service reference, OR define `IWorkspaceContext` in Models. Cleanest: put `ITool`, `IToolRegistry`, `ToolContext` together in Services (tools are services). `ToolResult`, `ToolCall`, `ToolSchema`, `ToolRisk` stay in Models (pure data). **Final: `ToolContext` -> Services layer.**
-
-### B.10 Orchestrator output events — `Models/Agent/AgentEvent.cs`
-Emitted by `IAgentOrchestrator.RunAsync` to the ViewModel. UI-facing, richer than wire events.
-```csharp
-public abstract record AgentEvent;
-public sealed record AgentTextDelta(string Text)                              : AgentEvent;  // assistant prose token
-public sealed record AgentAssistantMessageComplete(string Text)              : AgentEvent;  // a full assistant turn closed
-public sealed record AgentToolCallStarted(string CallId, string ToolName, JsonElement Args, ToolRisk Risk) : AgentEvent;
-public sealed record AgentAwaitingApproval(string CallId, string ToolName, JsonElement Args, ToolRisk Risk) : AgentEvent;
-public sealed record AgentToolCallResult(string CallId, string ToolName, ToolResult Result) : AgentEvent;
-public sealed record AgentIterationAdvanced(int Iteration, int MaxIterations) : AgentEvent;
-public sealed record AgentDone(string FinalText, Usage? LastUsage)           : AgentEvent;
-public sealed record AgentError(string Code, string Message)                 : AgentEvent;
-```
+### 1.3 사용 시나리오
+1. **최초 기준 생성**: 매니페스트 없음 → 사용자가 "기준 매니페스트 생성" → 현재 디렉토리 바이너리 해시를 스냅샷 → `integrity.manifest.json` 저장.
+2. **정기 무결성 검사**: 매니페스트 존재 → "검사 시작" → 진행률 바 표시 → 완료 후 파일별 상태 그리드 + 요약(정상 N / 변조 N / 손상 N / 누락 N / 추가 N).
+3. **대상 디렉토리 변경**: 사용자가 `bin`/`obj` 등 빌드 산출물 경로를 골라 검사(기본값은 설치 위치).
+4. **취소**: 대용량 디렉토리 해싱 중 사용자가 취소 → 즉시 중단(`OperationCanceledException` → Cancelled 상태).
+5. **(선택) 서명 확인**: 각 파일의 Authenticode 서명 유효성을 부가 컬럼으로 확인.
 
 ---
 
-## PART C — SERVICES LAYER (signatures only; bodies = ServiceEngineer)
+## 2. 레이어 분해 (Models / Services / ViewModels / Views)
 
-All under `Services/`. Namespace `OhMyAgent.AiAgent.Client.Services`. CancellationToken last. `IAsyncEnumerable` for streams.
+### Models — `OhMyAgent.AiAgent.Client.Models`
+| 파일 | 타입 | 책임 |
+|------|------|------|
+| `Models/Integrity/IntegrityStatus.cs` | `enum` | 파일 단위 검증 결과 분류 |
+| `Models/Integrity/SignatureStatus.cs` | `enum` | (선택) Authenticode 서명 상태 |
+| `Models/Integrity/IntegrityManifestEntry.cs` | `sealed record` | 매니페스트 1행: 상대경로 + 기대 SHA256 + 크기 |
+| `Models/Integrity/IntegrityManifest.cs` | `sealed record` | 매니페스트 전체(버전/생성시각/루트라벨/엔트리목록) — JSON 직렬화 대상 |
+| `Models/Integrity/FileIntegrityResult.cs` | `sealed record` | 파일 1건 검증 결과(상태/기대해시/실제해시/크기/서명/메시지) |
+| `Models/Integrity/IntegrityScanResult.cs` | `sealed record` | 스캔 전체 결과(파일목록 + 요약 카운트 + 매니페스트 메타) |
+| `Models/Integrity/IntegrityProgress.cs` | `readonly record struct` | `IProgress<T>` 진행률 페이로드 |
+| `Models/Integrity/IntegrityScanOptions.cs` | `sealed record` | 스캔 입력 옵션(대상디렉토리/필터/서명검사여부/재귀) |
 
-### C.1 `IAgentApiClient` / `AgentApiClient` (refactor of ChatService)
-Files: `Services/IAgentApiClient.cs`, `Services/AgentApiClient.cs`.
+### Services — `OhMyAgent.AiAgent.Client.Services`
+| 파일 | 타입 | 책임 |
+|------|------|------|
+| `Services/IBinaryIntegrityService.cs` | `interface` | 해싱·매니페스트 입출력·검증 비교의 계약 |
+| `Services/BinaryIntegrityService.cs` | `sealed class` | SHA256 스트리밍 해싱, 매니페스트 직렬화/로드, 비교 분류, 진행률/취소 |
+| (선택) `Services/IAuthenticodeVerifier.cs` | `interface` | Authenticode 서명 검증 분리 계약 |
+| (선택) `Services/AuthenticodeVerifier.cs` | `sealed class` | `X509Certificate.CreateFromSignedFile` + WinVerifyTrust 래핑 |
+
+> 서명 검증을 별도 서비스로 뽑은 이유: WinVerifyTrust P/Invoke 의존성을 격리해 해싱 코어를 순수하게 유지하고, 비-Windows/미구현 환경에서 `null` 주입으로 무력화 가능.
+
+### ViewModels — `OhMyAgent.AiAgent.Client.ViewModels`
+| 파일 | 타입 | 책임 |
+|------|------|------|
+| `ViewModels/IntegrityViewModel.cs` | `partial class : ObservableObject` | 화면 상태/진행률/요약/커맨드, 서비스 호출·취소 토큰 관리 |
+| `ViewModels/FileIntegrityItemViewModel.cs` | `partial class : ObservableObject` | 그리드 1행 표시 모델(상태색/아이콘/툴팁 등 표현 전용) |
+
+### Views — `OhMyAgent.AiAgent.Client.Views`
+| 파일 | 책임 | DataContext |
+|------|------|-------------|
+| `Views/IntegrityWindow.xaml` (+ `.xaml.cs`) | 독립 윈도우: 타이틀바/대상선택/진행률/결과 그리드/요약/액션버튼 | `IntegrityViewModel` |
+| (선택) `Views/Converters.cs`에 변환기 추가 | `IntegrityStatus → Brush/아이콘` 변환기 | — |
+
+> 컨버터는 신규 파일 대신 기존 `Views/Converters.cs`에 추가하거나, 컨벤션상 `Converters/` 네임스페이스 신설 가능. ViewModel에서 `FileIntegrityItemViewModel`이 표시 속성을 노출하면 컨버터 없이도 바인딩 가능(권장: 최소 컨버터).
+
+---
+
+## 3. 모델 정의 (구체 C# 시그니처)
+
+### 3.1 enum
+
 ```csharp
-public interface IAgentApiClient
+namespace OhMyAgent.AiAgent.Client.Models;
+
+/// <summary>파일 단위 무결성 검증 결과 분류.</summary>
+public enum IntegrityStatus
 {
-    // POST /api/v1/agent/chat, stream:true -> parse SSE per API_CONTRACT §4.2.
-    IAsyncEnumerable<AgentStreamEvent> SendAsync(AgentRequest request, CancellationToken ct = default);
-
-    // GET /api/v1/health -> 200 with {status:"ok"}.
-    Task<bool> CheckHealthAsync(CancellationToken ct = default);
-
-    // GET /api/v1/models -> ModelInfo[]. Empty list if endpoint absent.
-    Task<IReadOnlyList<ModelInfo>> GetModelsAsync(CancellationToken ct = default);
-}
-
-public sealed class AgentApiClient : IAgentApiClient
-{
-    public AgentApiClient(HttpClient httpClient, ISettingsService settings);
-    // ctor reads settings.Current for Authorization header (AuthScheme/AuthToken) per request.
+    /// <summary>기대 해시와 실제 해시가 일치.</summary>
+    Ok,
+    /// <summary>매니페스트에 있고 파일도 있으나 해시 불일치(내용 변경됨).</summary>
+    Modified,
+    /// <summary>파일이 존재하나 읽기 실패/I/O 오류 등으로 해시 산출 불가(손상 의심).</summary>
+    Corrupted,
+    /// <summary>매니페스트에 있으나 디스크에 파일 없음.</summary>
+    Missing,
+    /// <summary>디스크에 있으나 매니페스트에 없음(예상치 못한 추가 파일).</summary>
+    Unexpected
 }
 ```
-Implementation notes for ServiceEngineer (binding contract):
-- Serialize `AgentRequest` with `AgentJson.Options` (System.Text.Json). Body `Content-Type: application/json`; `Accept: text/event-stream`.
-- Auth header per `settings.Current.AuthScheme`: `Bearer` → `Authorization: Bearer {token}`; `ApiKey` → `X-Api-Key: {token}`. Skip if token empty.
-- SSE parsing: read line-by-line. Buffer `event: <name>` then `data: <json>`; dispatch on blank line. Map:
-  `message_start`→`MessageStart`, `content_delta`→`ContentDelta`, `tool_call`→`ToolCallEvent` (parse `arguments` to `JsonElement`), `message_stop`→`MessageStop`, `error`→`ErrorEvent`.
-- On HTTP non-2xx, parse `{error:{code,message}}` and yield a single `ErrorEvent`, OR throw `AgentException` (Decision: yield `ErrorEvent` so the loop can surface it; throw `AgentException` only on transport failure / unreachable host).
-- Reuse `AgentException` for connection failures.
 
-### C.2 `IToolRegistry` / `ToolRegistry` + `ITool`
-Files: `Services/ITool.cs`, `Services/IToolRegistry.cs`, `Services/ToolRegistry.cs`.
 ```csharp
-public interface ITool
-{
-    string Name { get; }
-    string Description { get; }
-    JsonElement ParametersSchema { get; }   // JSON Schema object (the tool's `parameters`)
-    ToolRisk Risk { get; }
-    Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default);
-}
+namespace OhMyAgent.AiAgent.Client.Models;
 
-public interface IToolRegistry
+/// <summary>(선택) Authenticode 서명 검증 상태. 해시 검증과 독립적인 부가 정보.</summary>
+public enum SignatureStatus
 {
-    IReadOnlyList<ITool> All { get; }
-    IReadOnlyList<ToolSchema> ToSchemas();          // -> AgentRequest.Tools
-    bool TryGet(string name, out ITool tool);
-}
-
-public sealed class ToolRegistry : IToolRegistry
-{
-    public ToolRegistry(IEnumerable<ITool> tools);  // constructed with the 11 MVP tools
+    /// <summary>서명 검사를 하지 않음(옵션 꺼짐 또는 비대상 확장자).</summary>
+    NotChecked,
+    /// <summary>유효하게 서명되고 신뢰 체인 검증 통과.</summary>
+    Valid,
+    /// <summary>서명이 있으나 무효(체인 실패/만료/변조).</summary>
+    Invalid,
+    /// <summary>서명 없음(unsigned).</summary>
+    Unsigned
 }
 ```
-> API_CONTRACT §6 declares `JsonSchema ParametersSchema`. There is no built-in `JsonSchema` type; **Decision: use `JsonElement`** (a parsed JSON Schema object). `ToSchemas()` maps each tool → `new ToolSchema(Name, Description, ParametersSchema)`.
 
-### C.3 `IWorkspaceContext` / `WorkspaceContext`
-Files: `Services/IWorkspaceContext.cs`, `Services/WorkspaceContext.cs`.
+### 3.2 record
+
 ```csharp
-public interface IWorkspaceContext
-{
-    string Root { get; }                                   // absolute, normalized
-    string ResolvePath(string relativeOrAbsolute);          // throws if escapes workspace
-    bool IsInsideWorkspace(string path);
-    void SetRoot(string root);                              // called when settings change
-}
+using System.Text.Json.Serialization;
 
-public sealed class WorkspaceContext : IWorkspaceContext
+namespace OhMyAgent.AiAgent.Client.Models;
+
+/// <summary>매니페스트 1행: 디렉토리 루트 기준 상대경로의 기대 해시.</summary>
+public sealed record IntegrityManifestEntry
 {
-    public WorkspaceContext(ISettingsService settings);    // seeds Root from settings.Current.WorkspaceRoot
+    /// <summary>매니페스트 루트 기준 상대경로(항상 '/' 구분, 소문자 비교용 원본 보존).</summary>
+    [JsonPropertyName("relative_path")] public required string RelativePath { get; init; }
+    /// <summary>대문자 16진수 SHA256(64자).</summary>
+    [JsonPropertyName("sha256")]        public required string Sha256 { get; init; }
+    /// <summary>바이트 단위 파일 크기(빠른 사전 비교/표시용).</summary>
+    [JsonPropertyName("size")]          public long Size { get; init; }
 }
 ```
-Binding contract (ServiceEngineer):
-- `ResolvePath`: combine with `Root` if relative, `Path.GetFullPath` to normalize, reject if `!IsInsideWorkspace(result)` → throw `AgentException("경로가 작업 디렉토리를 벗어났습니다: {path}")`. Block `..` escape and absolute paths pointing outside Root.
-- `IsInsideWorkspace`: case-insensitive `StartsWith(Root + Path.DirectorySeparatorChar)` after `GetFullPath`.
-- Empty `Root` fallback: `Environment.GetFolderPath(SpecialFolder.DesktopDirectory)`.
 
-### C.4 `IPermissionService` / `PermissionService`
-Files: `Services/IPermissionService.cs`, `Services/PermissionService.cs`.
 ```csharp
-public interface IPermissionService
+using System;
+using System.Collections.Generic;
+using System.Text.Json.Serialization;
+
+namespace OhMyAgent.AiAgent.Client.Models;
+
+/// <summary>
+/// 무결성 기준 매니페스트 전체. integrity.manifest.json으로 영속.
+/// 직렬화: AgentJson.Options(System.Text.Json).
+/// </summary>
+public sealed record IntegrityManifest
 {
-    // Returns the decision for a tool call. May await UI (Manual mode) via the approval handler.
-    Task<PermissionDecision> RequestAsync(ToolCall call, ToolRisk risk, ToolContext ctx, CancellationToken ct = default);
-
-    // ViewModel registers a callback that surfaces the inline approval card and returns the user's choice.
-    void SetApprovalHandler(Func<ToolCall, ToolRisk, CancellationToken, Task<PermissionDecision>> handler);
-
-    void ClearSessionRules();   // forget AlwaysAllow grants (e.g., on new session)
-}
-
-public sealed class PermissionService : IPermissionService
-{
-    public PermissionService(ISettingsService settings);   // reads Current.PermissionMode at decision time
+    /// <summary>스키마 버전(향후 마이그레이션 대비). 현재 1.</summary>
+    [JsonPropertyName("schema_version")] public int SchemaVersion { get; init; } = 1;
+    /// <summary>매니페스트 생성 UTC 시각.</summary>
+    [JsonPropertyName("created_utc")]    public DateTimeOffset CreatedUtc { get; init; }
+    /// <summary>생성 시점 대상 디렉토리 식별 라벨(절대경로 표시는 지양, 검증용 보조).</summary>
+    [JsonPropertyName("root_label")]     public string? RootLabel { get; init; }
+    /// <summary>해시 알고리즘 식별자. 현재 "SHA256".</summary>
+    [JsonPropertyName("algorithm")]      public string Algorithm { get; init; } = "SHA256";
+    /// <summary>파일별 기대 해시 목록.</summary>
+    [JsonPropertyName("entries")]        public IReadOnlyList<IntegrityManifestEntry> Entries { get; init; } = [];
 }
 ```
-Decision logic (binding contract):
-- Mode `FullAuto` → always `Allow` (SecurityValidator blacklist still applies inside `run_command`).
-- Mode `AutoSafe` → `ReadOnly` auto-`Allow`; `Write`/`Execute`/`Destructive` → consult session AlwaysAllow set, else invoke approval handler.
-- Mode `Manual` (default) → `ReadOnly` still auto-`Allow` (reads are safe & noisy to approve — **Decision: ReadOnly auto-allowed in Manual too**; only Write/Execute/Destructive gate). Everything else → AlwaysAllow set, else handler.
-- AlwaysAllow storage: `HashSet<string>` keyed by **tool name** (session-scoped, in-memory). `PermissionDecision.AlwaysAllow` adds `call.Name` to the set; subsequent same-name calls auto-`Allow`. (Per-argument granularity deferred to Phase 2.)
-- If no handler registered (headless), default `Deny` for gated risks.
 
-### C.5 `IAgentOrchestrator` / `AgentOrchestrator` (the loop)
-Files: `Services/IAgentOrchestrator.cs`, `Services/AgentOrchestrator.cs`.
 ```csharp
-public interface IAgentOrchestrator
-{
-    // Runs one full goal to completion (or Stop). Emits AgentEvent stream to the VM.
-    IAsyncEnumerable<AgentEvent> RunAsync(string userGoal, AgentSession session, CancellationToken ct = default);
-}
+using OhMyAgent.AiAgent.Client.Models;
 
-public sealed class AgentOrchestrator : IAgentOrchestrator
+namespace OhMyAgent.AiAgent.Client.Models;
+
+/// <summary>파일 1건의 검증 결과(매니페스트 기대값 + 디스크 실제값 + 분류).</summary>
+public sealed record FileIntegrityResult
 {
-    public AgentOrchestrator(
-        IAgentApiClient   api,
-        IToolRegistry     tools,
-        IPermissionService permissions,
-        IWorkspaceContext  workspace,
-        ISettingsService   settings);
+    public required string RelativePath { get; init; }
+    public required IntegrityStatus Status { get; init; }
+    /// <summary>매니페스트의 기대 해시. Unexpected면 null.</summary>
+    public string? ExpectedSha256 { get; init; }
+    /// <summary>디스크 실제 해시. Missing/Corrupted면 null.</summary>
+    public string? ActualSha256 { get; init; }
+    /// <summary>디스크 실제 크기(없으면 null).</summary>
+    public long? ActualSize { get; init; }
+    /// <summary>(선택) 서명 상태.</summary>
+    public SignatureStatus Signature { get; init; } = SignatureStatus.NotChecked;
+    /// <summary>오류/부가 설명(예: 파일 잠김, 접근 거부).</summary>
+    public string? Detail { get; init; }
 }
 ```
-**`AgentSession`** (state object the client holds — stateless server). File `Services/AgentSession.cs` (or Models; **Decision: Services** since it is mutable runtime state):
+
 ```csharp
-public sealed class AgentSession
+using System;
+using System.Collections.Generic;
+
+namespace OhMyAgent.AiAgent.Client.Models;
+
+/// <summary>스캔 전체 결과 + 요약 카운트.</summary>
+public sealed record IntegrityScanResult
 {
-    public string Id { get; } = Guid.NewGuid().ToString();
-    public List<AgentMessage> Messages { get; } = new();  // full history incl. system prompt
-    public Usage? LastUsage { get; set; }
-    public static string DefaultSystemPrompt(string workspaceRoot, PermissionMode mode);
+    public required IReadOnlyList<FileIntegrityResult> Files { get; init; }
+    public required DateTimeOffset ScannedUtc { get; init; }
+    public required string TargetDirectory { get; init; }
+    /// <summary>매니페스트 없이 baseline 생성만 했는지 여부(true면 비교 무의미).</summary>
+    public bool IsBaselineOnly { get; init; }
+
+    public int OkCount         { get; init; }
+    public int ModifiedCount   { get; init; }
+    public int CorruptedCount  { get; init; }
+    public int MissingCount    { get; init; }
+    public int UnexpectedCount { get; init; }
+
+    /// <summary>모든 매니페스트 파일이 Ok이고 Unexpected가 없으면 true.</summary>
+    public bool IsIntact =>
+        ModifiedCount == 0 && CorruptedCount == 0 && MissingCount == 0 && UnexpectedCount == 0;
 }
 ```
-Loop algorithm (binding contract for ServiceEngineer, per PLAN §3 + CONTRACT §4):
-1. If session empty, prepend `AgentMessage.System(AgentSession.DefaultSystemPrompt(...))`.
-2. Append `AgentMessage.User(userGoal)`.
-3. `iteration = 0`. Loop while `iteration < settings.Current.MaxIterations` and `!ct.IsCancellationRequested`:
-   a. Emit `AgentIterationAdvanced(iteration+1, max)`.
-   b. Build `AgentRequest(model, stream:true, maxTokens, session.Messages, tools.ToSchemas(), metadata{os:"windows", workspace:workspace.Root, client_version})`.
-   c. `await foreach` `api.SendAsync(req, ct)`:
-      - `ContentDelta` → emit `AgentTextDelta`; accumulate assistant text.
-      - `ToolCallEvent` → collect into a pending list (do NOT execute mid-stream).
-      - `MessageStop` → record `StopReason` + `Usage` (session.LastUsage); break inner loop.
-      - `ErrorEvent` → emit `AgentError`; return.
-   d. Append `AgentMessage.Assistant(accumulatedText, pendingToolCalls)` (pendingToolCalls may be null) to `session.Messages`. Emit `AgentAssistantMessageComplete`.
-   e. If `StopReason != tool_use` (i.e., `end_turn`/`max_tokens`/none) → emit `AgentDone(accumulatedText, lastUsage)`; **return** (loop ends).
-   f. For each pending `ToolCall`:
-      - resolve `ITool` via `tools.TryGet(name)`; if missing → append `AgentMessage.ToolResultMsg(id, "Unknown tool: {name}", isError:true)`, emit `AgentToolCallResult` with error, continue.
-      - `risk = tool.Risk`. Emit `AgentToolCallStarted(id, name, args, risk)`.
-      - `decision = await permissions.RequestAsync(call, risk, ctx, ct)` — before calling, emit `AgentAwaitingApproval` if the decision will block on the UI handler (PermissionService raises that via handler; orchestrator emits `AgentAwaitingApproval` right before awaiting). **Decision: orchestrator emits `AgentAwaitingApproval` whenever risk is gated and mode≠FullAuto, just before awaiting RequestAsync.**
-      - If `Deny` → append `ToolResultMsg(id, "Denied by user", isError:true)`; emit `AgentToolCallResult` error; continue.
-      - Else build `ToolContext(workspace, settings.Current.PermissionMode)`, `result = await tool.ExecuteAsync(args, ctx, ct)`.
-      - Append `AgentMessage.ToolResultMsg(id, result.Content, result.IsError)`; emit `AgentToolCallResult(id, name, result)`.
-   g. `iteration++`; loop back to (a) → resend with appended tool results.
-4. If loop exits on `iteration == max` → emit `AgentError("max_iterations", "최대 반복 횟수에 도달했습니다.")`.
-5. On `OperationCanceledException` → emit `AgentError("cancelled", "사용자가 중지했습니다.")` and stop (do not rethrow out of the enumerable).
 
-### C.6 The 11 MVP tools (each `ITool`)
-Folder: `Services/Tools/`. Each is `sealed class {Name}Tool : ITool`. `ParametersSchema` is a `static readonly JsonElement` parsed once from a JSON Schema string (helper `ToolSchemas.Parse(string json)`). All file-path params go through `ctx.Workspace.ResolvePath(...)`. On exception return `ToolResult.Fail(ex.Message)`.
-
-| Class / file | `Name` | `Risk` | `parameters` (JSON Schema `properties`, `required`) | Behavior |
-|---|---|---|---|---|
-| `RunCommandTool` | `run_command` | `Execute` | `shell`:enum[`powershell`,`cmd`], `command`:string. required:[shell,command] | Map `shell`→`ScriptType`; `SecurityValidator.Validate(command, type)` → if invalid `ToolResult.Fail(reason)`; else `ScriptExecutor.ExecutePowerShell/CmdAsync` with `WorkingDirectory=ctx.Workspace.Root`. Return `ToolResult.Json(new{exit_code,stdout,stderr})`, `IsError = exitCode!=0 || timedOut`. (ScriptExecutor currently lacks a workingDir param — see note ★.) |
-| `ReadFileTool` | `read_file` | `ReadOnly` | `path`:string, `start_line`:int?, `end_line`:int?. required:[path] | Resolve path; read file (UTF-8); optional 1-based inclusive line slice. Return content (cap ~200KB, note truncation). |
-| `WriteFileTool` | `write_file` | `Write` | `path`:string, `content`:string. required:[path,content] | Resolve; create parent dirs; overwrite UTF-8. Return `{path, bytes_written}`. **Replaces AgentActionService.** |
-| `EditFileTool` | `edit_file` | `Write` | `path`:string, `old_string`:string, `new_string`:string, `replace_all`:bool?. required:[path,old_string,new_string] | Resolve; read; require `old_string` unique unless `replace_all`; replace; write. Fail if not found / ambiguous. Return `{path, replacements}`. |
-| `ListDirectoryTool` | `list_directory` | `ReadOnly` | `path`:string?. (default workspace root) | Resolve (root if null); list entries `{name,type:file|dir,size}`. Return JSON array. |
-| `GlobTool` | `glob` | `ReadOnly` | `pattern`:string (e.g. `**/*.cs`), `path`:string?. required:[pattern] | Glob under base (root or path), workspace-bounded. Return `{files:[...]}` (relative paths). |
-| `GrepTool` | `grep` | `ReadOnly` | `pattern`:string (regex), `path`:string?, `glob`:string?, `ignore_case`:bool?. required:[pattern] | Regex search across matching files. Return `{matches:[{file,line,text}]}` (cap N). |
-| `CreateDirectoryTool` | `create_directory` | `Write` | `path`:string. required:[path] | Resolve; `Directory.CreateDirectory`. Return `{path}`. |
-| `MoveTool` | `move` | `Destructive` | `source`:string, `destination`:string, `overwrite`:bool?. required:[source,destination] | Resolve both (must be inside workspace); move file/dir. Return `{source,destination}`. |
-| `CopyTool` | `copy` | `Destructive` | `source`:string, `destination`:string, `overwrite`:bool?. required:[source,destination] | Resolve both; copy file or recursive dir. Return `{source,destination}`. |
-| `DeleteTool` | `delete` | `Destructive` | `path`:string, `recursive`:bool?. required:[path] | Resolve; delete file/dir (recursive if set). Return `{path,deleted:true}`. |
-
-> ★ ScriptExecutor working-directory: current `ExecutePowerShellAsync/ExecuteCmdAsync(script, timeoutMs, ct)` has no working-dir param. **Decision: add an optional `string? workingDirectory = null` parameter** to both methods + `IScriptExecutor` (set `ProcessStartInfo.WorkingDirectory`). This is the only allowed edit to the reused executor in Phase 1; default null preserves existing behavior. `RunCommandTool` passes `ctx.Workspace.Root`.
-
-> JSON Schema authoring: ServiceEngineer writes each `parameters` schema as a const string and parses with `JsonSerializer.Deserialize<JsonElement>(json, AgentJson.Options)`. Example for `run_command`:
-> ```json
-> {"type":"object","properties":{"shell":{"type":"string","enum":["powershell","cmd"]},"command":{"type":"string"}},"required":["shell","command"]}
-> ```
-
-### C.7 Shared JSON options — `Services/AgentJson.cs`
 ```csharp
-public static class AgentJson
+namespace OhMyAgent.AiAgent.Client.Models;
+
+/// <summary>IProgress 페이로드. UI 진행률 바인딩용.</summary>
+public readonly record struct IntegrityProgress
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
+    public int ProcessedFiles { get; init; }
+    public int TotalFiles { get; init; }
+    /// <summary>현재 처리 중 파일 상대경로(상태표시줄용).</summary>
+    public string? CurrentFile { get; init; }
+    /// <summary>0.0~1.0. TotalFiles==0이면 0.</summary>
+    public double Fraction => TotalFiles <= 0 ? 0d : (double)ProcessedFiles / TotalFiles;
+}
+```
+
+```csharp
+using System.Collections.Generic;
+
+namespace OhMyAgent.AiAgent.Client.Models;
+
+/// <summary>스캔 입력 옵션. 기본값 = 설치 디렉토리 + 표준 바이너리 확장자.</summary>
+public sealed record IntegrityScanOptions
+{
+    /// <summary>검사 대상 루트. 기본 AppDomain.CurrentDomain.BaseDirectory.</summary>
+    public required string TargetDirectory { get; init; }
+    /// <summary>대상 확장자(소문자, 점 포함). 기본 [".exe", ".dll"].</summary>
+    public IReadOnlyList<string> IncludeExtensions { get; init; } = [".exe", ".dll"];
+    /// <summary>하위 디렉토리 재귀 포함 여부. 기본 true.</summary>
+    public bool Recursive { get; init; } = true;
+    /// <summary>Authenticode 서명 검사 수행 여부. 기본 false.</summary>
+    public bool VerifySignatures { get; init; }
+    /// <summary>매니페스트 자기 자신 파일은 검사에서 제외(항상 true 권장).</summary>
+    public bool ExcludeManifestFile { get; init; } = true;
+}
+```
+
+> **확장자 정책**: 요구사항이 ".exe/.dll 등"이므로 기본 `.exe/.dll`에 더해 사용자가 옵션으로 확장 가능(예: `.pdb`, `.json`, `.config`는 의도적으로 기본 제외 — 빌드마다 바뀌어 오탐 유발). `IncludeExtensions`가 빈 목록이면 "모든 파일"로 해석한다.
+
+---
+
+## 4. 서비스 인터페이스 계약
+
+```csharp
+using System.Threading;
+using System.Threading.Tasks;
+using OhMyAgent.AiAgent.Client.Models;
+
+namespace OhMyAgent.AiAgent.Client.Services;
+
+/// <summary>
+/// 설치 디렉토리 바이너리 무결성 검사. SHA256 기반.
+/// 매니페스트 영속: {대상 디렉토리}\integrity.manifest.json (기본). 직렬화: AgentJson.Options.
+/// </summary>
+public interface IBinaryIntegrityService
+{
+    /// <summary>현재 앱 설치 디렉토리(AppDomain.CurrentDomain.BaseDirectory)를 반환.</summary>
+    string GetDefaultTargetDirectory();
+
+    /// <summary>
+    /// 대상 디렉토리에 대한 기본 매니페스트 경로를 반환.
+    /// (기본: Path.Combine(targetDirectory, "integrity.manifest.json"))
+    /// </summary>
+    string GetManifestPath(string targetDirectory);
+
+    /// <summary>매니페스트 존재 여부.</summary>
+    bool ManifestExists(string targetDirectory);
+
+    /// <summary>매니페스트 로드. 없거나 손상 시 null.</summary>
+    Task<IntegrityManifest?> LoadManifestAsync(
+        string targetDirectory,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 대상 디렉토리를 스캔해 새 매니페스트를 생성하고 디스크에 원자적 저장(tmp→Move).
+    /// 진행률은 파일별로 보고. 반환값은 baseline-only 결과(모든 파일 Ok로 표기, IsBaselineOnly=true).
+    /// </summary>
+    Task<IntegrityScanResult> GenerateBaselineAsync(
+        IntegrityScanOptions options,
+        IProgress<IntegrityProgress>? progress = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 대상 디렉토리를 매니페스트와 비교 검증.
+    /// manifest가 null이면 GetManifestPath에서 로드 시도; 그래도 없으면 AgentException.
+    /// 파일별 해싱→비교→분류, 진행률 보고, 취소 지원.
+    /// </summary>
+    Task<IntegrityScanResult> VerifyAsync(
+        IntegrityScanOptions options,
+        IntegrityManifest? manifest = null,
+        IProgress<IntegrityProgress>? progress = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 단일 파일의 SHA256(대문자 hex)을 스트리밍 계산. 읽기 실패 시 AgentException.
+    /// (테스트/재계산용 보조 API)
+    /// </summary>
+    Task<string> ComputeSha256Async(
+        string filePath,
+        CancellationToken ct = default);
+}
+```
+
+### 4.1 (선택) 서명 검증 계약
+
+```csharp
+using OhMyAgent.AiAgent.Client.Models;
+
+namespace OhMyAgent.AiAgent.Client.Services;
+
+/// <summary>Authenticode 서명 검증(Windows 전용). 미주입(null)이면 서명 검사 비활성.</summary>
+public interface IAuthenticodeVerifier
+{
+    /// <summary>파일의 Authenticode 서명 신뢰 상태를 반환. 예외 없이 SignatureStatus로 흡수.</summary>
+    SignatureStatus Verify(string filePath);
+}
+```
+
+### 4.2 구현 노트 (BinaryIntegrityService — ServiceEngineer용)
+- **해싱**: `using var sha = SHA256.Create();` + `await sha.ComputeHashAsync(fileStream, ct)`. 스트림은
+  `new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, bufferSize, useAsync:true)`.
+  hex 변환은 `Convert.ToHexString(...)`(대문자) 사용.
+- **열거**: `Directory.EnumerateFiles(root, "*", Recursive ? AllDirectories : TopDirectoryOnly)` 후 확장자 필터. 매니페스트 파일 및 `IncludeExtensions` 필터 적용. 상대경로는 `Path.GetRelativePath(root, full).Replace('\\','/')` 로 정규화.
+- **비교 분류 알고리즘**:
+  1. 디스크 파일 집합 D(상대경로→실파일), 매니페스트 엔트리 집합 M(상대경로→기대해시) 구성. 경로 비교는 `StringComparer.OrdinalIgnoreCase`(Windows).
+  2. `M`의 각 엔트리: 디스크에 없으면 `Missing`. 있으면 해시 계산 → 실패 시 `Corrupted`(Detail에 사유) → 일치 `Ok` / 불일치 `Modified`.
+  3. `D \ M`(매니페스트에 없는 디스크 파일): `Unexpected`.
+  4. 카운트 집계 후 `IntegrityScanResult` 빌드.
+- **진행률**: TotalFiles = (검사 대상 파일 수). 파일 처리마다 `progress?.Report(new IntegrityProgress{...})`. 보고 빈도는 파일당 1회.
+- **취소**: 해싱 루프/`ComputeHashAsync`에 `ct` 전달, 루프 진입마다 `ct.ThrowIfCancellationRequested()`.
+- **무거운 작업**: 기존 컨벤션대로 `await Task.Run(..., ct).ConfigureAwait(false)` 래핑(혹은 `ComputeHashAsync`가 이미 비동기이므로 직접 await + 열거만 Task.Run). 직렬화는 `AgentJson.Options` 재사용.
+- **저장**: `tmp = path + ".tmp"; File.WriteAllText/WriteAllBytes(tmp); File.Move(tmp, path, overwrite:true);` (ChatHistoryService와 동일 원자적 패턴).
+- **예외 정책**: 개별 파일 오류 → `FileIntegrityResult(Corrupted, Detail=메시지)`로 흡수(스캔 중단 금지). 매니페스트 부재/직렬화 치명 오류 → `AgentException`.
+
+---
+
+## 5. ViewModel 명세
+
+### 5.1 `IntegrityViewModel`
+생성자: `IntegrityViewModel(IBinaryIntegrityService integrity)` (서명 검증기는 서비스 내부 주입 사용; VM은 서비스만 의존).
+
+| 속성 (`[ObservableProperty]`) | 타입 | 설명 |
+|---|---|---|
+| `TargetDirectory` | `string` | 검사 대상. 초기값 `integrity.GetDefaultTargetDirectory()`. |
+| `IsScanning` | `bool` | 스캔 진행 중. 커맨드 CanExecute/UI 잠금 제어. |
+| `ProgressFraction` | `double` | 0~1, ProgressBar 바인딩. |
+| `ProgressText` | `string` | "123 / 456 — Foo.dll" 형태 상태 텍스트. |
+| `CurrentFile` | `string?` | 현재 처리 파일. |
+| `StatusMessage` | `string` | 결과/안내 메시지("매니페스트 없음 — 먼저 기준 생성" 등). |
+| `HasManifest` | `bool` | 매니페스트 존재 여부(버튼 활성 제어). |
+| `RecursiveOption` | `bool` | 재귀 검사 옵션(기본 true). |
+| `VerifySignaturesOption` | `bool` | 서명 검사 옵션(기본 false). |
+| `IncludeExtensionsText` | `string` | "exe,dll" 형태 입력(파싱해 옵션 빌드). |
+| `Result` | `IntegrityScanResult?` | 마지막 스캔 결과(요약 바인딩 소스). |
+| `OkCount` / `ModifiedCount` / `CorruptedCount` / `MissingCount` / `UnexpectedCount` | `int` | 요약 카운트(또는 `Result`에서 파생 프로퍼티로 노출). |
+| `IsIntact` | `bool` (파생) | 요약 배지 색상 결정용. |
+
+| 컬렉션 | 타입 | 설명 |
+|---|---|---|
+| `Files` | `ObservableCollection<FileIntegrityItemViewModel>` | 결과 그리드 바인딩(스캔 완료 후 채움). |
+| `StatusFilter` | `IntegrityStatus?` (옵션) | 그리드 필터(전체/변조만/누락만 등). |
+
+| 커맨드 (`[RelayCommand]`) | 시그니처 | CanExecute | 동작 |
+|---|---|---|---|
+| `ScanCommand` | `async Task ScanAsync()` | `!IsScanning && HasManifest` | 옵션 빌드 → `VerifyAsync(opts, null, progress, _cts.Token)` → `Files`/요약 채움. |
+| `GenerateBaselineCommand` | `async Task GenerateBaselineAsync()` | `!IsScanning` | `GenerateBaselineAsync(...)` → 저장 → `HasManifest=true`. (덮어쓰기 확인은 View 측 MessageBox.) |
+| `CancelCommand` | `void Cancel()` | `IsScanning` | `_cts?.Cancel()`. |
+| `BrowseTargetCommand` | `void BrowseTarget()` 또는 View 코드비하인드에서 폴더 다이얼로그 후 `SetTargetDirectory(path)` | `!IsScanning` | 대상 디렉토리 선택(`bin`/`obj` 검사 지원). |
+| `OpenManifestLocationCommand` | `void OpenManifestLocation()` | `HasManifest` | 탐색기로 매니페스트 폴더 열기(선택). |
+
+상태/취소 관리:
+- `private CancellationTokenSource? _cts;` — Scan/Baseline 시작 시 새로 생성, 완료/취소 시 dispose & null.
+- `partial void OnIsScanningChanged(bool v)` 에서 각 커맨드 `NotifyCanExecuteChanged()` 호출.
+- `IProgress<IntegrityProgress>`는 `new Progress<IntegrityProgress>(p => { ProgressFraction=p.Fraction; ProgressText=...; CurrentFile=p.CurrentFile; })`로 UI 스레드 마샬링(생성자에서 UI 스레드에 생성).
+- `OperationCanceledException` catch → `StatusMessage = "검사 취소됨"`. `AgentException`/기타 → `StatusMessage = "오류: {msg}"`.
+- 초기화: `public async Task InitializeAsync()` 에서 `HasManifest = integrity.ManifestExists(TargetDirectory)` 갱신(SettingsViewModel.InitializeAsync 패턴 동일).
+
+### 5.2 `FileIntegrityItemViewModel`
+- 생성자: `FileIntegrityItemViewModel(FileIntegrityResult model)`.
+- 노출 속성(표시 전용, 대부분 읽기전용 getter): `RelativePath`, `Status`, `StatusText`(한글화: 정상/변조/손상/누락/추가), `ExpectedSha256Short`(앞 12자), `ActualSha256Short`, `Detail`, `SignatureText`, `StatusBrushKey`(상태→리소스키 문자열, 컨버터 최소화용).
+- 정렬 우선순위: 문제 항목(Modified/Corrupted/Missing/Unexpected) 우선 → 그 다음 Ok. VM이 정렬해서 컬렉션에 추가.
+
+---
+
+## 6. View(XAML) 구성 요소 개요 — `IntegrityWindow.xaml`
+
+`SettingsWindow.xaml` 스타일을 그대로 차용한다: `WindowStyle=None`, `AllowsTransparency=True`, 커스텀 타이틀바(드래그/닫기 버튼), 공유 StaticResource 테마.
+
+레이아웃(Grid, 위→아래):
+1. **타이틀바** (Row Height=40): 아이콘 + "무결성 검사" 타이틀 + 닫기(✕). `MouseLeftButtonDown`으로 드래그(코드비하인드).
+2. **대상/옵션 영역**:
+   - `TextBox` (TargetDirectory, ReadOnly 권장) + "찾아보기" `Button`(BrowseTarget).
+   - `CheckBox` 재귀(RecursiveOption), `CheckBox` 서명 검사(VerifySignaturesOption).
+   - `TextBox` 확장자(IncludeExtensionsText, placeholder "exe,dll").
+3. **액션 바**: `Button` 검사 시작(ScanCommand), `Button` 기준 생성(GenerateBaselineCommand), `Button` 취소(CancelCommand, IsScanning일 때만 보임).
+4. **진행률**: `ProgressBar` (Value=ProgressFraction, Minimum=0 Maximum=1) + `TextBlock`(ProgressText). `Visibility`는 IsScanning에 바인딩(BoolToVisibility 컨버터).
+5. **요약 배지 영역**: 정상/변조/손상/누락/추가 카운트를 색상 칩으로 표시(IsIntact면 녹색 "무결성 양호", 아니면 적색 경고).
+6. **결과 그리드**: `DataGrid`(또는 `ListView` + GridView) — 컬럼: 상태(색상 점/텍스트), 상대경로, 기대해시(짧게), 실제해시(짧게), 크기, 서명, 비고. `ItemsSource={Binding Files}`, 상태별 행 색상은 `DataTrigger` 또는 `FileIntegrityItemViewModel.StatusBrushKey`.
+7. **상태표시줄**: `TextBlock`(StatusMessage).
+
+코드비하인드(`IntegrityWindow.xaml.cs`)는 최소화: 타이틀바 드래그, 닫기, 폴더 선택 다이얼로그(WPF에 기본 폴더 다이얼로그 없으므로 `System.Windows.Forms.FolderBrowserDialog` 사용 — 프로젝트가 이미 `UseWindowsForms=true`), 그리고 `Loaded`에서 `await vm.InitializeAsync()`.
+
+컨버터: `BoolToVisibilityConverter`(기존 존재 가능, 없으면 `Views/Converters.cs`에 추가), 필요 시 `IntegrityStatusToBrushConverter`. **권장**: 상태 표현은 `FileIntegrityItemViewModel`의 표시 속성으로 처리해 컨버터를 최소화.
+
+---
+
+## 7. App.xaml.cs 수동 DI 등록 안내
+
+`App.OnStartup` 내, 기존 `var chatHistory = new ChatHistoryService();` 부근(9b 블록)에 추가:
+
+```csharp
+// (신규) 바이너리 무결성 검사 서비스
+//  - 서명 검증기는 선택: Windows에서만 실제 구현 주입, 미사용 시 null 전달.
+IAuthenticodeVerifier? authenticode = new AuthenticodeVerifier();   // 선택
+var binaryIntegrity = new BinaryIntegrityService(authenticode);     // 또는 new BinaryIntegrityService()
+```
+
+진입점 노출 방식(택1, UIDesigner/Orchestrator 결정):
+- **(A) 트레이 컨텍스트 메뉴**: `InitializeTrayIcon()`의 "Settings" 항목 패턴을 복제해 "무결성 검사" `ToolStripMenuItem` 추가 →
+  `var vm = new IntegrityViewModel(binaryIntegrity); var win = new IntegrityWindow(vm); win.Show();`
+- **(B) 설정 화면 내 버튼**: SettingsWindow에서 열기.
+
+> `binaryIntegrity`/`authenticode`를 `App`의 필드로 보관(다른 서비스와 동일 패턴)하면 메뉴 핸들러에서 재사용 가능. 필드 추가 위치: 상단 `private I... ?` 필드 블록.
+
+---
+
+## 8. 매니페스트 파일 포맷 (JSON 스키마) 및 저장 위치
+
+### 8.1 저장 위치
+- 기본: `Path.Combine(targetDirectory, "integrity.manifest.json")`.
+  - 즉, 설치 디렉토리 검사 시 설치 폴더 루트에 `integrity.manifest.json`이 놓인다.
+  - 매니페스트 파일 자신은 항상 검사 대상에서 제외(`IntegrityScanOptions.ExcludeManifestFile`).
+- 직렬화기: `System.Text.Json` + `AgentJson.Options`(snake_case, null 생략). (프로젝트 기존 record 직렬화와 일치.)
+
+> **보안 주의(설계 메모)**: 매니페스트를 검사 대상 폴더 내부에 두면 변조자가 매니페스트도 함께 갱신할 수 있다(자기서명 위조). 강한 무결성 보장이 필요하면 후속 단계에서 (a) 매니페스트를 `%APPDATA%\OhMyAgent\integrity\{경로해시}.manifest.json`에 보관, (b) 매니페스트 자체에 서명/HMAC 적용을 고려한다. 본 1차 설계는 "탐지(detection)" 목적이므로 폴더 내 저장을 기본값으로 하되, 위 옵션을 §9/확장 포인트로 남긴다.
+
+### 8.2 JSON 예시
+```json
+{
+  "schema_version": 1,
+  "created_utc": "2026-06-23T12:34:56.0000000+00:00",
+  "root_label": "OhMyAgent.AiAgent.Client (install)",
+  "algorithm": "SHA256",
+  "entries": [
     {
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) },
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+      "relative_path": "OhMyAgent.AiAgent.Client.exe",
+      "sha256": "A1B2C3...64HEX...",
+      "size": 184320
+    },
+    {
+      "relative_path": "CommunityToolkit.Mvvm.dll",
+      "sha256": "9F8E7D...64HEX...",
+      "size": 245760
+    }
+  ]
 }
 ```
 
+### 8.3 스키마 규칙
+- `relative_path`: 매니페스트 위치(=targetDirectory) 기준, 항상 `/` 구분, 대소문자 원본 보존하되 비교는 OrdinalIgnoreCase.
+- `sha256`: 대문자 hex 64자.
+- `size`: 음이 아닌 long.
+- `schema_version` 불일치(미래 버전) → 로드 시 경고 후 재생성 권장(`StatusMessage`).
+
 ---
 
-## PART D — VIEWMODELS LAYER
+## 9. 엣지 케이스
 
-All under `ViewModels/`. CommunityToolkit.Mvvm source generators (`[ObservableProperty]`, `[RelayCommand]`). Namespace `OhMyAgent.AiAgent.Client.ViewModels`.
-
-### D.1 `AgentSessionViewModel` (NEW — replaces MainViewModel)
-File: `ViewModels/AgentSessionViewModel.cs`.
-Constructor:
-```csharp
-public AgentSessionViewModel(
-    IAgentOrchestrator orchestrator,
-    IAgentApiClient    api,
-    IPermissionService permissions,
-    IWorkspaceContext  workspace,
-    ISettingsService   settings);
-```
-At ctor: register the approval handler →
-```csharp
-permissions.SetApprovalHandler((call, risk, ct) => RequestApprovalAsync(call, risk, ct));
-```
-Observable properties:
-| Property | Type | Notes |
+| # | 상황 | 처리 |
 |---|---|---|
-| `InputText` | string | `[NotifyCanExecuteChangedFor(nameof(SendCommand))]` |
-| `IsBusy` | bool | loop running; `[NotifyCanExecuteChangedFor(SendCommand, StopCommand)]` |
-| `IsConnected` | bool | health |
-| `HasError`, `ErrorMessage` | bool/string | |
-| `StatusText` | string | "연결 중..."/"Connected"/"실행 중 ({iteration}/{max})" |
-| `WorkspaceRoot` | string | mirrors settings; display in header |
-| `CurrentPermissionMode` | PermissionMode | bound to a selector; setter calls `settings.UpdatePermissionModeAsync` |
-| `WindowOpacity` | double | preserved from old VM (`OnWindowOpacityChanged` → `UpdateOpacityAsync`) |
-| `PendingApproval` | `ApprovalRequestViewModel?` | non-null while an inline approval card is shown |
-| `LastUsageText` | string | "in:1200 out:80" |
-
-Collections:
-```csharp
-public ObservableCollection<ITranscriptItem> Transcript { get; } = [];
-```
-Commands:
-| Command | Signature | Behavior |
-|---|---|---|
-| `SendCommand` | `async Task SendAsync(CancellationToken)` `CanExecute=CanSend` (`!IsBusy && !blank`) | snapshot InputText; add `UserTurnViewModel`; create CTS; `IsBusy=true`; `await foreach` `orchestrator.RunAsync(goal, _session, _cts.Token)` and project each `AgentEvent` onto the transcript (see D.5); `finally IsBusy=false`. |
-| `StopCommand` | `void Stop()` `CanExecute=IsBusy` | `_cts?.Cancel()`. |
-| `RetryConnectionCommand` | `async Task` | `IsConnected = await api.CheckHealthAsync()`. |
-| `ClearCommand` | `void Clear()` | `Transcript.Clear(); _session = new AgentSession(); permissions.ClearSessionRules();` |
-| `PickWorkspaceCommand` | `void` (raises a request to View for folder dialog) OR handled in Settings | see Part E. |
-
-Approval surfacing (`RequestApprovalAsync`) — binding contract:
-```csharp
-private async Task<PermissionDecision> RequestApprovalAsync(ToolCall call, ToolRisk risk, CancellationToken ct)
-{
-    var vm = new ApprovalRequestViewModel(call.Name, risk, RenderArgs(call.Arguments));
-    PendingApproval = vm;                       // View shows inline approval card bound to PendingApproval
-    try   { return await vm.WaitForDecisionAsync(ct); }   // TaskCompletionSource awaited
-    finally { PendingApproval = null; }
-}
-```
-Must marshal to UI thread (orchestrator runs off-thread). All `Transcript`/property mutations go through `Dispatcher`/`ObservableObject` — ServiceEngineer's orchestrator is thread-free; **ViewModel is responsible for `Application.Current.Dispatcher.Invoke` when projecting events.** (Decision: VM marshals.)
-
-`InitializeAsync()`: seed `WorkspaceRoot`/`CurrentPermissionMode`/`WindowOpacity` from settings; `await RetryConnection`; if connected add a `SystemNoticeViewModel` greeting.
-
-### D.2 Transcript item VMs — `ViewModels/Transcript/`
-```csharp
-public interface ITranscriptItem { }   // marker; DataTemplateSelector keys off concrete type
-
-public sealed partial class UserTurnViewModel    : ObservableObject, ITranscriptItem { public string Text {get;init;} }
-public sealed partial class AssistantTurnViewModel : ObservableObject, ITranscriptItem
-{
-    [ObservableProperty] private string _text = "";      // streamed via AgentTextDelta append
-    [ObservableProperty] private bool _isStreaming = true;
-}
-public sealed partial class SystemNoticeViewModel : ObservableObject, ITranscriptItem { public string Text {get;init;} }
-public sealed partial class ToolCallViewModel : ObservableObject, ITranscriptItem
-{
-    public string CallId { get; init; } = "";
-    public string ToolName { get; init; } = "";
-    public ToolRisk Risk { get; init; }
-    public string ArgsPreview { get; init; } = "";          // pretty JSON
-    [ObservableProperty] private ToolCallStatus _status = ToolCallStatus.Running; // Running|AwaitingApproval|Succeeded|Failed|Denied
-    [ObservableProperty] private string _resultText = "";
-    [ObservableProperty] private bool _isError;
-    [ObservableProperty] private bool _isExpanded;          // collapsible card
-}
-public enum ToolCallStatus { Running, AwaitingApproval, Succeeded, Failed, Denied }
-```
-
-### D.3 `ApprovalRequestViewModel` — `ViewModels/ApprovalRequestViewModel.cs`
-```csharp
-public sealed partial class ApprovalRequestViewModel : ObservableObject
-{
-    public string ToolName { get; }
-    public ToolRisk Risk { get; }
-    public string ArgsPreview { get; }
-    public ApprovalRequestViewModel(string toolName, ToolRisk risk, string argsPreview);
-
-    [RelayCommand] private void Allow();        // sets result Allow
-    [RelayCommand] private void Deny();         // sets result Deny
-    [RelayCommand] private void AlwaysAllow();  // sets result AlwaysAllow
-
-    public Task<PermissionDecision> WaitForDecisionAsync(CancellationToken ct); // TaskCompletionSource
-}
-```
-
-### D.4 Event→Transcript projection (binding contract for ViewModelEngineer)
-In `SendAsync`, switch on each `AgentEvent` (all on Dispatcher):
-- `AgentTextDelta`: ensure a trailing `AssistantTurnViewModel` exists; append to its `Text`.
-- `AgentAssistantMessageComplete`: mark current assistant `IsStreaming=false`.
-- `AgentToolCallStarted`: add a `ToolCallViewModel{Status=Running}`; index by `CallId`.
-- `AgentAwaitingApproval`: set that item's `Status=AwaitingApproval`. (PendingApproval card already shown by handler.)
-- `AgentToolCallResult`: find by `CallId`; set `ResultText=Result.Content`, `IsError=Result.IsError`, `Status = IsError? Failed : Succeeded` (Denied if content=="Denied by user").
-- `AgentIterationAdvanced`: update `StatusText="실행 중 ({i}/{max})"`.
-- `AgentDone`: finalize; `StatusText="완료"`; set `LastUsageText`.
-- `AgentError`: `HasError=true; ErrorMessage=message`; append `SystemNoticeViewModel`.
-
-### D.5 Relationship to `MainViewModel`
-`MainViewModel` is **deleted** (A.5). `AgentSessionViewModel` is the new root VM bound to `MainWindow` and `ChatOnlyWindow`. Keep `WindowOpacity` behavior so the floating-window opacity feature still works. `SettingsViewModel` is extended in Part E. No coexistence — clean replacement.
+| 1 | **매니페스트 없음** | `VerifyAsync`가 로드 실패 → `AgentException`. VM은 catch 후 `StatusMessage="매니페스트 없음 — '기준 생성'을 먼저 실행하세요"`, ScanCommand는 `HasManifest=false`로 비활성. |
+| 2 | **매니페스트 손상(역직렬화 실패)** | `LoadManifestAsync`가 `Debug.WriteLine` 후 null. VM은 "매니페스트 손상 — 재생성 필요" 안내. |
+| 3 | **파일 잠김/사용 중(자기 자신 .exe/.dll 포함)** | `FileShare.Read|Delete`로 열기 시도. 그래도 실패하면 해당 파일 `Corrupted` + `Detail="파일 잠김/읽기 실패"`. 스캔 전체는 계속. (실행 중인 자기 exe/로드된 dll은 보통 공유 읽기 가능.) |
+| 4 | **접근 거부(권한 없음, UnauthorizedAccessException)** | 개별 파일 → `Corrupted`/`Detail="접근 거부"`. 디렉토리 열거 중 접근 거부 → 해당 하위 스킵 + Debug 로그(전체 중단 금지). |
+| 5 | **자기 자신(매니페스트 파일) 검사** | 항상 제외(`ExcludeManifestFile`). |
+| 6 | **대상 디렉토리 없음/경로 오류** | `VerifyAsync`/`GenerateBaselineAsync` 진입 시 `Directory.Exists` 확인 → 없으면 `AgentException("대상 디렉토리 없음")`. |
+| 7 | **빈 디렉토리 / 대상 0개** | `IntegrityScanResult`(빈 Files, 카운트 0), `IsBaselineOnly`/`IsIntact` 적절히. UI는 "검사 대상 없음" 안내. |
+| 8 | **취소 중간** | `OperationCanceledException` 전파 → VM `StatusMessage="검사 취소됨"`, 부분 결과는 폐기(혹은 부분 표시는 비범위). `_cts` dispose. |
+| 9 | **대용량(수천 파일)** | 스트리밍 해싱(`ComputeHashAsync`)으로 메모리 일정. 진행률 보고는 파일당 1회. UI는 가상화 그리드 권장. |
+| 10 | **누락 vs 추가 동시(파일 교체)** | 같은 상대경로면 `Modified`로 분류(누락+추가가 아님). 다른 경로면 각각 Missing/Unexpected. |
+| 11 | **빌드 산출물 검사(obj/bin)** | 기본 확장자 `.exe/.dll`만 비교하므로 `.pdb`/임시파일 오탐 적음. 사용자가 확장자 조정 가능. baseline은 검사 시점 스냅샷이므로 재빌드 후 재생성 필요. |
+| 12 | **서명 검사 실패/예외** | `IAuthenticodeVerifier.Verify`는 예외를 내부 흡수해 `SignatureStatus.Invalid/Unsigned` 반환. 해시 검증 결과를 절대 덮어쓰지 않음(부가 정보). 비주입(null)이면 전부 `NotChecked`. |
+| 13 | **심볼릭 링크/재분석 지점** | 1차 범위: 일반 파일만. 링크 추적으로 인한 무한 루프 방지 위해 `EnumerateFiles` 기본 동작 사용(리파스 포인트 추적 안 함 권장). 깊은 처리 비범위. |
+| 14 | **동시 재진입(스캔 중 재클릭)** | `IsScanning` 가드 + CanExecute로 차단. |
 
 ---
 
-## PART E — VIEWS LAYER (UIDesigner)
+## 10. 의존성 다이어그램
 
-Keep: dark theme (`Resources/*.xaml`), floating `ChatOnlyWindow`, tray, hotkey. Only DataContext type changes (`MainViewModel`→`AgentSessionViewModel`) and new templates/controls.
+```
+IntegrityWindow.xaml (View)
+        │  DataContext
+        ▼
+IntegrityViewModel ──owns──► ObservableCollection<FileIntegrityItemViewModel>
+        │  depends on (ctor inject)
+        ▼
+IBinaryIntegrityService ──(impl)──► BinaryIntegrityService
+                                          │ optional ctor inject
+                                          ▼
+                                   IAuthenticodeVerifier ──► AuthenticodeVerifier
+        │ produces / consumes
+        ▼
+Models: IntegrityManifest, IntegrityManifestEntry, FileIntegrityResult,
+        IntegrityScanResult, IntegrityProgress, IntegrityScanOptions,
+        IntegrityStatus, SignatureStatus
+        │ persisted as
+        ▼
+{targetDirectory}\integrity.manifest.json  (System.Text.Json / AgentJson.Options)
 
-### E.1 `MainWindow.xaml` (MODIFY) — transcript view
-- `DataContext` → `AgentSessionViewModel`; ctor `MainWindow(AgentSessionViewModel vm)`.
-- Transcript `ItemsControl`/`ListBox` bound to `Transcript` with a `TranscriptItemTemplateSelector` (new, `Views/TranscriptItemTemplateSelector.cs`) choosing DataTemplate per item type:
-  - User/Assistant/System bubbles (reuse existing chat bubble styles).
-  - **Tool call card** (collapsible): header = risk badge + tool name + status spinner/checkmark/✗; `Expander`/toggle bound to `IsExpanded` revealing `ArgsPreview` + `ResultText` (monospace). Color by `Risk` (ReadOnly=neutral, Write=amber, Execute=blue, Destructive=red) and by `Status`.
-- Input bar: textbox (`InputText`), **Send** button (`SendCommand`), **Stop** button (`StopCommand`, visible/enabled when `IsBusy`), permission-mode `ComboBox` (`CurrentPermissionMode`), status text (`StatusText`), usage text (`LastUsageText`), workspace path label (`WorkspaceRoot`).
-- **Inline approval card**: a panel bound to `PendingApproval` (visible when non-null via converter), showing tool name + risk + `ArgsPreview` + three buttons (Allow/Deny/AlwaysAllow → the `ApprovalRequestViewModel` commands).
+App.xaml.cs (수동 DI): new AuthenticodeVerifier() → new BinaryIntegrityService(...)
+                       → (메뉴/설정 진입 시) new IntegrityViewModel(...) → new IntegrityWindow(vm)
+```
 
-### E.2 `ChatOnlyWindow.xaml` (MODIFY)
-- Repoint DataContext to `AgentSessionViewModel`; minimal transcript + input + Stop. Keep borderless/floating/opacity behavior.
-
-### E.3 `SettingsWindow.xaml` + `SettingsViewModel` (MODIFY/EXTEND)
-Add controls + VM members:
-- **Workspace directory picker**: textbox + “찾아보기” button (folder dialog via `System.Windows.Forms.FolderBrowserDialog` — WinForms already enabled). Binds `WorkspaceRoot`; persists via `UpdateWorkspaceRootAsync`.
-- **Permission mode** selector (ComboBox of `PermissionMode`): Manual/Auto-Safe/Full-Auto, with Full-Auto risk warning text. Persists via `UpdatePermissionModeAsync`.
-- **Max iterations** numeric (1–100). **Max tokens** numeric.
-- **Server URL** textbox, **Auth scheme** combo (Bearer/ApiKey), **Auth token** password box, **Model id** combo (populated from `GetModelsAsync`, free-text fallback). Persist via `UpdateServerConfigAsync`.
-- Keep existing hotkey + opacity settings UI.
-- Remove any MCP port/enabled UI if present in current SettingsWindow.
-
-### E.4 New converters (`Resources/Converters.xaml` + `Views/Converters.cs`)
-- `ToolRiskToBrushConverter`, `ToolCallStatusToIcon/BrushConverter`, `NullToVisibilityConverter` (for `PendingApproval`), `BoolToVisibility` (likely exists — reuse).
+규칙 준수: View→ViewModel→Service→Model 단방향. Model은 어떤 레이어도 참조하지 않음.
 
 ---
 
-## PART F — APP.XAML.CS WIRING (manual DI, no container)
+## 11. 생성 파일 전체 경로 (후속 에이전트 작업 목록)
 
-Replace `OnStartup` service-construction block (current lines 36–61, 88–90) with this exact construction order. Field changes: remove `_mcpService`; change `_mainVm` type to `AgentSessionViewModel`; add fields for the new services that need lifetime/exit references (most are captured by the orchestrator/VM, so few new fields needed — only keep what `OnExit`/handlers touch).
+**Models**
+- `OhMyAgent.AiAgent.Client/Models/Integrity/IntegrityStatus.cs`
+- `OhMyAgent.AiAgent.Client/Models/Integrity/SignatureStatus.cs` (선택)
+- `OhMyAgent.AiAgent.Client/Models/Integrity/IntegrityManifestEntry.cs`
+- `OhMyAgent.AiAgent.Client/Models/Integrity/IntegrityManifest.cs`
+- `OhMyAgent.AiAgent.Client/Models/Integrity/FileIntegrityResult.cs`
+- `OhMyAgent.AiAgent.Client/Models/Integrity/IntegrityScanResult.cs`
+- `OhMyAgent.AiAgent.Client/Models/Integrity/IntegrityProgress.cs`
+- `OhMyAgent.AiAgent.Client/Models/Integrity/IntegrityScanOptions.cs`
 
-Construction order (dependencies flow downward):
-```
-1.  _settingsService = new SettingsService();  await LoadAsync();          // first: everything reads it
-2.  _httpClient = new HttpClient { BaseAddress = Uri(settings.ServerBaseUrl), Timeout = Infinite };
-3.  var workspace   = new WorkspaceContext(_settingsService);              // C.3
-4.  var scriptExec  = new ScriptExecutor();                                // reused
-5.  var tools = new ITool[] {                                             // C.6, order = display order
-        new RunCommandTool(scriptExec),
-        new ReadFileTool(),  new WriteFileTool(), new EditFileTool(),
-        new ListDirectoryTool(), new GlobTool(), new GrepTool(),
-        new CreateDirectoryTool(),
-        new MoveTool(), new CopyTool(), new DeleteTool() };
-6.  var registry    = new ToolRegistry(tools);                             // C.2
-7.  var permissions = new PermissionService(_settingsService);            // C.4
-8.  var api         = new AgentApiClient(_httpClient, _settingsService);  // C.1
-9.  var orchestrator= new AgentOrchestrator(api, registry, permissions, workspace, _settingsService); // C.5
-10. _mainVm = new AgentSessionViewModel(orchestrator, api, permissions, workspace, _settingsService); // D.1
-11. _mainWindow = new MainWindow(_mainVm); MainWindow = _mainWindow;
-12. InitializeTrayIcon(); _trayNotification = new TrayNotificationService(_trayIcon!);
-13. _windowCoordinator = new ChatWindowCoordinator(() => _mainWindow!, () => _mainVm!, _trayNotification);  // generic now AgentSessionViewModel
-14. _globalHotkey = new GlobalHotkeyService(); + HotkeyPressed wiring (UNCHANGED, lines 74–83)
-15. _settingsService.SettingsChanged += (_, s) => { workspace.SetRoot(s.WorkspaceRoot);  // keep workspace in sync
-                                                    _globalHotkey!.Unregister(); _globalHotkey.Register(s.Hotkey); };
-16. _mainWindow.Show();  _ = _mainVm.InitializeAsync();
-```
-Notes:
-- Tools are stateless singletons; `RunCommandTool` is the only one needing a dependency (`scriptExec`).
-- `OnExit`: drop MCP block; keep `_globalHotkey?.Dispose(); _trayIcon?.Dispose(); _httpClient?.Dispose();`. Make non-async.
-- `SettingsWindow` creation in tray menu (lines 146–154) unchanged except `SettingsViewModel` ctor may now need `IAgentApiClient` for `GetModelsAsync` — **Decision: pass `api`** → store `api` in an `App` field `_api` and use it when building `SettingsViewModel`. So add field `private IAgentApiClient? _api;` and assign at step 8.
+**Services**
+- `OhMyAgent.AiAgent.Client/Services/IBinaryIntegrityService.cs`
+- `OhMyAgent.AiAgent.Client/Services/BinaryIntegrityService.cs`
+- `OhMyAgent.AiAgent.Client/Services/IAuthenticodeVerifier.cs` (선택)
+- `OhMyAgent.AiAgent.Client/Services/AuthenticodeVerifier.cs` (선택)
+
+**ViewModels**
+- `OhMyAgent.AiAgent.Client/ViewModels/IntegrityViewModel.cs`
+- `OhMyAgent.AiAgent.Client/ViewModels/FileIntegrityItemViewModel.cs`
+
+**Views**
+- `OhMyAgent.AiAgent.Client/Views/IntegrityWindow.xaml`
+- `OhMyAgent.AiAgent.Client/Views/IntegrityWindow.xaml.cs`
+- (필요 시) `OhMyAgent.AiAgent.Client/Views/Converters.cs` 에 컨버터 추가
+
+**수정**
+- `OhMyAgent.AiAgent.Client/App.xaml.cs` — 서비스 수동 등록 + 진입점(트레이 메뉴 또는 설정 버튼).
+
+> 네임스페이스: Models 하위 폴더 `Integrity`를 쓰더라도 네임스페이스는 프로젝트 컨벤션상 `OhMyAgent.AiAgent.Client.Models`로 유지(기존 `Models/Agent/AgentEnums.cs`가 폴더와 무관하게 `.Models` 사용하는 패턴과 동일).
 
 ---
 
-## PART G — FULL FILE MANIFEST
+## 12. 구현 제외 범위 (이번 설계에서 다루지 않음)
 
-### DELETE (12)
-```
-Services/AgentActionService.cs
-Services/IAgentActionService.cs
-Services/McpSseServer.cs
-Services/IMcpSseServer.cs
-Services/McpRemoteAgentService.cs
-Services/IRemoteAgentService.cs
-Services/ChatService.cs
-Services/IChatService.cs
-Models/Mcp/McpRequest.cs
-Models/Mcp/McpResponse.cs
-Models/Mcp/McpError.cs
-Models/Mcp/McpTool.cs
-ViewModels/MainViewModel.cs
-```
-(13 entries — count includes MainViewModel.cs.)
-
-### MODIFY
-```
-OhMyAgent.AiAgent.Client.csproj          (remove SemanticKernel)
-App.xaml.cs                              (DI rewrite, remove MCP/Action refs, OnExit)
-Models/AppSettings.cs                    (drop McpPort/McpEnabled; add Phase 1 fields; SchemaVersion=3)
-Services/SettingsService.cs              (v2->v3 migration; new updaters)
-Services/ISettingsService.cs             (new updater signatures)
-Services/ScriptExecutor.cs               (add optional workingDirectory param)
-Services/IScriptExecutor.cs              (add optional workingDirectory param)
-MainWindow.xaml / MainWindow.xaml.cs     (transcript view; ctor type AgentSessionViewModel)
-Views/ChatOnlyWindow.xaml / .xaml.cs     (DataContext type)
-Views/SettingsWindow.xaml / .xaml.cs     (workspace/permission/server settings)
-ViewModels/SettingsViewModel.cs          (new settings members + GetModelsAsync)
-Services/ChatWindowCoordinator.cs / IChatWindowCoordinator.cs (generic VM type -> AgentSessionViewModel)
-Resources/Converters.xaml                (new converters)
-Views/Converters.cs                      (new converter classes)
-```
-
-### CREATE
-```
-Models/Agent/AgentEnums.cs               (MessageRole, ToolRisk, PermissionMode, PermissionDecision, StopReason)
-Models/Agent/AgentMessage.cs
-Models/Agent/ToolCall.cs
-Models/Agent/ToolSchema.cs
-Models/Agent/RequestMetadata.cs
-Models/Agent/AgentRequest.cs
-Models/Agent/Usage.cs
-Models/Agent/ModelInfo.cs
-Models/Agent/AgentStreamEvent.cs         (MessageStart/ContentDelta/ToolCallEvent/MessageStop/ErrorEvent)
-Models/Agent/AgentEvent.cs               (orchestrator UI events)
-Models/Agent/ToolResult.cs
-
-Services/AgentJson.cs                    (shared JsonSerializerOptions)
-Services/IAgentApiClient.cs
-Services/AgentApiClient.cs
-Services/ITool.cs
-Services/IToolRegistry.cs
-Services/ToolRegistry.cs
-Services/ToolContext.cs
-Services/IWorkspaceContext.cs
-Services/WorkspaceContext.cs
-Services/IPermissionService.cs
-Services/PermissionService.cs
-Services/IAgentOrchestrator.cs
-Services/AgentOrchestrator.cs
-Services/AgentSession.cs
-Services/Tools/RunCommandTool.cs
-Services/Tools/ReadFileTool.cs
-Services/Tools/WriteFileTool.cs
-Services/Tools/EditFileTool.cs
-Services/Tools/ListDirectoryTool.cs
-Services/Tools/GlobTool.cs
-Services/Tools/GrepTool.cs
-Services/Tools/CreateDirectoryTool.cs
-Services/Tools/MoveTool.cs
-Services/Tools/CopyTool.cs
-Services/Tools/DeleteTool.cs
-Services/Tools/ToolSchemas.cs            (JSON-schema parse helper + shared schema strings)
-
-ViewModels/AgentSessionViewModel.cs
-ViewModels/ApprovalRequestViewModel.cs
-ViewModels/Transcript/ITranscriptItem.cs
-ViewModels/Transcript/UserTurnViewModel.cs
-ViewModels/Transcript/AssistantTurnViewModel.cs
-ViewModels/Transcript/SystemNoticeViewModel.cs
-ViewModels/Transcript/ToolCallViewModel.cs   (+ ToolCallStatus enum)
-
-Views/TranscriptItemTemplateSelector.cs
-Views/Controls/ToolCallCard.xaml (+ .cs)     (optional UserControl; may instead be a DataTemplate)
-Views/Controls/ApprovalCard.xaml (+ .cs)     (optional; may be DataTemplate)
-```
+- 매니페스트 자체의 디지털 서명/HMAC 보호(자기위조 방지) — §8.1 보안 메모로만 남김.
+- 매니페스트를 `%APPDATA%`로 옮기는 대안 저장 위치(확장 포인트).
+- 자동 복구/재다운로드/롤백 (탐지만, 복구 없음).
+- 실시간 파일 감시(FileSystemWatcher 기반 상시 모니터링).
+- 증분/델타 검증 캐시(매 실행 전량 해싱).
+- 비-Windows 플랫폼(net10.0-windows 전용).
+- 멀티 해시 알고리즘 선택 UI(SHA256 고정; `algorithm` 필드는 미래 대비 메타만).
+- 심볼릭 링크/정션 깊은 추적.
 
 ---
 
-## 의존성 다이어그램
+## 13. 엔지니어 분배 요약
 
-```
-View (MainWindow / ChatOnlyWindow / SettingsWindow)
-   │  binds
-   ▼
-AgentSessionViewModel ── PendingApproval ──> ApprovalRequestViewModel
-   │  uses                                         ▲ (decision)
-   ▼                                               │ SetApprovalHandler
-IAgentOrchestrator ──> IAgentApiClient ──HTTP/SSE──> 사내 AI 서버
-   │   │   │                                        /api/v1/agent/chat
-   │   │   └─> IPermissionService ──> ISettingsService (PermissionMode)
-   │   └─────> IToolRegistry ──> ITool[11]
-   │                              └ RunCommandTool ──> ScriptExecutor + SecurityValidator (reused)
-   │                              └ file tools ──────> IWorkspaceContext.ResolvePath (sandbox)
-   └─────────> IWorkspaceContext ──> ISettingsService (WorkspaceRoot)
-
-Models (pure data): AgentMessage/Request/ToolCall/ToolSchema/ToolResult/Usage/ModelInfo/
-                    AgentStreamEvent*/AgentEvent*/enums   — depend on nothing
-```
-
----
-
-## 구현 제외 범위 (Phase 1에서 다루지 않음)
-- 감사 로그(audit log) 파일 기록 — Phase 2.
-- SecurityValidator 확장(전 도구 대상 위험 차단 규칙) — Phase 1은 `run_command`에만 기존 검증 적용.
-- 토큰/시간 예산 제한 — Phase 1은 MaxIterations 캡만.
-- 세션 영속화/복원, TODO·계획 패널 — Phase 3.
-- 2차 도구(screenshot/ui_automation/process/registry/http_fetch/clipboard/env) — Phase 4.
-- `stream:false` 폴백 경로 — 선택, Phase 1 필수 아님(서버는 SSE 우선).
-- 인증 방식 확정(mTLS 등) — 서버팀 협의 대기; 클라이언트는 Bearer/ApiKey 둘 다 지원하도록만 구현.
-- 영구(persistent) AlwaysAllow 규칙, 인자 단위 권한 — Phase 2(현재는 세션·도구명 단위).
-
-## 가정 사항 (Assumptions)
-1. Server endpoints are exactly `/api/v1/health`, `/api/v1/models`, `/api/v1/agent/chat` per API_CONTRACT.
-2. `ParametersSchema`/`JsonSchema` realized as `System.Text.Json.JsonElement` (no external JSON Schema lib).
-3. New agent wire DTOs use System.Text.Json; legacy settings persistence keeps Newtonsoft.
-4. ReadOnly tools are auto-approved even in Manual mode (reads are safe); only Write/Execute/Destructive gate.
-5. `MainViewModel`/`ChatService`/`IChatService` fully retired (clean replacement, no coexistence).
-6. `ScriptExecutor` gains one optional `workingDirectory` param — the sole permitted change to reused executor.
+| 에이전트 | 담당 |
+|---|---|
+| ServiceEngineer | §3 모델 8종 + §4 `IBinaryIntegrityService`/`BinaryIntegrityService`(+선택 Authenticode). §4.2 구현 노트 준수. |
+| ViewModelEngineer | §5 `IntegrityViewModel`, `FileIntegrityItemViewModel`. 진행률 마샬링/취소/CanExecute. |
+| UIDesigner | §6 `IntegrityWindow.xaml(.cs)` + 컨버터. SettingsWindow 테마 차용. |
+| (Orchestrator) | §7 App.xaml.cs 수동 등록 + 진입점, §11 파일 생성 조율. |
+| QAReviewer | MVVM 단방향/바인딩 정합/취소·진행률·null 안전성/원자적 저장 검증. |
