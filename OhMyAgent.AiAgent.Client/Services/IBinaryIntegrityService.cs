@@ -10,6 +10,12 @@ namespace OhMyAgent.AiAgent.Client.Services;
 /// 매니페스트 영속: %APPDATA%\OhMyAgent.AiAgent.Client\integrity\&lt;key&gt;.manifest.json.
 /// 매니페스트를 검사 대상 폴더 밖(사용자 프로필)에 두어 바이너리+매니페스트 동시 재생성 자기위조를 방지.
 /// &lt;key&gt;는 대상 절대경로를 정규화한 뒤의 SHA256 해시에서 파생. 직렬화: AgentJson.Options.
+///
+/// 매니페스트 자체의 변조 탐지를 위해 HMAC-SHA256 서명을 부여한다. 서명 대상은 서명 관련 필드를
+/// 제외한 매니페스트의 정규(canonical) 직렬화 바이트(Entries는 RelativePath OrdinalIgnoreCase 정렬).
+/// 서명 키는 앱 내장 비밀을 머신/유저 식별자와 결합해 파생하므로, 매니페스트 파일 단독 변조에 대한
+/// tamper-evidence를 제공한다(동일 권한 공격자가 바이너리를 리버스해 키를 추출하면 위조 가능 — 한계).
+/// 서명 부재(구버전) 또는 불일치 매니페스트는 검증 실패로 간주하며 '기준 생성'으로 재생성해야 한다.
 /// </summary>
 public interface IBinaryIntegrityService
 {
@@ -26,7 +32,10 @@ public interface IBinaryIntegrityService
     /// <summary>매니페스트 존재 여부.</summary>
     bool ManifestExists(string targetDirectory);
 
-    /// <summary>매니페스트 로드. 없거나 손상 시 null.</summary>
+    /// <summary>
+    /// 매니페스트 로드. 없거나 손상, 또는 HMAC 서명 부재/불일치(변조 의심) 시 null.
+    /// (서명 실패도 손상으로 간주해 null 반환 — 재생성 유도.)
+    /// </summary>
     Task<IntegrityManifest?> LoadManifestAsync(
         string targetDirectory,
         CancellationToken ct = default);
@@ -42,7 +51,9 @@ public interface IBinaryIntegrityService
 
     /// <summary>
     /// 대상 디렉토리를 매니페스트와 비교 검증.
-    /// manifest가 null이면 GetManifestPath에서 로드 시도; 그래도 없으면 AgentException.
+    /// manifest가 null이면 GetManifestPath에서 로드 시도; 부재/손상이면 "매니페스트 없음" AgentException,
+    /// HMAC 서명 검증 실패(부재 포함)면 "매니페스트 서명 검증 실패 — 변조 가능성" AgentException(부재와 구분).
+    /// 호출자가 manifest를 직접 전달한 경우 서명 검증은 수행하지 않는다(이미 신뢰된 객체로 간주).
     /// 파일별 해싱→비교→분류, 진행률 보고, 취소 지원.
     /// </summary>
     Task<IntegrityScanResult> VerifyAsync(

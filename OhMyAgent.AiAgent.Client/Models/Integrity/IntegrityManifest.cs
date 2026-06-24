@@ -20,4 +20,17 @@ public sealed record IntegrityManifest
     [JsonPropertyName("algorithm")]      public string Algorithm { get; init; } = "SHA256";
     /// <summary>파일별 기대 해시 목록.</summary>
     [JsonPropertyName("entries")]        public IReadOnlyList<IntegrityManifestEntry> Entries { get; init; } = [];
+
+    /// <summary>
+    /// 매니페스트 변조 탐지용 HMAC-SHA256 서명(Base64). 서명 대상은 이 필드들
+    /// (Signature/SignatureAlgorithm/SignatureKeyVersion)을 null로 둔 사본의 정규(canonical) 직렬화 바이트.
+    /// 구버전(서명 부재) 매니페스트에서는 null.
+    /// </summary>
+    [JsonPropertyName("signature")]            public string? Signature { get; init; }
+
+    /// <summary>서명 알고리즘 식별자. 현재 "HMACSHA256".</summary>
+    [JsonPropertyName("signature_algorithm")]  public string? SignatureAlgorithm { get; init; }
+
+    /// <summary>서명 키 버전(키 로테이션 대비). 현재 1.</summary>
+    [JsonPropertyName("signature_key_version")] public int? SignatureKeyVersion { get; init; }
 }

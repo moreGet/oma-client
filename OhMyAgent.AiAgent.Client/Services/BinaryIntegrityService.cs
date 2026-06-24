@@ -42,6 +42,21 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
 
     private const int StreamBufferSize = 81920; // 80KB. 스트리밍 해싱 버퍼.
 
+    /// <summary>현재 서명 알고리즘 식별자.</summary>
+    private const string SignatureAlgorithmId = "HMACSHA256";
+
+    /// <summary>현재 서명 키 버전(키 로테이션 대비). 키 파생 솔트와 함께 사용.</summary>
+    private const int CurrentSignatureKeyVersion = 1;
+
+    // --- HMAC 서명 키 베이스(앱 내장 비밀) ----------------------------------
+    // 의도적으로 여러 조각으로 분산해 단순 문자열 스캔으로 추출하기 어렵게 한다.
+    // 위협모델 한계: 동일 사용자 권한 공격자가 바이너리를 리버스해 이 값과 파생 로직을
+    // 복원하면 매니페스트를 위조할 수 있다. HMAC은 "매니페스트 파일 단독 변조"에 대한
+    // tamper-evidence(변조 탐지)만 제공한다.
+    private static readonly byte[] SecretA = [0x4F, 0x68, 0x4D, 0x79, 0x41, 0x67, 0x65, 0x6E, 0x74];
+    private static readonly byte[] SecretB = [0x49, 0x6E, 0x74, 0x65, 0x67, 0x72, 0x69, 0x74, 0x79];
+    private static readonly byte[] SecretC = [0xA7, 0x3C, 0x91, 0x5E, 0x02, 0xD4, 0x88, 0x1B, 0x6F, 0xC0, 0x29, 0x7A];
+
     private readonly IAuthenticodeVerifier? _authenticode;
 
     public BinaryIntegrityService(IAuthenticodeVerifier? authenticode = null)
@@ -126,29 +141,71 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
         return File.Exists(GetManifestPath(targetDirectory));
     }
 
+    /// <summary>매니페스트 로드 결과 분류(서명 검증 결과 구분용 내부 표현).</summary>
+    private enum ManifestLoadStatus
+    {
+        /// <summary>파일이 존재하지 않음.</summary>
+        Absent,
+        /// <summary>파일 읽기/역직렬화 실패(손상).</summary>
+        Corrupted,
+        /// <summary>로드는 성공했으나 HMAC 서명 부재/불일치(변조 의심).</summary>
+        SignatureFailed,
+        /// <summary>로드 및 서명 검증 모두 성공.</summary>
+        Valid
+    }
+
     /// <inheritdoc />
     public async Task<IntegrityManifest?> LoadManifestAsync(
         string targetDirectory,
         CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetDirectory);
+
+        var (status, manifest) = await LoadManifestCoreAsync(targetDirectory, ct).ConfigureAwait(false);
+
+        // 기존 계약 유지: 없음/손상/서명실패 모두 null 반환(재생성 유도). 서명실패는 손상으로 간주.
+        return status == ManifestLoadStatus.Valid ? manifest : null;
+    }
+
+    /// <summary>
+    /// 매니페스트를 로드하고 HMAC 서명까지 검증해 상태를 분류한다.
+    /// 부재/손상/서명실패/정상을 구분 가능한 형태로 반환(공개 계약과 무관한 내부 헬퍼).
+    /// </summary>
+    private async Task<(ManifestLoadStatus Status, IntegrityManifest? Manifest)> LoadManifestCoreAsync(
+        string targetDirectory,
+        CancellationToken ct)
+    {
         var path = GetManifestPath(targetDirectory);
 
         return await Task.Run(() =>
         {
             if (!File.Exists(path))
-                return null;
+                return (ManifestLoadStatus.Absent, (IntegrityManifest?)null);
+
+            IntegrityManifest? manifest;
             try
             {
                 var json = File.ReadAllText(path);
-                return JsonSerializer.Deserialize<IntegrityManifest>(json, AgentJson.Options);
+                manifest = JsonSerializer.Deserialize<IntegrityManifest>(json, AgentJson.Options);
             }
             catch (Exception ex)
             {
-                // 손상 매니페스트는 건너뛰고 null 반환(재생성 유도).
+                // 손상 매니페스트는 건너뛰고 손상으로 분류(재생성 유도).
                 Debug.WriteLine($"[BinaryIntegrityService] LoadManifestAsync failed for '{path}': {ex.Message}");
-                return null;
+                return (ManifestLoadStatus.Corrupted, (IntegrityManifest?)null);
             }
+
+            if (manifest is null)
+                return (ManifestLoadStatus.Corrupted, (IntegrityManifest?)null);
+
+            if (!VerifyManifestSignature(manifest))
+            {
+                // 서명 부재(구버전) 또는 불일치 = 변조 의심. 손상과 구분되는 분류로 반환.
+                Debug.WriteLine($"[BinaryIntegrityService] manifest signature verification failed for '{path}'.");
+                return (ManifestLoadStatus.SignatureFailed, manifest);
+            }
+
+            return (ManifestLoadStatus.Valid, manifest);
         }, ct).ConfigureAwait(false);
     }
 
@@ -228,8 +285,19 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
             CreatedUtc    = DateTimeOffset.UtcNow,
             RootLabel     = TryGetRootLabel(root),
             Algorithm     = "SHA256",
-            Entries       = entries
+            // Entries는 결정적 직렬화를 위해 RelativePath 정렬 적용(서명 대상과 동일 순서).
+            Entries       = SortEntries(entries)
         };
+
+        // HMAC-SHA256 서명 부여: canonical 바이트(서명 필드 null)에 대해 계산 후 채워 저장.
+        var signature = ComputeManifestSignature(manifest, CurrentSignatureKeyVersion);
+        manifest = manifest with
+        {
+            Signature           = signature,
+            SignatureAlgorithm  = SignatureAlgorithmId,
+            SignatureKeyVersion = CurrentSignatureKeyVersion
+        };
+
         await SaveManifestAsync(manifestPath, manifest, ct).ConfigureAwait(false);
 
         return BuildResult(results, root, isBaselineOnly: true);
@@ -247,9 +315,23 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
             throw new AgentException($"대상 디렉토리 없음: {root}");
 
-        manifest ??= await LoadManifestAsync(root, ct).ConfigureAwait(false);
         if (manifest is null)
-            throw new AgentException("매니페스트 없음 — '기준 생성'을 먼저 실행하세요.");
+        {
+            // 직접 로드+서명검증 수행: 부재와 서명실패를 구분해 서명실패가 "매니페스트 없음"으로 묻히지 않게 한다.
+            var (status, loaded) = await LoadManifestCoreAsync(root, ct).ConfigureAwait(false);
+            switch (status)
+            {
+                case ManifestLoadStatus.Valid:
+                    manifest = loaded;
+                    break;
+                case ManifestLoadStatus.SignatureFailed:
+                    throw new AgentException("매니페스트 서명 검증 실패 — 변조 가능성. '기준 생성'으로 재생성하세요.");
+                case ManifestLoadStatus.Corrupted:
+                case ManifestLoadStatus.Absent:
+                default:
+                    throw new AgentException("매니페스트 없음 — '기준 생성'을 먼저 실행하세요.");
+            }
+        }
 
         var manifestPath = GetManifestPath(root);
 
@@ -512,6 +594,108 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
         IOException                 => "파일 잠김/읽기 실패",
         _                           => ex.Message
     };
+
+    // --- HMAC 서명 ---------------------------------------------------------
+
+    /// <summary>
+    /// 매니페스트의 HMAC-SHA256 서명(Base64)을 계산한다.
+    /// 서명 대상(canonical)은 Signature/SignatureAlgorithm/SignatureKeyVersion 필드를 null로 둔 사본을
+    /// AgentJson.Options로 직렬화한 UTF-8 바이트(서명 필드는 WhenWritingNull로 출력에서 생략됨).
+    /// Entries는 RelativePath OrdinalIgnoreCase 정렬로 결정성 보장.
+    /// </summary>
+    private static string ComputeManifestSignature(IntegrityManifest manifest, int keyVersion)
+    {
+        var canonicalManifest = manifest with
+        {
+            Entries            = SortEntries(manifest.Entries),
+            Signature          = null,
+            SignatureAlgorithm = null,
+            SignatureKeyVersion = null
+        };
+
+        var json  = JsonSerializer.Serialize(canonicalManifest, AgentJson.Options);
+        var bytes = Encoding.UTF8.GetBytes(json);
+
+        var key = GetSigningKey(keyVersion);
+        var mac = HMACSHA256.HashData(key, bytes);
+        return Convert.ToBase64String(mac);
+    }
+
+    /// <summary>
+    /// Entries를 RelativePath OrdinalIgnoreCase 기준으로 정렬한 새 목록 반환.
+    /// 저장·검증 양쪽에서 동일 적용해 직렬화 결정성을 보장.
+    /// </summary>
+    private static IReadOnlyList<IntegrityManifestEntry> SortEntries(IReadOnlyList<IntegrityManifestEntry> entries)
+    {
+        var sorted = entries.ToList();
+        sorted.Sort(static (a, b) => string.Compare(a.RelativePath, b.RelativePath, StringComparison.OrdinalIgnoreCase));
+        return sorted;
+    }
+
+    /// <summary>
+    /// 서명 키를 파생한다. 내장 비밀(SecretA/B/C) + 키버전 솔트 + 머신/유저 식별자를
+    /// 결합해 HMACSHA256으로 파생하여, 매니페스트만으로 재서명을 어렵게 한다.
+    /// 머신/유저 식별자가 환경에서 안정적으로 얻어지지 않으면 내장 비밀만으로 폴백
+    /// (1차 목표인 파일 단독 변조 탐지는 유지). DPAPI 등 추가 의존은 도입하지 않음.
+    /// </summary>
+    private static byte[] GetSigningKey(int keyVersion)
+    {
+        // 내장 비밀 결합(베이스 키 재료).
+        var baseMaterial = new byte[SecretA.Length + SecretB.Length + SecretC.Length + 4];
+        var offset = 0;
+        Buffer.BlockCopy(SecretA, 0, baseMaterial, offset, SecretA.Length); offset += SecretA.Length;
+        Buffer.BlockCopy(SecretB, 0, baseMaterial, offset, SecretB.Length); offset += SecretB.Length;
+        Buffer.BlockCopy(SecretC, 0, baseMaterial, offset, SecretC.Length); offset += SecretC.Length;
+        // 키버전을 솔트로 혼입.
+        BitConverter.GetBytes(keyVersion).CopyTo(baseMaterial, offset);
+
+        // 머신/유저 식별자 — 매니페스트만 옮겨선 재서명 어렵게. 실패 시 빈 식별자(폴백).
+        var identity = SafeMachineUserIdentity();
+
+        // 내장 비밀을 키로, 식별자를 데이터로 HMAC → 머신/유저 바인딩된 파생 키.
+        return HMACSHA256.HashData(baseMaterial, Encoding.UTF8.GetBytes(identity));
+    }
+
+    /// <summary>머신명+유저명 기반의 안정적 식별 문자열. 얻기 실패 시 빈 문자열.</summary>
+    private static string SafeMachineUserIdentity()
+    {
+        try
+        {
+            var machine = Environment.MachineName ?? string.Empty;
+            var user    = Environment.UserName ?? string.Empty;
+            return $"{machine}{user}".ToLowerInvariant();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[BinaryIntegrityService] machine/user identity unavailable: {ex.Message}");
+            return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// 매니페스트 서명을 재계산해 상수시간 비교로 검증.
+    /// 서명 부재(구버전) 또는 불일치 시 false(=변조 의심).
+    /// </summary>
+    private static bool VerifyManifestSignature(IntegrityManifest manifest)
+    {
+        if (string.IsNullOrEmpty(manifest.Signature))
+            return false; // 서명 부재 = 하위호환 비대상, 검증 실패로 간주(재생성 유도).
+
+        byte[] provided;
+        try
+        {
+            provided = Convert.FromBase64String(manifest.Signature);
+        }
+        catch (FormatException)
+        {
+            return false; // 손상된 서명 형식 = 변조 의심.
+        }
+
+        var keyVersion = manifest.SignatureKeyVersion ?? CurrentSignatureKeyVersion;
+        var expected   = Convert.FromBase64String(ComputeManifestSignature(manifest, keyVersion));
+
+        return CryptographicOperations.FixedTimeEquals(provided, expected);
+    }
 
     private async Task SaveManifestAsync(string path, IntegrityManifest manifest, CancellationToken ct)
     {
