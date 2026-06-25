@@ -49,6 +49,13 @@ public partial class SettingsWindow : Window
             vm.AuthToken = AuthTokenBox.Password;
     }
 
+    // Login PasswordBox is not bindable — push the value into the VM on change.
+    private void LoginPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+            vm.Password = LoginPasswordBox.Password;
+    }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)

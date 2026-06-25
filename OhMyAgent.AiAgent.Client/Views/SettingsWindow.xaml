@@ -223,33 +223,95 @@
                          Margin="0,0,0,10"
                          VerticalContentAlignment="Center"/>
 
+                <!-- ════ 로그인 (JWT) ═════════════════════════════ -->
                 <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="12"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="인증 방식"
+                        <TextBlock Text="사용자 ID"
                                    Foreground="{StaticResource TextSecondary}"
                                    FontSize="11"
                                    Margin="0,0,0,4"/>
-                        <ComboBox ItemsSource="{Binding AuthSchemes}"
-                                  SelectedItem="{Binding AuthScheme, Mode=TwoWay}"
-                                  MinWidth="120"/>
+                        <TextBox Style="{StaticResource DarkTextBox}"
+                                 Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                                 FontSize="13"
+                                 MinHeight="36"
+                                 VerticalContentAlignment="Center"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="인증 토큰"
+                        <TextBlock Text="비밀번호"
                                    Foreground="{StaticResource TextSecondary}"
                                    FontSize="11"
                                    Margin="0,0,0,4"/>
-                        <PasswordBox x:Name="AuthTokenBox"
-                                     PasswordChanged="AuthTokenBox_PasswordChanged"
+                        <PasswordBox x:Name="LoginPasswordBox"
+                                     PasswordChanged="LoginPasswordBox_PasswordChanged"
                                      Style="{StaticResource DarkPasswordBox}"
                                      FontSize="13"
                                      MinHeight="36"/>
                     </StackPanel>
                 </Grid>
+
+                <!-- 로그인 상태 + 버튼 -->
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Fill" Value="{StaticResource TextMuted}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsLoggedIn}" Value="True">
+                                            <Setter Property="Fill" Value="{StaticResource ConnectedDot}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <TextBlock Text="{Binding LoginStatus}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsLoggedIn}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource ConnectedDot}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <Button Grid.Column="1"
+                            Content="로그인"
+                            Command="{Binding LoginCommand}"
+                            Style="{StaticResource OutlineButton}"
+                            Padding="18,7"
+                            FontSize="12"
+                            MinHeight="36"
+                            Margin="8,0,0,0"/>
+                </Grid>
+
+                <!-- 인증 토큰: 로그인 성공 시 자동 채워짐 (읽기전용 표시) -->
+                <TextBlock Text="인증 토큰 (자동)"
+                           Foreground="{StaticResource TextSecondary}"
+                           FontSize="11"
+                           Margin="0,0,0,4"/>
+                <PasswordBox x:Name="AuthTokenBox"
+                             PasswordChanged="AuthTokenBox_PasswordChanged"
+                             Style="{StaticResource DarkPasswordBox}"
+                             FontSize="13"
+                             MinHeight="36"
+                             Margin="0,0,0,10"/>
 
                 <TextBlock Text="모델 ID"
                            Foreground="{StaticResource TextSecondary}"

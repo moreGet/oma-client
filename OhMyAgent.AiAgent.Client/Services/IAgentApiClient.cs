@@ -15,4 +15,7 @@ public interface IAgentApiClient
 
     /// <summary>GET /api/v1/models — ModelInfo[]. 엔드포인트 없으면 빈 목록.</summary>
     Task<IReadOnlyList<ModelInfo>> GetModelsAsync(CancellationToken ct = default);
+
+    /// <summary>POST /api/v1/auth/login (Public). {username,password} → {token}. 성공 시 Token 보유한 LoginResult.</summary>
+    Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default);
 }

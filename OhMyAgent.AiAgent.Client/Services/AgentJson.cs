@@ -11,7 +11,11 @@ public static class AgentJson
 {
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) },
+        Converters =
+        {
+            new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower),
+            new ToolCallJsonConverter()
+        },
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 }

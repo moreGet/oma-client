@@ -20,7 +20,7 @@ public class AppSettings
     public string ServerBaseUrl { get; set; } = "http://localhost:8080";
     public string AuthScheme { get; set; } = "Bearer";          // "Bearer" | "ApiKey"
     public string AuthToken { get; set; } = "";
-    public string ModelId { get; set; } = "corp-llm-32b";
+    public string ModelId { get; set; } = "";
     public int MaxTokens { get; set; } = 4096;
 
     // 신규 (Phase D)

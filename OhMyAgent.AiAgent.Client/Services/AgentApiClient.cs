@@ -17,6 +17,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     private const string ChatPath   = "/api/v1/agent/chat";
     private const string HealthPath = "/api/v1/health";
     private const string ModelsPath = "/api/v1/models";
+    private const string LoginPath  = "/api/v1/auth/login";
 
     public async IAsyncEnumerable<AgentStreamEvent> SendAsync(
         AgentRequest request,
@@ -148,16 +149,50 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         }
     }
 
+    public async Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default)
+    {
+        try
+        {
+            var payload = JsonSerializer.Serialize(
+                new LoginRequestDto(username, password), AgentJson.Options);
+
+            // Public 엔드포인트 — 토큰 발급 전이므로 ApplyAuth 미부착.
+            using var req = new HttpRequestMessage(HttpMethod.Post, LoginPath)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            };
+
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await ReadErrorAsync(resp, ct).ConfigureAwait(false);
+                return LoginResult.Fail(err.Message);
+            }
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            var dto = await JsonSerializer
+                .DeserializeAsync<LoginResponseDto>(stream, AgentJson.Options, ct)
+                .ConfigureAwait(false);
+
+            return string.IsNullOrWhiteSpace(dto?.Token)
+                ? LoginResult.Fail("로그인 응답에 토큰이 없습니다.")
+                : LoginResult.Ok(dto!.Token!);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return LoginResult.Fail($"AI 서버에 연결할 수 없습니다: {ex.Message}");
+        }
+    }
+
     private void ApplyAuth(HttpRequestMessage req)
     {
         var token = settings.Current.AuthToken;
-        if (string.IsNullOrWhiteSpace(token))
-            return;
-
-        var scheme = settings.Current.AuthScheme;
-        if (string.Equals(scheme, "ApiKey", StringComparison.OrdinalIgnoreCase))
-            req.Headers.TryAddWithoutValidation("X-Api-Key", token);
-        else
+        if (!string.IsNullOrWhiteSpace(token))
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
     }
 
@@ -180,12 +215,44 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
                         GetString(root, "model"));
 
                 case "content_delta":
-                    return new ContentDelta(GetString(root, "text"));
+                    return new ContentDelta(GetString(root, "delta"));
 
                 case "tool_call":
-                    var args = root.TryGetProperty("arguments", out var argsEl)
-                        ? argsEl.Clone()
-                        : EmptyObject();
+                    JsonElement args;
+                    if (root.TryGetProperty("arguments", out var argsEl))
+                    {
+                        if (argsEl.ValueKind == JsonValueKind.String)
+                        {
+                            // 서버는 arguments 를 JSON 문자열로 전달 → 한 번 더 파싱해 객체화.
+                            var raw = argsEl.GetString();
+                            if (string.IsNullOrWhiteSpace(raw))
+                            {
+                                args = EmptyObject();
+                            }
+                            else
+                            {
+                                try
+                                {
+                                    using var inner = JsonDocument.Parse(raw);
+                                    args = inner.RootElement.Clone();
+                                }
+                                catch (JsonException)
+                                {
+                                    args = EmptyObject();
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // 이미 객체/배열인 경우 방어적 통과.
+                            args = argsEl.Clone();
+                        }
+                    }
+                    else
+                    {
+                        args = EmptyObject();
+                    }
+
                     return new ToolCallEvent(
                         GetString(root, "id"),
                         GetString(root, "name"),
@@ -199,9 +266,12 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
                     return new MessageStop(stopReason, usage);
 
                 case "error":
+                    // 서버는 스트리밍 error 를 중첩 envelope 로 전달: {"error":{"code","message"}}.
+                    // 평면 형태({"code","message"})도 방어적으로 허용.
+                    var errBody = root.TryGetProperty("error", out var errEl) ? errEl : root;
                     return new ErrorEvent(
-                        GetString(root, "code"),
-                        GetString(root, "message"));
+                        GetString(errBody, "code"),
+                        GetString(errBody, "message"));
 
                 default:
                     return null;
@@ -250,4 +320,11 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         using var doc = JsonDocument.Parse("{}");
         return doc.RootElement.Clone();
     }
+
+    private sealed record LoginRequestDto(
+        [property: System.Text.Json.Serialization.JsonPropertyName("username")] string Username,
+        [property: System.Text.Json.Serialization.JsonPropertyName("password")] string Password);
+
+    private sealed record LoginResponseDto(
+        [property: System.Text.Json.Serialization.JsonPropertyName("token")] string? Token);
 }

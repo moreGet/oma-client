@@ -59,8 +59,7 @@ public class SettingsService : ISettingsService
                             Current.MaxTokens = 4096;
                         if (string.IsNullOrEmpty(Current.AuthScheme))
                             Current.AuthScheme = "Bearer";
-                        if (string.IsNullOrEmpty(Current.ModelId))
-                            Current.ModelId = "corp-llm-32b";
+                        // ModelId 기본값 시드 제거: 빈 문자열 유지 → /models 에서 선택 유도.
                         Current.SchemaVersion = 3;
                         migrated = true;
                     }

@@ -40,11 +40,23 @@ public partial class SettingsViewModel : ObservableObject
 
     // ── Server config ──────────────────────────────────────────────────
     [ObservableProperty] private string _serverBaseUrl = "http://localhost:8080";
-    [ObservableProperty] private string _authScheme = "Bearer";
     [ObservableProperty] private string _authToken = string.Empty;
     [ObservableProperty] private string _modelId = string.Empty;
 
-    public IReadOnlyList<string> AuthSchemes { get; } = ["Bearer", "ApiKey"];
+    // ── Login (JWT Bearer) ─────────────────────────────────────────────
+    [ObservableProperty] private string _username = string.Empty;
+
+    /// <summary>
+    /// 로그인 비밀번호. PasswordBox는 바인딩 불가하므로 View 코드비하인드에서 푸시한다
+    /// (기존 AuthTokenBox 패턴과 동일).
+    /// </summary>
+    public string Password { get; set; } = string.Empty;
+
+    /// <summary>로그인 진행/결과 상태 메시지. ("로그인됨" / "로그인 중..." / "실패: ...")</summary>
+    [ObservableProperty] private string _loginStatus = string.Empty;
+
+    /// <summary>토큰 보유 여부 (UI 게이팅용).</summary>
+    [ObservableProperty] private bool _isLoggedIn;
 
     /// <summary>Model ids fetched from the server (free-text fallback in the View).</summary>
     public ObservableCollection<string> AvailableModels { get; } = [];
@@ -65,9 +77,12 @@ public partial class SettingsViewModel : ObservableObject
         MaxIterations = c.MaxIterations;
         MaxTokens = c.MaxTokens;
         ServerBaseUrl = c.ServerBaseUrl;
-        AuthScheme = c.AuthScheme;
         AuthToken = c.AuthToken;
         ModelId = c.ModelId;
+
+        // 저장된 토큰이 있으면 로그인 상태로 초기화 (별도 초기화 호출 없이 생성자에서).
+        IsLoggedIn = !string.IsNullOrWhiteSpace(AuthToken);
+        LoginStatus = IsLoggedIn ? "로그인됨" : string.Empty;
     }
 
     public async Task InitializeAsync()
@@ -115,7 +130,35 @@ public partial class SettingsViewModel : ObservableObject
     private async Task SaveServerConfigAsync()
     {
         await _settings.UpdateServerConfigAsync(
-            ServerBaseUrl, AuthScheme, AuthToken, ModelId, MaxIterations, MaxTokens);
+            ServerBaseUrl, "Bearer", AuthToken, ModelId, MaxIterations, MaxTokens);
+    }
+
+    // ── Login (JWT Bearer) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// POST /api/v1/auth/login → 성공 시 JWT를 AuthToken에 담아 단일 영속 경로
+    /// (UpdateServerConfigAsync)로 저장. 실패 시 상태 메시지로 노출.
+    /// </summary>
+    [RelayCommand]
+    private async Task LoginAsync()
+    {
+        LoginStatus = "로그인 중...";
+
+        var result = await _api.LoginAsync(Username, Password);
+        if (result.Success)
+        {
+            AuthToken = result.Token!;
+            await _settings.UpdateServerConfigAsync(
+                ServerBaseUrl, "Bearer", AuthToken, ModelId, MaxIterations, MaxTokens);
+            IsLoggedIn = true;
+            LoginStatus = "로그인됨";
+            Password = string.Empty;
+        }
+        else
+        {
+            IsLoggedIn = false;
+            LoginStatus = $"실패: {result.ErrorMessage}";
+        }
     }
 
     // ── User profile (F) ───────────────────────────────────────────────

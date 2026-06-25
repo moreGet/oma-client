@@ -658,7 +658,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 }
                 StatusText = "완료";
                 if (done.LastUsage is { } usage)
-                    LastUsageText = $"in:{usage.InputTokens} out:{usage.OutputTokens}";
+                    LastUsageText = $"in:{usage.PromptTokens} out:{usage.CompletionTokens}";
                 break;
 
             case AgentError err:
