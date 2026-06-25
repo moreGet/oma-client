@@ -13,11 +13,9 @@
 
     <ItemGroup>
         <!-- MVVM 소스 생성기 -->
-        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
-        <!-- JSON 직렬화 -->
-        <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-        <!-- System.Drawing (트레이 아이콘 생성용) -->
-        <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+        <!-- JSON 직렬화는 BCL System.Text.Json 사용 (별도 패키지 불필요) -->
+        <!-- System.Drawing 은 UseWindowsForms=true 가 제공하므로 패키지 참조 제거(NU1510) -->
     </ItemGroup>
 
 </Project>

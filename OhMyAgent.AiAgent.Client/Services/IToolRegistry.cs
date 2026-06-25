@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using OhMyAgent.AiAgent.Client.Models;
 
 namespace OhMyAgent.AiAgent.Client.Services;
@@ -10,5 +11,5 @@ public interface IToolRegistry
     /// <summary>AgentRequest.Tools 생성용.</summary>
     IReadOnlyList<ToolSchema> ToSchemas();
 
-    bool TryGet(string name, out ITool tool);
+    bool TryGet(string name, [MaybeNullWhen(false)] out ITool tool);
 }

@@ -3,9 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
-using System.Windows;
-using Newtonsoft.Json;
 using OhMyAgent.AiAgent.Client.Models;
 using Application = System.Windows.Application;
 
@@ -13,6 +12,25 @@ namespace OhMyAgent.AiAgent.Client.Services;
 
 public class SettingsService : ISettingsService
 {
+    /// <summary>
+    /// 영속용 System.Text.Json 옵션. 에이전트 와이어용 <see cref="AgentJson.Options"/> 와는
+    /// 의도적으로 분리한다.
+    /// 디스크 호환성: 기존 Newtonsoft 직렬화와 동일한 형태를 보장해야 한다.
+    ///  - PropertyNamingPolicy = null  → PascalCase 프로퍼티명 유지(Newtonsoft 기본과 동일)
+    ///  - WriteIndented = true         → Newtonsoft Formatting.Indented(2-space) 대응
+    ///  - enum 은 숫자로 직렬화(STJ/Newtonsoft 공통 기본) → Modifiers/PermissionMode 정수 유지
+    ///  - PropertyNameCaseInsensitive  → 구파일 로드 견고성
+    ///  - ReadCommentHandling/AllowTrailingCommas → 손상 내성(읽기)
+    /// </summary>
+    internal static readonly JsonSerializerOptions PersistenceOptions = new()
+    {
+        PropertyNamingPolicy = null,
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true
+    };
+
     private static readonly string SettingsDirectory =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OhMyAgent");
 
@@ -40,7 +58,7 @@ public class SettingsService : ISettingsService
                     }
 
                     var json = File.ReadAllText(SettingsFilePath);
-                    var loaded = JsonConvert.DeserializeObject<AppSettings>(json);
+                    var loaded = JsonSerializer.Deserialize<AppSettings>(json, PersistenceOptions);
                     Current = loaded ?? new AppSettings();
 
                     // 스키마 마이그레이션 — 누적형: 각 버전 블록은 return하지 않고 fall-through하며
@@ -100,7 +118,7 @@ public class SettingsService : ISettingsService
                     if (!Directory.Exists(SettingsDirectory))
                         Directory.CreateDirectory(SettingsDirectory);
 
-                    var json = JsonConvert.SerializeObject(Current, Formatting.Indented);
+                    var json = JsonSerializer.Serialize(Current, PersistenceOptions);
                     File.WriteAllText(SettingsFilePath, json);
                 }
                 catch (Exception ex)

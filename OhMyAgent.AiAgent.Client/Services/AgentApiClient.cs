@@ -295,11 +295,13 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
             if (!string.IsNullOrWhiteSpace(body))
             {
                 using var doc = JsonDocument.Parse(body);
-                if (doc.RootElement.TryGetProperty("error", out var errEl))
-                {
-                    code = GetString(errEl, "code", code);
-                    message = GetString(errEl, "message", message);
-                }
+                // 에이전트 계약 API(health/models/agent/*)는 중첩 {"error":{code,message}},
+                // 관리 API(auth/login 등)는 평면 {code,message} envelope 를 쓴다(서버 §5.2). 둘 다 수용.
+                var errBody = doc.RootElement.TryGetProperty("error", out var errEl)
+                    ? errEl
+                    : doc.RootElement;
+                code = GetString(errBody, "code", code);
+                message = GetString(errBody, "message", message);
             }
         }
         catch

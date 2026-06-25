@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:OhMyAgent.AiAgent.Client.ViewModels"
+        xmlns:models="clr-namespace:OhMyAgent.AiAgent.Client.Models"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel, IsDesignTimeCreatable=False}"
         Title="설정 — OhMyAgent"
@@ -13,6 +14,27 @@
         Background="{StaticResource WindowBg}"
         WindowStyle="None"
         AllowsTransparency="True">
+
+    <Window.Resources>
+        <!-- 권한 모드 드롭다운: 영문 enum을 한국어 라벨로 표시 -->
+        <DataTemplate x:Key="PermissionModeItemTemplate">
+            <TextBlock VerticalAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Text" Value="수동 승인"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding}" Value="{x:Static models:PermissionMode.AutoSafe}">
+                                <Setter Property="Text" Value="안전 작업 자동"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding}" Value="{x:Static models:PermissionMode.FullAuto}">
+                                <Setter Property="Text" Value="전체 자동"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </DataTemplate>
+    </Window.Resources>
 
     <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="2">
         <Grid>
@@ -122,7 +144,7 @@
                            FontSize="14"
                            FontWeight="SemiBold"
                            Margin="0,0,0,8"/>
-                <Grid Margin="0,0,0,16">
+                <Grid Margin="0,0,0,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -142,8 +164,29 @@
                             Padding="14,6"
                             FontSize="12"
                             MinHeight="36"
-                            Margin="8,0,0,0"/>
+                            Margin="8,0,0,0"
+                            ToolTip="에이전트가 파일·셸 작업을 수행할 폴더를 선택합니다."/>
                 </Grid>
+                <TextBlock Foreground="{StaticResource TextMuted}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,16">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="에이전트의 모든 파일·셸 작업은 이 폴더 안에서만 이루어집니다."/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding WorkspaceRoot}" Value="">
+                                    <Setter Property="Text" Value="⚠ 작업 디렉토리가 지정되지 않았습니다. 작업을 시작하려면 폴더를 먼저 선택하세요."/>
+                                    <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding WorkspaceRoot}" Value="{x:Null}">
+                                    <Setter Property="Text" Value="⚠ 작업 디렉토리가 지정되지 않았습니다. 작업을 시작하려면 폴더를 먼저 선택하세요."/>
+                                    <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
 
                 <!-- ════ 권한 모드 ════════════════════════════════ -->
                 <TextBlock Text="권한 모드"
@@ -153,16 +196,22 @@
                            Margin="0,0,0,8"/>
                 <ComboBox ItemsSource="{Binding PermissionModes}"
                           SelectedItem="{Binding PermissionMode, Mode=TwoWay}"
+                          ItemTemplate="{StaticResource PermissionModeItemTemplate}"
                           HorizontalAlignment="Left"
-                          MinWidth="180"/>
-                <TextBlock Text="⚠ Full-Auto: 모든 도구가 자동 승인됩니다 (파괴적 작업 포함). 주의해서 사용하세요."
+                          MinWidth="180"
+                          ToolTip="수동 승인: 매 도구 실행 전 확인 · 안전 작업 자동: 읽기 등 안전 도구만 자동 · 전체 자동: 모든 도구 자동"/>
+                <TextBlock Text="수동 승인은 도구 실행 전마다 확인을 요청합니다. 안전 작업 자동은 읽기 등 위험이 낮은 도구만 자동 실행합니다."
+                           Foreground="{StaticResource TextMuted}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,6,0,16"
+                           Visibility="{Binding ShowFullAutoWarning, Converter={StaticResource InverseBoolToVisibility}}"/>
+                <TextBlock Text="⚠ 전체 자동: 모든 도구가 자동 승인됩니다 (파일 삭제 등 파괴적 작업 포함). 신뢰할 수 있는 작업에만 사용하세요."
                            Foreground="{StaticResource WarningBrush}"
                            FontSize="11"
                            TextWrapping="Wrap"
                            Margin="0,6,0,16"
                            Visibility="{Binding ShowFullAutoWarning, Converter={StaticResource BoolToVisibility}}"/>
-                <Border Height="0" Margin="0,0,0,16"
-                        Visibility="{Binding ShowFullAutoWarning, Converter={StaticResource InverseBoolToVisibility}}"/>
 
                 <!-- ════ 실행 한도 ════════════════════════════════ -->
                 <TextBlock Text="실행 한도"
@@ -212,7 +261,7 @@
                            FontWeight="SemiBold"
                            Margin="0,0,0,14"/>
 
-                <TextBlock Text="서버 URL"
+                <TextBlock Text="API 서버 주소"
                            Foreground="{StaticResource TextSecondary}"
                            FontSize="11"
                            Margin="0,0,0,4"/>
@@ -220,8 +269,14 @@
                          Text="{Binding ServerBaseUrl, UpdateSourceTrigger=PropertyChanged}"
                          FontSize="13"
                          MinHeight="36"
-                         Margin="0,0,0,10"
-                         VerticalContentAlignment="Center"/>
+                         Margin="0,0,0,4"
+                         VerticalContentAlignment="Center"
+                         ToolTip="사내 AI 에이전트 API 서버의 기본 주소 (예: http://10.0.0.10:8080)"/>
+                <TextBlock Text="사내 폐쇄망 AI 에이전트 API 서버의 기본 주소입니다."
+                           Foreground="{StaticResource TextMuted}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,10"/>
 
                 <!-- ════ 로그인 (JWT) ═════════════════════════════ -->
                 <Grid Margin="0,0,0,10">
@@ -267,6 +322,9 @@
                                 <Style TargetType="Ellipse">
                                     <Setter Property="Fill" Value="{StaticResource TextMuted}"/>
                                     <Style.Triggers>
+                                        <DataTrigger Binding="{Binding LoginStatus}" Value="로그인 중...">
+                                            <Setter Property="Fill" Value="{StaticResource WarningBrush}"/>
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding IsLoggedIn}" Value="True">
                                             <Setter Property="Fill" Value="{StaticResource ConnectedDot}"/>
                                         </DataTrigger>
@@ -282,6 +340,18 @@
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
                                     <Style.Triggers>
+                                        <!-- 미로그인(빈 상태): 안내 문구 -->
+                                        <DataTrigger Binding="{Binding LoginStatus}" Value="">
+                                            <Setter Property="Text" Value="로그인 전 — 인증이 필요합니다."/>
+                                            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding LoginStatus}" Value="{x:Null}">
+                                            <Setter Property="Text" Value="로그인 전 — 인증이 필요합니다."/>
+                                            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding LoginStatus}" Value="로그인 중...">
+                                            <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding IsLoggedIn}" Value="True">
                                             <Setter Property="Foreground" Value="{StaticResource ConnectedDot}"/>
                                         </DataTrigger>
@@ -292,17 +362,40 @@
                     </StackPanel>
 
                     <Button Grid.Column="1"
-                            Content="로그인"
                             Command="{Binding LoginCommand}"
-                            Style="{StaticResource OutlineButton}"
                             Padding="18,7"
                             FontSize="12"
                             MinHeight="36"
-                            Margin="8,0,0,0"/>
+                            Margin="8,0,0,0"
+                            ToolTip="사용자 ID/비밀번호로 인증해 토큰을 발급받습니다.">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource OutlineButton}">
+                                <Setter Property="Content" Value="로그인"/>
+                                <Style.Triggers>
+                                    <!-- 사용자 ID 비었으면 비활성 -->
+                                    <DataTrigger Binding="{Binding Username}" Value="">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Username}" Value="{x:Null}">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                    <!-- 로그인 진행 중이면 비활성 + 라벨 변경 -->
+                                    <DataTrigger Binding="{Binding LoginStatus}" Value="로그인 중...">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                        <Setter Property="Content" Value="로그인 중..."/>
+                                    </DataTrigger>
+                                    <!-- 이미 로그인됨이면 라벨을 다시 로그인으로 -->
+                                    <DataTrigger Binding="{Binding IsLoggedIn}" Value="True">
+                                        <Setter Property="Content" Value="다시 로그인"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                 </Grid>
 
-                <!-- 인증 토큰: 로그인 성공 시 자동 채워짐 (읽기전용 표시) -->
-                <TextBlock Text="인증 토큰 (자동)"
+                <!-- 인증 토큰: 로그인 성공 시 자동 채워짐. 직접 붙여넣기도 가능. -->
+                <TextBlock Text="인증 토큰 (로그인 시 자동 입력)"
                            Foreground="{StaticResource TextSecondary}"
                            FontSize="11"
                            Margin="0,0,0,4"/>
@@ -311,7 +404,8 @@
                              Style="{StaticResource DarkPasswordBox}"
                              FontSize="13"
                              MinHeight="36"
-                             Margin="0,0,0,10"/>
+                             Margin="0,0,0,10"
+                             ToolTip="로그인하면 자동으로 채워집니다. 토큰을 직접 발급받은 경우 여기에 붙여넣을 수 있습니다."/>
 
                 <TextBlock Text="모델 ID"
                            Foreground="{StaticResource TextSecondary}"
@@ -327,15 +421,17 @@
                               ItemsSource="{Binding AvailableModels}"
                               Text="{Binding ModelId, UpdateSourceTrigger=PropertyChanged}"
                               MinHeight="36"
-                              VerticalContentAlignment="Center"/>
+                              VerticalContentAlignment="Center"
+                              ToolTip="사용할 모델 ID. 목록에서 선택하거나 직접 입력할 수 있습니다."/>
                     <Button Grid.Column="1"
-                            Content="모델 불러오기"
+                            Content="목록 불러오기"
                             Command="{Binding LoadModelsCommand}"
                             Style="{StaticResource OutlineButton}"
                             Padding="12,6"
                             FontSize="12"
                             MinHeight="36"
-                            Margin="8,0,0,0"/>
+                            Margin="8,0,0,0"
+                            ToolTip="서버에서 사용 가능한 모델 목록을 불러옵니다. (로그인 필요)"/>
                 </Grid>
 
                 <Button Content="서버 설정 저장"

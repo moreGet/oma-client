@@ -5,9 +5,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:OhMyAgent.AiAgent.Client.ViewModels"
         xmlns:views="clr-namespace:OhMyAgent.AiAgent.Client.Views"
+        xmlns:models="clr-namespace:OhMyAgent.AiAgent.Client.Models"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:AgentSessionViewModel, IsDesignTimeCreatable=False}"
-        Title="OhMyAgent — AI Agent Client"
+        Title="OhMyAgent — AI 에이전트"
         Height="720" Width="1100"
         MinHeight="560" MinWidth="900"
         Background="{StaticResource WindowBg}"
@@ -21,6 +22,25 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Resources/TranscriptTemplates.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- 권한 모드 드롭다운: 영문 enum을 한국어 라벨로 표시 -->
+            <DataTemplate x:Key="PermissionModeItemTemplate">
+                <TextBlock VerticalAlignment="Center">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="수동 승인"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding}" Value="{x:Static models:PermissionMode.AutoSafe}">
+                                    <Setter Property="Text" Value="안전 작업 자동"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding}" Value="{x:Static models:PermissionMode.FullAuto}">
+                                    <Setter Property="Text" Value="전체 자동"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </DataTemplate>
         </ResourceDictionary>
     </Window.Resources>
 
@@ -171,14 +191,27 @@
             <Border Grid.Row="0" Background="{StaticResource WindowBg}"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Grid Margin="16,0">
-                    <!-- 상태 표시 (좌) -->
+                    <!-- 상태 표시 (좌): 연결 상태 점 + 상태문 + 승인 대기 배지 + 토큰 사용량 -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
                         <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,8,0"
-                                 Fill="{Binding IsConnected, Converter={StaticResource BoolToStatusBrush}}"/>
+                                 Fill="{Binding IsConnected, Converter={StaticResource BoolToStatusBrush}}"
+                                 ToolTip="{Binding StatusText}"/>
                         <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextSecondary}"
                                    FontSize="12" VerticalAlignment="Center"/>
+
+                        <!-- 승인 대기 배지 (PendingApproval 존재 시) -->
+                        <Border Style="{StaticResource Chip}" Margin="12,0,0,0"
+                                Background="{StaticResource AccentSubtleBrush}"
+                                BorderBrush="{StaticResource WarningBrush}" BorderThickness="1"
+                                Visibility="{Binding PendingApproval, Converter={StaticResource NullToVisibility}}"
+                                ToolTip="아래 카드에서 도구 실행을 승인하거나 거부하세요.">
+                            <TextBlock Text="승인 대기" Foreground="{StaticResource WarningBrush}"
+                                       FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </Border>
+
                         <TextBlock Text="{Binding LastUsageText}" Foreground="{StaticResource TextMuted}"
                                    FontSize="11" VerticalAlignment="Center" Margin="12,0,0,0"
+                                   ToolTip="마지막 응답의 토큰 사용량 (입력/출력)"
                                    Visibility="{Binding LastUsageText, Converter={StaticResource StringToVisibility}}"/>
                     </StackPanel>
 
@@ -256,7 +289,21 @@
                                        Foreground="{StaticResource TextPrimary}"
                                        FontFamily="{StaticResource AppFont}"
                                        FontSize="26" FontWeight="SemiBold"
-                                       Margin="0,0,0,28"/>
+                                       Margin="0,0,0,10"/>
+
+                            <!-- 안내 부제: 현재 작업 공간 -->
+                            <TextBlock TextAlignment="Center" TextWrapping="Wrap"
+                                       Foreground="{StaticResource TextSecondary}"
+                                       FontSize="13" Margin="0,0,0,4">
+                                <Run Text="작업 공간"/>
+                                <Run Text="{Binding WorkspaceRoot, Mode=OneWay}" FontWeight="SemiBold"
+                                     Foreground="{StaticResource TextPrimary}"/>
+                                <Run Text="에서 파일·셸·도구 작업을 자율로 수행합니다."/>
+                            </TextBlock>
+                            <TextBlock Text="아래 입력창에 하고 싶은 작업을 적어 보세요."
+                                       TextAlignment="Center"
+                                       Foreground="{StaticResource TextMuted}"
+                                       FontSize="12" Margin="0,0,0,14"/>
 
                             <!-- 제안 항목 (Suggestions 바인딩, 비면 숨김) -->
                             <ItemsControl ItemsSource="{Binding Suggestions}" Margin="0,20,0,0"
@@ -378,7 +425,7 @@
                                      IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}"
                                      KeyDown="InputBox_KeyDown"/>
                             <!-- Placeholder -->
-                            <TextBlock Text="무엇이든 해보세요" IsHitTestVisible="False"
+                            <TextBlock Text="작업을 입력하세요 (Enter 전송 · Shift+Enter 줄바꿈)" IsHitTestVisible="False"
                                        Foreground="{StaticResource TextMuted}" FontSize="14"
                                        Margin="2,2,0,0" VerticalAlignment="Top">
                                 <TextBlock.Style>
@@ -414,20 +461,22 @@
                                     IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}"
                                     ToolTip="첨부"/>
 
-                            <!-- 승인 요청 ⌄ → 권한 모드 선택 (PermissionMode) -->
+                            <!-- 권한 모드 선택 (수동 승인 / 안전 작업 자동 / 전체 자동) -->
                             <ComboBox Grid.Column="1" Margin="6,0,0,0" MinWidth="0"
                                       ItemsSource="{Binding PermissionModes}"
                                       SelectedItem="{Binding CurrentPermissionMode, Mode=TwoWay}"
+                                      ItemTemplate="{StaticResource PermissionModeItemTemplate}"
                                       IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}"
-                                      ToolTip="승인 / 권한 모드"/>
+                                      ToolTip="도구 실행 권한 모드: 수동 승인 / 안전 작업 자동 / 전체 자동"/>
 
                             <!-- 모델 칩 (정적 표시) -->
                             <Border Grid.Column="3" Style="{StaticResource Chip}"
                                     Background="{StaticResource Surface2Bg}"
                                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                    Margin="0,0,6,0">
+                                    Margin="0,0,6,0"
+                                    ToolTip="모델은 설정 → 서버 설정에서 변경합니다.">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="모델 자동" Foreground="{StaticResource TextSecondary}"
+                                    <TextBlock Text="모델: 설정값" Foreground="{StaticResource TextSecondary}"
                                                FontSize="11" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Border>

@@ -322,7 +322,7 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
             switch (status)
             {
                 case ManifestLoadStatus.Valid:
-                    manifest = loaded;
+                    manifest = loaded ?? throw new AgentException("매니페스트 로드 실패 — '기준 생성'을 먼저 실행하세요.");
                     break;
                 case ManifestLoadStatus.SignatureFailed:
                     throw new AgentException("매니페스트 서명 검증 실패 — 변조 가능성. '기준 생성'으로 재생성하세요.");

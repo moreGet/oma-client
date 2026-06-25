@@ -175,16 +175,3 @@ public sealed class ToolRiskToTextConverter : IValueConverter
     public object ConvertBack(object value, Type t, object p, CultureInfo c)
         => throw new NotSupportedException();
 }
-
-/// <summary>true =&gt; Collapsed, false =&gt; Visible (inverse of BoolToVisibility), for "show when NOT".</summary>
-[ValueConversion(typeof(bool), typeof(bool))]
-public sealed class EnumEqualsConverter : IValueConverter
-{
-    // value == parameter (enum name compare). Used for radio-style ComboBox warnings.
-    public object Convert(object? value, Type t, object? p, CultureInfo c)
-        => value is not null && p is not null &&
-           string.Equals(value.ToString(), p.ToString(), StringComparison.OrdinalIgnoreCase);
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
-}

@@ -21,13 +21,13 @@ public partial class App : Application
     private MainWindow?               _mainWindow;
     private NotifyIcon?               _trayIcon;
     private HttpClient?               _httpClient;
+    private HttpClient?               _toolHttpClient;
     private ISettingsService?         _settingsService;
     private IGlobalHotkeyService?     _globalHotkey;
     private ITrayNotificationService? _trayNotification;
     private IChatWindowCoordinator?   _windowCoordinator;
     private AgentSessionViewModel?    _mainVm;
     private IAgentApiClient?          _api;
-    private IWorkspaceHistoryService? _workspaceHistory;
     private IBinaryIntegrityService?  _binaryIntegrity;
     internal ISettingsService SettingsService => _settingsService!;
     internal IAgentApiClient? Api => _api;
@@ -53,7 +53,10 @@ public partial class App : Application
         // 4) 스크립트 실행기 (run_command 엔진)
         var scriptExec = new ScriptExecutor();
 
-        // 5) 11개 MVP 도구 (배열 순서 = 표시 순서)
+        // 4b) http_fetch 전용 HttpClient (앱 API용 _httpClient 와 분리된 인스턴스)
+        _toolHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+
+        // 5) 파일/셸 도구 + 시스템(환경/클립보드/프로세스/HTTP/스크린샷) 도구 묶음 (배열 순서 = 표시 순서)
         var tools = new ITool[]
         {
             new RunCommandTool(scriptExec),
@@ -67,6 +70,15 @@ public partial class App : Application
             new MoveTool(),
             new CopyTool(),
             new DeleteTool(),
+            // ── 시스템 경량 도구 묶음 ──
+            new GetEnvironmentTool(),
+            new ClipboardReadTool(),
+            new ClipboardWriteTool(),
+            new ListProcessesTool(),
+            new StartProcessTool(),
+            new KillProcessTool(),
+            new HttpFetchTool(_toolHttpClient),
+            new ScreenshotTool(),
         };
 
         // 6) 도구 레지스트리
@@ -80,7 +92,6 @@ public partial class App : Application
 
         // 8b) 워크스페이스 히스토리 (settings 기반, Phase D — B)
         var workspaceHistory = new WorkspaceHistoryService(_settingsService);
-        _workspaceHistory = workspaceHistory;
 
         // 9) 오케스트레이터 (에이전트 루프)
         var orchestrator = new AgentOrchestrator(_api, registry, permissions, workspace, _settingsService);
@@ -153,6 +164,7 @@ public partial class App : Application
         _globalHotkey?.Dispose();
         _trayIcon?.Dispose();
         _httpClient?.Dispose();
+        _toolHttpClient?.Dispose();
         base.OnExit(e);
     }
 

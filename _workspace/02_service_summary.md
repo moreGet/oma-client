@@ -1,57 +1,60 @@
-# 02 — ServiceEngineer Summary (Models + Services 레이어)
+# 02 Service Summary — 의존성 정리 + STJ 통일 + 경고 제거
 
-설계서 `01_architect_spec.md` 의 ServiceEngineer 분담을 전부 구현 완료. 서버 미변경, 클라이언트만 수정.
-`Services/Tools/*` 11개 ITool 구현은 무수정(인메모리 JsonElement 객체 표현 불변). ViewModels/Views 미변경.
+작업: 기능 변경 없음. 순수 의존성 정리 / Newtonsoft → System.Text.Json 이관 / 빌드 경고 제거.
 
-## 변경 파일 목록 + 요약
+## 변경 파일
 
-### Models
-| 파일 | 변경 | 요약 |
-|------|------|------|
-| `Models/Agent/Usage.cs` | 수정 | 필드명 `input_tokens/output_tokens` → `prompt_tokens/completion_tokens` (+`total_tokens` 추가, 기본값 0). C# 프로퍼티: `InputTokens/OutputTokens` → `PromptTokens/CompletionTokens/TotalTokens`. |
-| `Models/Agent/ModelInfo.cs` | 수정 | `{id, display_name, supports_tools, supports_vision}` → `{id, name, provider_type, active}`. C# 프로퍼티: `Id/Name/ProviderType/Active`. |
-| `Models/Agent/RequestMetadata.cs` | 수정 | JsonPropertyName `workspace` → `workspace_root`. C# 인자명 `Workspace` → `WorkspaceRoot` (호출부는 위치 인자라 무영향). |
-| `Models/AppSettings.cs` | 수정 | `ModelId` 기본값 `"corp-llm-32b"` → `""`. `AuthScheme` 프로퍼티는 **유지**(설계서 지침: scheme 파라미터 제거 리팩토링은 범위 밖). |
-| `Models/Agent/LoginResult.cs` | **신규** | 로그인 결과 DTO. `record LoginResult(bool Success, string? Token, string? ErrorMessage)` + 팩토리 `Ok(token)`/`Fail(message)`. |
+| 파일 | 변경 내용 |
+|------|----------|
+| `OhMyAgent.AiAgent.Client/OhMyAgent.AiAgent.Client.csproj` | Newtonsoft.Json / System.Drawing.Common 제거, CommunityToolkit.Mvvm 8.3.2 → 8.4.0 |
+| `Services/SettingsService.cs` | JsonConvert → System.Text.Json, 영속 전용 옵션 `PersistenceOptions` 신설 |
+| `Models/WorkspaceHistoryEntry.cs` | STJ `[JsonPropertyName]` 을 snake_case → PascalCase 로 교정(디스크 호환) |
+| `Services/IToolRegistry.cs` | `TryGet` 시그니처에 `[MaybeNullWhen(false)]` 추가 (CS8767 해소, 한 줄) |
+| `Services/ToolRegistry.cs` | 변경 없음 — 이미 `[MaybeNullWhen(false)]` 보유, 인터페이스 일치로 경고 해소 |
+| `Services/BinaryIntegrityService.cs` | `Valid` 케이스 `manifest = loaded ?? throw ...` 로 null 가드 (CS8602 해소) |
 
-### Services
-| 파일 | 변경 | 요약 |
-|------|------|------|
-| `Services/ToolCallJsonConverter.cs` | **신규** | `JsonConverter<ToolCall>`. Write: `arguments`(JsonElement 객체)를 `GetRawText()`로 JSON 텍스트 추출 후 `WriteString`으로 **문자열 값** 출력(와이어: `"arguments":"{\"...\"}"`). Read: 문자열이면 재파싱하여 객체 복원(대칭). 프로퍼티명 `id/name/arguments`를 컨버터 내부에서 명시. |
-| `Services/AgentJson.cs` | 수정 | `Options.Converters`에 `new ToolCallJsonConverter()` 추가(어트리뷰트 미사용 — Options 단일 등록). |
-| `Services/IAgentApiClient.cs` | 수정 | `LoginAsync` 시그니처 추가(아래). 기존 3개 메서드 불변. |
-| `Services/AgentApiClient.cs` | 수정 | `LoginPath` 상수 추가; `LoginAsync` 구현(POST `/api/v1/auth/login`, ApplyAuth 미부착, throw 대신 `LoginResult` 변환); `ApplyAuth`에서 `ApiKey`/`X-Api-Key` 분기 제거→Bearer 고정; content_delta 파싱 `"text"`→`"delta"`; tool_call `arguments`가 JSON string이면 `JsonDocument.Parse`로 객체화(이미 객체면 통과, 깨지면 `{}`); private `LoginRequestDto`/`LoginResponseDto` record 추가. |
-| `Services/SettingsService.cs` | 수정 | v3 마이그레이션의 `ModelId = "corp-llm-32b"` 시드 블록 제거(빈 문자열 유지). `AuthScheme="Bearer"` 시드 및 `UpdateServerConfigAsync` 시그니처는 유지. |
+## 패키지 변경
 
-`Services/AgentOrchestrator.cs`: 확인만 — `BuildRequest`의 `new RequestMetadata("windows", workspace.Root, ClientVersion)`(위치 인자)와 `new Usage(0,0)` 모두 무변경으로 컴파일.
+- **제거**: `Newtonsoft.Json` 13.0.3 (코드 마이그레이션 완료 후 제거)
+- **제거**: `System.Drawing.Common` 8.0.0 — `UseWindowsForms=true` 가 System.Drawing 을 이미 제공하여 NU1510 발생. 패키지 제거 후에도 App.xaml.cs 트레이 아이콘 코드는 WinForms 가 제공하는 System.Drawing 으로 그대로 컴파일됨.
+- **업그레이드**: `CommunityToolkit.Mvvm` 8.3.2 → **8.4.0** (NuGet 최신 stable, 소스 생성기 호환).
 
-## ViewModelEngineer / UIDesigner 가 알아야 할 인터페이스
+## STJ 마이그레이션 — 디스크 호환 보장 방법 (핵심)
 
-### 신규: `IAgentApiClient.LoginAsync`
-```csharp
-Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default);
+기존 `%APPDATA%/OhMyAgent/settings.json` 은 Newtonsoft 가 작성한 **PascalCase + 정수 enum** 포맷이다.
+실제 디스크 샘플:
+```json
+{
+  "Hotkey": { "Modifiers": 2, "KeyCode": 18 },
+  "Opacity": 1.0, "SchemaVersion": 4, "WorkspaceRoot": "",
+  "PermissionMode": 0, "MaxIterations": 25,
+  "ServerBaseUrl": "http://localhost:8080", "AuthScheme": "Bearer",
+  "AuthToken": "", "ModelId": "corp-llm-32b", "MaxTokens": 4096,
+  "UserDisplayName": "asd", "RecentWorkspaces": []
+}
 ```
-- **POST /api/v1/auth/login (Public)** — 토큰을 **저장하지 않고 반환만** 한다(영속은 VM 책임).
-- 반환 `LoginResult`(record, namespace `OhMyAgent.AiAgent.Client.Models`):
-  - 성공: `Success == true`, `Token`(비어있지 않음), `ErrorMessage == null`.
-  - 실패: `Success == false`, `Token == null`, `ErrorMessage`(표시용 메시지). 네트워크 예외도 throw하지 않고 `Fail`로 반환(취소 예외만 throw).
-- VM 흐름(설계서대로): 성공 시 `AuthToken = result.Token!` → `_settings.UpdateServerConfigAsync(ServerBaseUrl, "Bearer", AuthToken, ModelId, MaxIterations, MaxTokens)`로 영속.
 
-### 제거된 것 (VM/View 동반 수정 필요)
-- `AgentApiClient.ApplyAuth`의 `ApiKey`/`X-Api-Key` 분기 삭제, **Bearer 고정**.
-  → `SettingsViewModel`의 `AuthScheme`/`AuthSchemes` 제거하고, `UpdateServerConfigAsync` 호출 시 `scheme` 인자에 리터럴 `"Bearer"` 전달.
-  → `AppSettings.AuthScheme` 프로퍼티 및 `UpdateServerConfigAsync(.., scheme, ..)` 시그니처 자체는 **유지**(파급 최소화). VM은 항상 `"Bearer"`만 넘기면 됨.
+STJ 기본값(Web preset)은 **camelCase** 라 그대로 쓰면 모든 키가 깨져 사용자 설정이 날아간다. 따라서 영속 전용 옵션을 별도로 두고 Newtonsoft 와 동일 포맷을 강제:
 
-### 변경된 프로퍼티명 (소비처 동반 수정 필요)
-- **Usage**: `InputTokens` → `PromptTokens`, `OutputTokens` → `CompletionTokens` (+신규 `TotalTokens`).
-  → `AgentSessionViewModel.cs:661` (`LastUsageText = $"in:{usage.InputTokens} out:{usage.OutputTokens}"`)를 `usage.PromptTokens`/`usage.CompletionTokens`로 교체해야 컴파일됨. **ViewModelEngineer 담당.**
-- **ModelInfo**: `DisplayName/SupportsTools/SupportsVision` → `Name/ProviderType/Active`.
-  → 소비처 `SettingsViewModel.LoadModelsAsync`는 `m.Id`만 사용 → 무영향. MainWindow.xaml `DisplayName` 바인딩은 `WorkspaceHistoryEntry`용이라 무관.
+`SettingsService.PersistenceOptions` (에이전트 와이어용 `AgentJson.Options` 와 의도적으로 분리):
+- `PropertyNamingPolicy = null` → **PascalCase 유지** (Newtonsoft 기본과 동일, 가장 중요)
+- `WriteIndented = true` → Newtonsoft `Formatting.Indented` (둘 다 2-space) 대응
+- enum 변환기 미등록 → STJ/Newtonsoft 공통 기본인 **정수 직렬화** 유지 (`Modifiers`, `PermissionMode`, `KeyCode`)
+- `PropertyNameCaseInsensitive = true` → 구파일/대소문자 변형 로드 견고성
+- `ReadCommentHandling = Skip`, `AllowTrailingCommas = true` → 읽기 손상 내성
+- `DateTimeOffset` 은 STJ/Newtonsoft 모두 ISO 8601 round-trip 이므로 호환 (RecentWorkspaces 엔트리용)
 
-### 기본값 변경
-- `AppSettings.ModelId` 기본값 `""`(빈 문자열). 신규 사용자는 `/models`에서 선택. UI에서 빈 ModelId 상태 처리(선택 유도) 고려.
+`WorkspaceHistoryEntry` 보정: 기존 코드의 `[JsonPropertyName("path"/"display_name"/"last_used_utc")]` 는 **Newtonsoft 가 무시**했으므로 디스크에는 PascalCase(`Path`/`DisplayName`/`LastUsedUtc`)로 기록되어 있었다. STJ 로 전환하면 이 어트리뷰트가 발효되어 snake_case 로 바뀌어 호환이 깨진다. → 어트리뷰트를 **PascalCase 명시**로 교정하여 직렬화기 정책과 무관하게 디스크 포맷 고정.
 
-## 추가 사항/판단
-- 설계서의 권장대로 `ToolCallJsonConverter`는 어트리뷰트가 아닌 `AgentJson.Options` 단일 등록(중복 등록 없음).
-- `LoginResponseDto`는 `AgentJson.Options`(Web defaults, camelCase)로 역직렬화하되 `[JsonPropertyName("token")]`로 명시 매핑 — 서버 `{token}` 안전 파싱.
-- 빌드 최종 검증은 오케스트레이터 담당.
+비동기 파일 IO 패턴(`Task.Run` + `_ioLock` + `ConfigureAwait(false)`)은 그대로 유지.
+
+## 빌드 경고 제거
+
+- **CS8767** (`ToolRegistry.TryGet`): 인터페이스 `IToolRegistry.TryGet` 에 `[MaybeNullWhen(false)]` 가 없어 구현부와 nullable 어노테이션이 불일치. 인터페이스 시그니처 한 줄에 어트리뷰트 추가하여 일치. 구현부는 이미 보유 → 무변경.
+- **CS8602** (`BinaryIntegrityService.cs` ~346): `Valid` 케이스에서 `manifest = loaded` (loaded 가 `IntegrityManifest?`) 이후 `manifest.Entries` 역참조 시 null 경고. `loaded ?? throw new AgentException(...)` 로 가드하여 non-null 보장.
+
+## 빌드 확인
+
+`dotnet build` 결과 **내 담당 파일 5종 + IToolRegistry.cs 에 error/warning 0**, NU1510/CS8767/CS8602 전부 사라짐.
+
+남은 빌드 error 는 `Services/Tools/ClipboardReadTool.cs`, `ClipboardWriteTool.cs` 의 `Application` 모호 참조(CS0104, `System.Windows.Forms.Application` vs `System.Windows.Application`). 이는 **내 스코프 밖(Services/Tools)** 이며 기존부터 존재하던 `UseWindowsForms=true`(이번에 미변경) 로 인한 것 — 다른 에이전트 담당. 내 변경(JSON/Drawing/Mvvm)과 무관함.

@@ -16,6 +16,5 @@
     <views:ToolRiskToTextConverter          x:Key="ToolRiskToText"/>
     <views:ToolCallStatusToBrushConverter   x:Key="ToolCallStatusToBrush"/>
     <views:ToolCallStatusToTextConverter    x:Key="ToolCallStatusToText"/>
-    <views:EnumEqualsConverter              x:Key="EnumEquals"/>
 
 </ResourceDictionary>
