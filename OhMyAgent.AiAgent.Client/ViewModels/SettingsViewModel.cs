@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -12,6 +15,9 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ISettingsService _settings;
     private readonly IAgentApiClient _api;
 
+    // Guards re-entrant persistence while (re)building the Workspaces collection.
+    private bool _suppressWorkspacePersist;
+
     // ── Hotkey capture (existing) ──────────────────────────────────────
     [ObservableProperty] private HotkeyModifiers _modifiers;
     [ObservableProperty] private System.Windows.Input.Key _key;
@@ -19,11 +25,33 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _isCapturing;
     [ObservableProperty] private string? _validationError;
 
-    // ── Workspace ──────────────────────────────────────────────────────
+    // ── Workspace (primary root, display only) ─────────────────────────
     [ObservableProperty] private string _workspaceRoot = string.Empty;
 
-    // ── User profile (F) ───────────────────────────────────────────────
-    [ObservableProperty] private string _userDisplayName = string.Empty;
+    // ── Multi-root workspaces (#3) ─────────────────────────────────────
+
+    /// <summary>다중 루트 워크스페이스 행. 각 항목: Path(읽기), Enabled(TwoWay), 삭제는 RemoveWorkspaceCommand.</summary>
+    public ObservableCollection<WorkspaceFolderViewModel> Workspaces { get; } = [];
+
+    /// <summary>최대 개수(10) 도달 시 Add 비활성·경고 표시용.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(AddWorkspaceCommand))]
+    private bool _canAddWorkspace = true;
+
+    /// <summary>워크스페이스가 하나도 없을 때 경고 표시용.</summary>
+    public bool HasNoWorkspaces => Workspaces.Count == 0;
+
+    /// <summary>최대 워크스페이스 개수(View 안내 문구용).</summary>
+    public int MaxWorkspaces => AppSettings.MaxWorkspaces;
+
+    // ── User profile (#5 — server-fetched, read-only) ──────────────────
+    [ObservableProperty] private string _profileDisplayName = string.Empty;
+    [ObservableProperty] private string _profileUsername = string.Empty;
+    [ObservableProperty] private string _profileOrganization = string.Empty;
+    [ObservableProperty] private string _profileEmail = string.Empty;
+
+    /// <summary>프로필 로딩/실패 상태 안내. ("불러오는 중..." / "프로필을 불러오지 못했습니다" / "")</summary>
+    [ObservableProperty] private string _profileStatus = string.Empty;
 
     // ── Permission mode ────────────────────────────────────────────────
     [ObservableProperty] private PermissionMode _permissionMode = PermissionMode.Manual;
@@ -34,25 +62,17 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Warning shown when Full-Auto is selected (all tools auto-approved).</summary>
     public bool ShowFullAutoWarning => PermissionMode == PermissionMode.FullAuto;
 
-    // ── Iteration / token budget ───────────────────────────────────────
+    // ── Iteration budget ───────────────────────────────────────────────
     [ObservableProperty] private int _maxIterations = 25;
-    [ObservableProperty] private int _maxTokens = 4096;
 
     // ── Server config ──────────────────────────────────────────────────
     [ObservableProperty] private string _serverBaseUrl = "http://localhost:8080";
     [ObservableProperty] private string _authToken = string.Empty;
     [ObservableProperty] private string _modelId = string.Empty;
 
-    // ── Login (JWT Bearer) ─────────────────────────────────────────────
-    [ObservableProperty] private string _username = string.Empty;
+    // ── Login status (read-only; login itself happens at the gate) ─────
 
-    /// <summary>
-    /// 로그인 비밀번호. PasswordBox는 바인딩 불가하므로 View 코드비하인드에서 푸시한다
-    /// (기존 AuthTokenBox 패턴과 동일).
-    /// </summary>
-    public string Password { get; set; } = string.Empty;
-
-    /// <summary>로그인 진행/결과 상태 메시지. ("로그인됨" / "로그인 중..." / "실패: ...")</summary>
+    /// <summary>로그인 진행/결과 상태 메시지. ("로그인됨" / "로그아웃됨")</summary>
     [ObservableProperty] private string _loginStatus = string.Empty;
 
     /// <summary>토큰 보유 여부 (UI 게이팅용).</summary>
@@ -72,34 +92,113 @@ public partial class SettingsViewModel : ObservableObject
         DisplayText = c.Hotkey.ToDisplayString();
 
         WorkspaceRoot = c.WorkspaceRoot;
-        UserDisplayName = c.UserDisplayName;
         PermissionMode = c.PermissionMode;
         MaxIterations = c.MaxIterations;
-        MaxTokens = c.MaxTokens;
         ServerBaseUrl = c.ServerBaseUrl;
         AuthToken = c.AuthToken;
         ModelId = c.ModelId;
 
+        // 다중 루트 워크스페이스 초기화 (설정에서 복원).
+        LoadWorkspaces(c.Workspaces);
+
         // 저장된 토큰이 있으면 로그인 상태로 초기화 (별도 초기화 호출 없이 생성자에서).
         IsLoggedIn = !string.IsNullOrWhiteSpace(AuthToken);
         LoginStatus = IsLoggedIn ? "로그인됨" : string.Empty;
+
+        // 프로필 폴백 — 서버 조회 전 OS 사용자명을 우선 표시.
+        ProfileDisplayName = Environment.UserName;
     }
 
     public async Task InitializeAsync()
     {
         await LoadModelsAsync();
+        await LoadProfileAsync();
     }
 
-    // ── Workspace picker ───────────────────────────────────────────────
+    // ── Workspace list (#3) ────────────────────────────────────────────
+
+    private void LoadWorkspaces(IReadOnlyList<WorkspaceFolder> folders)
+    {
+        _suppressWorkspacePersist = true;
+        try
+        {
+            Workspaces.Clear();
+            foreach (var f in folders)
+                Workspaces.Add(new WorkspaceFolderViewModel(f.Path, f.Enabled, OnWorkspaceEnabledChanged));
+        }
+        finally
+        {
+            _suppressWorkspacePersist = false;
+        }
+        RefreshWorkspaceState();
+    }
 
     /// <summary>
-    /// Called by the View after a folder dialog returns a path. Persists immediately.
+    /// View 코드비하인드가 폴더 다이얼로그로 받은 경로로 호출. 중복·상한 차단 후 추가·영속.
     /// </summary>
-    public async Task SetWorkspaceRootAsync(string path)
+    public async Task AddWorkspaceByPathAsync(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
-        WorkspaceRoot = path;
-        await _settings.UpdateWorkspaceRootAsync(path);
+        if (Workspaces.Count >= AppSettings.MaxWorkspaces) return;
+
+        // 중복 차단(대소문자·말미 구분자 무시).
+        var normalized = path.TrimEnd('\\', '/');
+        if (Workspaces.Any(w =>
+                string.Equals(w.Path.TrimEnd('\\', '/'), normalized, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        Workspaces.Add(new WorkspaceFolderViewModel(path, enabled: true, OnWorkspaceEnabledChanged));
+        RefreshWorkspaceState();
+        await PersistWorkspacesAsync().ConfigureAwait(false);
+    }
+
+    private bool CanAddWorkspaceExecute() => CanAddWorkspace;
+
+    /// <summary>
+    /// 폴더 선택은 View 코드비하인드 책임. 이 커맨드는 상한 게이트만 담당하며,
+    /// View가 다이얼로그를 띄운 뒤 <see cref="AddWorkspaceByPathAsync"/>를 호출한다.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanAddWorkspaceExecute))]
+    private void AddWorkspace()
+    {
+        // No-op: dialog is owned by the View (MVVM-safe). See AddWorkspaceByPathAsync.
+    }
+
+    private bool CanRemoveWorkspace(WorkspaceFolderViewModel? item) => item is not null;
+
+    [RelayCommand(CanExecute = nameof(CanRemoveWorkspace))]
+    private async Task RemoveWorkspaceAsync(WorkspaceFolderViewModel? item)
+    {
+        if (item is null) return;
+        if (!Workspaces.Remove(item)) return;
+        RefreshWorkspaceState();
+        await PersistWorkspacesAsync().ConfigureAwait(false);
+    }
+
+    private void OnWorkspaceEnabledChanged(WorkspaceFolderViewModel item)
+    {
+        if (_suppressWorkspacePersist) return;
+        _ = PersistWorkspacesAsync();
+    }
+
+    private async Task PersistWorkspacesAsync()
+    {
+        var folders = Workspaces
+            .Select(w => new WorkspaceFolder { Path = w.Path, Enabled = w.Enabled })
+            .ToList();
+        await _settings.UpdateWorkspacesAsync(folders).ConfigureAwait(false);
+
+        // 주 루트(첫 활성) 표시 동기화.
+        var primary = folders.FirstOrDefault(f => f.Enabled)?.Path
+                      ?? folders.FirstOrDefault()?.Path
+                      ?? string.Empty;
+        await UiInvokeAsync(() => WorkspaceRoot = primary).ConfigureAwait(false);
+    }
+
+    private void RefreshWorkspaceState()
+    {
+        CanAddWorkspace = Workspaces.Count < AppSettings.MaxWorkspaces;
+        OnPropertyChanged(nameof(HasNoWorkspaces));
     }
 
     partial void OnPermissionModeChanged(PermissionMode value)
@@ -130,55 +229,58 @@ public partial class SettingsViewModel : ObservableObject
     private async Task SaveServerConfigAsync()
     {
         await _settings.UpdateServerConfigAsync(
-            ServerBaseUrl, "Bearer", AuthToken, ModelId, MaxIterations, MaxTokens);
+            ServerBaseUrl, "Bearer", AuthToken, ModelId, MaxIterations);
     }
 
-    // ── Login (JWT Bearer) ─────────────────────────────────────────────
-
-    /// <summary>
-    /// POST /api/v1/auth/login → 성공 시 JWT를 AuthToken에 담아 단일 영속 경로
-    /// (UpdateServerConfigAsync)로 저장. 실패 시 상태 메시지로 노출.
-    /// </summary>
-    [RelayCommand]
-    private async Task LoginAsync()
-    {
-        LoginStatus = "로그인 중...";
-
-        var result = await _api.LoginAsync(Username, Password);
-        if (result.Success)
-        {
-            AuthToken = result.Token!;
-            await _settings.UpdateServerConfigAsync(
-                ServerBaseUrl, "Bearer", AuthToken, ModelId, MaxIterations, MaxTokens);
-            IsLoggedIn = true;
-            LoginStatus = "로그인됨";
-            Password = string.Empty;
-        }
-        else
-        {
-            IsLoggedIn = false;
-            LoginStatus = $"실패: {result.ErrorMessage}";
-        }
-    }
+    // ── Logout (status + sign-out; login itself happens at the gate) ───
 
     /// <summary>로그아웃 — 저장된 토큰을 제거한다. 설정창이 닫히면 메인이 재점검해 "로그인 필요"로 전환된다.</summary>
     [RelayCommand]
     private async Task LogoutAsync()
     {
         AuthToken = string.Empty;
-        Password = string.Empty;
         await _settings.UpdateServerConfigAsync(
-            ServerBaseUrl, "Bearer", string.Empty, ModelId, MaxIterations, MaxTokens);
+            ServerBaseUrl, "Bearer", string.Empty, ModelId, MaxIterations);
         IsLoggedIn = false;
         LoginStatus = "로그아웃됨";
     }
 
-    // ── User profile (F) ───────────────────────────────────────────────
+    // ── User profile (#5 — server-fetched, read-only) ──────────────────
 
-    [RelayCommand]
-    private async Task SaveUserProfileAsync()
+    /// <summary>
+    /// GET /api/v1/users/me 로 프로필을 조회해 표시. 실패(null) 시 OS 사용자명으로 폴백.
+    /// </summary>
+    private async Task LoadProfileAsync()
     {
-        await _settings.UpdateUserDisplayNameAsync(UserDisplayName);
+        ProfileStatus = "불러오는 중...";
+        UserProfile? profile;
+        try
+        {
+            profile = await _api.GetProfileAsync();
+        }
+        catch
+        {
+            profile = null;
+        }
+
+        if (profile is not null)
+        {
+            ProfileUsername = profile.Username;
+            ProfileDisplayName = string.IsNullOrWhiteSpace(profile.DisplayName)
+                ? Environment.UserName
+                : profile.DisplayName;
+            ProfileOrganization = profile.Organization ?? string.Empty;
+            ProfileEmail = profile.Email ?? string.Empty;
+            ProfileStatus = string.Empty;
+        }
+        else
+        {
+            ProfileUsername = string.Empty;
+            ProfileDisplayName = Environment.UserName;
+            ProfileOrganization = string.Empty;
+            ProfileEmail = string.Empty;
+            ProfileStatus = "프로필을 불러오지 못했습니다";
+        }
     }
 
     // ── Hotkey capture (existing behavior, preserved) ──────────────────
@@ -252,5 +354,19 @@ public partial class SettingsViewModel : ObservableObject
         ValidationError = null;
         IsCapturing = false;
         SaveCommand.NotifyCanExecuteChanged();
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────
+
+    private static Task UiInvokeAsync(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        return dispatcher.InvokeAsync(action).Task;
     }
 }

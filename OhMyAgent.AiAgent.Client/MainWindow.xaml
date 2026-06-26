@@ -79,89 +79,150 @@
                 <!-- 프로젝트 / 채팅 목록 -->
                 <ScrollViewer Grid.Row="1" Margin="0,4,0,0" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <!-- 프로젝트 섹션 = 워크스페이스 디렉토리 히스토리 -->
-                        <TextBlock Text="프로젝트" Style="{StaticResource SidebarSectionHeader}"/>
-                        <ItemsControl ItemsSource="{Binding RecentWorkspaces}">
+                        <!-- 프로젝트 섹션 = 대화 세션 묶음 (미분류 포함). 작업 디렉토리는 설정에서 관리. -->
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="프로젝트" Style="{StaticResource SidebarSectionHeader}"
+                                       Margin="0" VerticalAlignment="Center"/>
+                            <!-- 새 프로젝트 -->
+                            <Button Grid.Column="1" Style="{StaticResource ComposerIconButton}"
+                                    Width="24" Height="24" FontSize="13"
+                                    Content="&#xE710;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                    Click="NewProject_Click"
+                                    ToolTip="새 프로젝트"/>
+                        </Grid>
+
+                        <!-- 프로젝트 그룹 목록 (Projects.Projects) -->
+                        <ItemsControl ItemsSource="{Binding Projects.Projects}" Margin="0,2,0,0">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <!-- 클릭=OpenWorkspaceCommand(항목) -->
-                                        <Button Style="{StaticResource SidebarItemButton}"
-                                                Command="{Binding DataContext.OpenWorkspaceCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}"
-                                                ToolTip="{Binding Path}">
-                                            <Grid>
+                                <DataTemplate DataType="{x:Type vm:ProjectItemViewModel}">
+                                    <Expander IsExpanded="True" Margin="0,1,0,1"
+                                              Background="Transparent" BorderThickness="0"
+                                              Foreground="{StaticResource TextSecondary}"
+                                              AllowDrop="True"
+                                              DragOver="Project_DragOver" Drop="Project_Drop">
+                                        <!-- 그룹 헤더: 프로젝트명 + 대화 수 + 동기화 배지 + 컨텍스트 메뉴 -->
+                                        <Expander.Header>
+                                            <Grid HorizontalAlignment="Stretch" Width="180">
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="24"/>
+                                                    <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Grid.Column="0" Text="&#xE8B7;"
                                                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="14" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
-                                                           VerticalAlignment="Center" MaxWidth="150"
+                                                           FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           FontSize="13" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"
                                                            TextTrimming="CharacterEllipsis"/>
-                                                <!-- 우측 제거 옵션 -->
-                                                <Button Grid.Column="2" Style="{StaticResource ComposerIconButton}"
-                                                        Width="22" Height="22" FontSize="11"
-                                                        Content="&#xE8BB;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                        Command="{Binding DataContext.RemoveWorkspaceCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                        CommandParameter="{Binding}"
-                                                        ToolTip="목록에서 제거"/>
-                                            </Grid>
-                                        </Button>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <!-- 빈 상태 -->
-                        <TextBlock Text="최근 작업 공간 없음"
-                                   Foreground="{StaticResource TextMuted}"
-                                   FontSize="13" Margin="10,2,0,0"
-                                   Visibility="{Binding RecentWorkspaces.Count, Converter={StaticResource EmptyCountToVisibility}}"/>
-
-                        <!-- 채팅 섹션 = 채팅 히스토리 -->
-                        <TextBlock Text="채팅" Style="{StaticResource SidebarSectionHeader}"/>
-                        <ItemsControl ItemsSource="{Binding ChatSessions}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <!-- 클릭=LoadChatSessionCommand(항목) -->
-                                        <Button Style="{StaticResource SidebarItemButton}"
-                                                Command="{Binding DataContext.LoadChatSessionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}"
-                                                ToolTip="{Binding Title}">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="24"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="&#xE8BD;"
+                                                <!-- 동기화 배지 -->
+                                                <TextBlock Grid.Column="2" Text="&#xE753;"
                                                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="14" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="1" Text="{Binding Title}"
-                                                           VerticalAlignment="Center" MaxWidth="150"
-                                                           TextTrimming="CharacterEllipsis"/>
-                                                <!-- 우측 삭제 -->
-                                                <Button Grid.Column="2" Style="{StaticResource ComposerIconButton}"
-                                                        Width="22" Height="22" FontSize="11"
-                                                        Content="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                        Command="{Binding DataContext.DeleteChatSessionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                        CommandParameter="{Binding}"
-                                                        ToolTip="채팅 삭제"/>
+                                                           Foreground="{StaticResource AccentSoftBrush}"
+                                                           FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center"
+                                                           ToolTip="서버 동기화됨"
+                                                           Visibility="{Binding Synced, Converter={StaticResource BoolToVisibility}}"/>
+                                                <!-- 대화 수 -->
+                                                <TextBlock Grid.Column="3" Text="{Binding ConversationCount}"
+                                                           Foreground="{StaticResource TextMuted}"
+                                                           FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                                <!-- 실제 프로젝트만 컨텍스트 메뉴(rename/delete/sync) -->
+                                                <Grid.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="이름 변경" Click="RenameProject_Click"
+                                                                  DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                                        <MenuItem Header="서버 동기화" Click="SyncProject_Click"
+                                                                  DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                                        <Separator/>
+                                                        <MenuItem Header="삭제" Click="DeleteProject_Click"
+                                                                  DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                                    </ContextMenu>
+                                                </Grid.ContextMenu>
+                                                <!-- 미분류 그룹은 컨텍스트 메뉴 비활성 -->
+                                                <Grid.Style>
+                                                    <Style TargetType="Grid">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsUnassigned}" Value="True">
+                                                                <Setter Property="ContextMenu" Value="{x:Null}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Grid.Style>
                                             </Grid>
-                                        </Button>
-                                    </Grid>
+                                        </Expander.Header>
+
+                                        <!-- 그룹 자식: 대화 목록 -->
+                                        <ItemsControl ItemsSource="{Binding Conversations}" Margin="14,2,0,4">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type models:ChatSessionSummary}">
+                                                    <Grid Background="Transparent"
+                                                          PreviewMouseLeftButtonDown="Conversation_PreviewMouseLeftButtonDown"
+                                                          PreviewMouseMove="Conversation_PreviewMouseMove"
+                                                          ToolTip="끌어서 프로젝트 폴더로 이동할 수 있습니다.">
+                                                        <Button Style="{StaticResource SidebarItemButton}"
+                                                                Command="{Binding DataContext.LoadChatSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding}"
+                                                                ToolTip="{Binding Title}">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="22"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" Text="&#xE8BD;"
+                                                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                                           FontSize="13" VerticalAlignment="Center"/>
+                                                                <TextBlock Grid.Column="1" Text="{Binding Title}"
+                                                                           VerticalAlignment="Center" MaxWidth="130"
+                                                                           TextTrimming="CharacterEllipsis"/>
+                                                                <Button Grid.Column="2" Style="{StaticResource ComposerIconButton}"
+                                                                        Width="22" Height="22" FontSize="11"
+                                                                        Content="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                                        Command="{Binding DataContext.DeleteChatSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                        CommandParameter="{Binding}"
+                                                                        ToolTip="채팅 삭제"/>
+                                                            </Grid>
+                                                        </Button>
+                                                        <!-- 대화 편입/해제: 프로젝트 목록을 동적으로 -->
+                                                        <Grid.ContextMenu>
+                                                            <ContextMenu ItemsSource="{Binding DataContext.Projects.Projects, RelativeSource={RelativeSource AncestorType=Window}}">
+                                                                <ContextMenu.ItemContainerStyle>
+                                                                    <!-- 각 MenuItem DataContext = ProjectItemViewModel (편입 대상).
+                                                                         핸들러에서 Tag(대상 ProjectId)와 ContextMenu.PlacementTarget(대화)로 편입 수행. -->
+                                                                    <Style TargetType="MenuItem">
+                                                                        <Setter Property="Header" Value="{Binding Name}"/>
+                                                                        <Setter Property="Tag" Value="{Binding Id}"/>
+                                                                        <EventSetter Event="Click" Handler="AssignConversation_Click"/>
+                                                                    </Style>
+                                                                </ContextMenu.ItemContainerStyle>
+                                                            </ContextMenu>
+                                                        </Grid.ContextMenu>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Expander>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <!-- 빈 상태: 채팅 없을 때만 -->
+
+                        <!-- 빈 상태: 프로젝트/대화 모두 없을 때 -->
                         <TextBlock Text="채팅 없음"
                                    Foreground="{StaticResource TextMuted}"
                                    FontSize="13" Margin="10,2,0,0"
-                                   Visibility="{Binding ChatSessions.Count, Converter={StaticResource EmptyCountToVisibility}}"/>
+                                   Visibility="{Binding Projects.Projects.Count, Converter={StaticResource EmptyCountToVisibility}}"/>
+
+                        <!-- 동기화/상태 안내 -->
+                        <TextBlock Text="{Binding Projects.StatusMessage}"
+                                   Foreground="{StaticResource TextMuted}"
+                                   FontSize="11" Margin="10,4,0,0" TextWrapping="Wrap"
+                                   Visibility="{Binding Projects.StatusMessage, Converter={StaticResource StringToVisibility}}"/>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -257,10 +318,11 @@
                 <!-- 트랜스크립트 뷰 (항목 있을 때) -->
                 <ScrollViewer x:Name="ChatScrollViewer" Padding="24,8"
                               Visibility="{Binding Transcript.Count, Converter={StaticResource CountToVisibility}}">
+                    <!-- 트랜스크립트: 창 너비에 맞춰 늘어남(고정 캡 제거). 버블은 내부에서 너비의 82%로 비례. -->
                     <ItemsControl x:Name="MessageList"
                                   ItemsSource="{Binding Transcript}"
                                   ItemTemplateSelector="{StaticResource TranscriptSelector}"
-                                  MaxWidth="760"
+                                  HorizontalAlignment="Stretch"
                                   Focusable="False"/>
                 </ScrollViewer>
 
@@ -335,7 +397,8 @@
             </Grid>
 
             <!-- ── 하단: 컴포저 + 워크스페이스 칩 + 인라인 승인 + 배너 ── -->
-            <StackPanel Grid.Row="2" Margin="24,0,24,18" MaxWidth="760"
+            <!-- 하단 컴포저: 창 너비에 맞춰 늘어남(고정 캡 제거). -->
+            <StackPanel Grid.Row="2" Margin="24,0,24,18"
                         HorizontalAlignment="Stretch">
 
                 <!-- 인라인 승인 카드 (PendingApproval) -->
@@ -496,6 +559,11 @@
                                    FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding WorkspaceRoot}" VerticalAlignment="Center"
                                    MaxWidth="280" TextTrimming="CharacterEllipsis"/>
+                        <!-- 활성 디렉토리 2개 이상이면 "외 N개" 표시 (잘리지 않게 경로 칩과 분리) -->
+                        <TextBlock Text="{Binding ExtraWorkspacesText}" VerticalAlignment="Center"
+                                   Margin="7,0,0,0" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentSoftBrush}"
+                                   Visibility="{Binding ExtraWorkspacesText, Converter={StaticResource StringToVisibility}}"/>
                         <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                    FontSize="10" Margin="6,1,0,0" VerticalAlignment="Center"/>
                     </StackPanel>

@@ -19,6 +19,9 @@ public sealed class AgentOrchestrator(
     private static readonly string ClientVersion =
         Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0";
 
+    // MaxTokens 설정 제거 후 와이어 필드(max_tokens)는 서버 제어 전제의 상수 기본값으로 전송.
+    private const int DefaultMaxTokens = 4096;
+
     public async IAsyncEnumerable<AgentEvent> RunAsync(
         string userGoal,
         AgentSession session,
@@ -29,7 +32,7 @@ public sealed class AgentOrchestrator(
         // 1) 시스템 프롬프트 시드.
         if (session.Messages.Count == 0)
             session.Messages.Add(AgentMessage.System(
-                AgentSession.DefaultSystemPrompt(workspace.Root, mode)));
+                AgentSession.DefaultSystemPrompt(workspace.Root, mode, workspace.Roots)));
 
         // 2) 사용자 목표 추가.
         session.Messages.Add(AgentMessage.User(userGoal));
@@ -165,7 +168,7 @@ public sealed class AgentOrchestrator(
         return new AgentRequest(
             Model: s.ModelId,
             Stream: true,
-            MaxTokens: s.MaxTokens,
+            MaxTokens: DefaultMaxTokens,
             Messages: new List<AgentMessage>(session.Messages),
             Tools: tools.ToSchemas(),
             Metadata: new RequestMetadata("windows", workspace.Root, ClientVersion));

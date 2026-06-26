@@ -121,4 +121,196 @@ public partial class MainWindow : Window
 
     private void MenuItem_Exit_Click(object sender, RoutedEventArgs e)
         => ((App)Application.Current).ExitApplication();
+
+    // ── 프로젝트 사이드바 (Projects ViewModel 경유) ───────────────────────
+
+    private ProjectsViewModel? ProjectsVm
+        => (DataContext as AgentSessionViewModel)?.Projects;
+
+    // 새 프로젝트 → 이름 입력 후 생성
+    private void NewProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProjectsVm is not { } projects) return;
+
+        var name = PromptText("새 프로젝트", "프로젝트 이름을 입력하세요:", "새 프로젝트");
+        if (name is null) return; // 취소
+
+        projects.CreateProjectCommand.Execute(name);
+    }
+
+    // 프로젝트 이름 변경 (컨텍스트 메뉴) — 대상 프로젝트를 먼저 선택
+    private void RenameProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProjectsVm is not { } projects) return;
+        if (((FrameworkElement)sender).DataContext is not ProjectItemViewModel item || item.IsUnassigned) return;
+
+        projects.SelectedProject = item;
+        var name = PromptText("이름 변경", "새 프로젝트 이름:", item.Name);
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        projects.RenameCommand.Execute(name);
+    }
+
+    // 프로젝트 삭제 (컨텍스트 메뉴) — 귀속 대화 유지 여부 확인
+    private void DeleteProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProjectsVm is not { } projects) return;
+        if (((FrameworkElement)sender).DataContext is not ProjectItemViewModel item || item.IsUnassigned) return;
+
+        projects.SelectedProject = item;
+
+        var result = MessageBox.Show(
+            this,
+            $"'{item.Name}' 프로젝트를 삭제하시겠습니까?\n\n[예] 귀속 대화도 함께 삭제\n[아니오] 대화는 미분류로 이동\n[취소] 중단",
+            "프로젝트 삭제",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+
+        if (result == MessageBoxResult.Cancel) return;
+
+        projects.DeleteCommand.Execute(result == MessageBoxResult.Yes);
+    }
+
+    // 프로젝트 서버 동기화 (컨텍스트 메뉴)
+    private void SyncProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProjectsVm is not { } projects) return;
+        if (((FrameworkElement)sender).DataContext is not ProjectItemViewModel item || item.IsUnassigned) return;
+
+        projects.SelectedProject = item;
+        projects.SyncCommand.Execute(null);
+    }
+
+    // 대화 → 프로젝트 편입/해제 (컨텍스트 메뉴 항목).
+    //   MenuItem.Tag = 대상 ProjectId(미분류=UnassignedId), 대화는 ContextMenu.PlacementTarget의 DataContext.
+    private void AssignConversation_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProjectsVm is not { } projects) return;
+        if (sender is not System.Windows.Controls.MenuItem menuItem) return;
+        if (menuItem.Tag is not string targetProjectId) return;
+
+        // PlacementTarget(대화 행 Grid)의 DataContext = ChatSessionSummary
+        var contextMenu = menuItem.Parent as System.Windows.Controls.ContextMenu
+                          ?? (menuItem.Parent as FrameworkElement)?.TemplatedParent as System.Windows.Controls.ContextMenu;
+        var session = (contextMenu?.PlacementTarget as FrameworkElement)?.DataContext as Models.ChatSessionSummary;
+        if (session is null) return;
+
+        projects.AssignConversationCommand.Execute((session.Id, targetProjectId));
+    }
+
+    // ── 대화 → 프로젝트 폴더 드래그앤드롭 분류 ─────────────────────────────
+    private System.Windows.Point _dragStartPoint;
+    private Models.ChatSessionSummary? _dragSession;
+
+    private void Conversation_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _dragStartPoint = e.GetPosition(null);
+        _dragSession = (sender as FrameworkElement)?.DataContext as Models.ChatSessionSummary;
+    }
+
+    private void Conversation_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || _dragSession is null) return;
+
+        var pos = e.GetPosition(null);
+        if (System.Math.Abs(pos.X - _dragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            System.Math.Abs(pos.Y - _dragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        var session = _dragSession;
+        _dragSession = null;
+        var data = new System.Windows.DataObject(typeof(Models.ChatSessionSummary), session);
+        System.Windows.DragDrop.DoDragDrop((DependencyObject)sender, data, System.Windows.DragDropEffects.Move);
+    }
+
+    private void Project_DragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(typeof(Models.ChatSessionSummary))
+            ? System.Windows.DragDropEffects.Move
+            : System.Windows.DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void Project_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (ProjectsVm is not { } projects) return;
+        if (e.Data.GetData(typeof(Models.ChatSessionSummary)) is not Models.ChatSessionSummary session) return;
+        if ((sender as FrameworkElement)?.DataContext is not ProjectItemViewModel target) return;
+
+        // 대상 프로젝트(또는 미분류 그룹)로 편입/해제. ProjectsViewModel이 LoadAsync로 갱신.
+        projects.AssignConversationCommand.Execute((session.Id, target.Id));
+        e.Handled = true;
+    }
+
+    // 간단한 텍스트 입력 다이얼로그 (BCL/WPF only). 취소 시 null 반환.
+    private string? PromptText(string title, string message, string defaultValue)
+    {
+        var dialog = new Window
+        {
+            Title = title,
+            Width = 360,
+            Height = 170,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            ResizeMode = ResizeMode.NoResize,
+            Background = (System.Windows.Media.Brush)FindResource("WindowBg"),
+        };
+
+        var root = new System.Windows.Controls.StackPanel { Margin = new Thickness(18) };
+        root.Children.Add(new System.Windows.Controls.TextBlock
+        {
+            Text = message,
+            Foreground = (System.Windows.Media.Brush)FindResource("TextSecondary"),
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 0, 8),
+        });
+
+        var input = new System.Windows.Controls.TextBox
+        {
+            Text = defaultValue,
+            Style = (Style)FindResource("DarkTextBox"),
+            MinHeight = 34,
+            FontSize = 13,
+            VerticalContentAlignment = System.Windows.VerticalAlignment.Center,
+        };
+        root.Children.Add(input);
+
+        var buttons = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            Margin = new Thickness(0, 14, 0, 0),
+        };
+        var ok = new System.Windows.Controls.Button
+        {
+            Content = "확인",
+            Style = (Style)FindResource("PrimaryButton"),
+            Padding = new Thickness(16, 6, 16, 6),
+            FontSize = 12,
+            IsDefault = true,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        var cancel = new System.Windows.Controls.Button
+        {
+            Content = "취소",
+            Style = (Style)FindResource("OutlineButton"),
+            Padding = new Thickness(16, 6, 16, 6),
+            FontSize = 12,
+            IsCancel = true,
+        };
+        buttons.Children.Add(ok);
+        buttons.Children.Add(cancel);
+        root.Children.Add(buttons);
+
+        dialog.Content = root;
+
+        bool confirmed = false;
+        ok.Click += (_, _) => { confirmed = true; dialog.DialogResult = true; };
+        input.Focus();
+        input.SelectAll();
+
+        dialog.ShowDialog();
+        return confirmed ? input.Text : null;
+    }
 }

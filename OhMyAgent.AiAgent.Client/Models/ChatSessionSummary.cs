@@ -8,4 +8,5 @@ public sealed record ChatSessionSummary(
     string Title,
     DateTimeOffset UpdatedUtc,
     string? WorkspaceRoot,
-    int MessageCount);
+    int MessageCount,
+    string? ProjectId = null);

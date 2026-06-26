@@ -73,8 +73,6 @@ public class SettingsService : ISettingsService
                             Current.ServerBaseUrl = "http://localhost:8080";
                         if (Current.MaxIterations <= 0)
                             Current.MaxIterations = 25;
-                        if (Current.MaxTokens <= 0)
-                            Current.MaxTokens = 4096;
                         if (string.IsNullOrEmpty(Current.AuthScheme))
                             Current.AuthScheme = "Bearer";
                         // ModelId 기본값 시드 제거: 빈 문자열 유지 → /models 에서 선택 유도.
@@ -88,6 +86,17 @@ public class SettingsService : ISettingsService
                         Current.RecentWorkspaces ??= [];
                         Current.UserDisplayName ??= "";   // 빈 값 유지 → VM에서 Environment.UserName 폴백
                         Current.SchemaVersion = 4;
+                        migrated = true;
+                    }
+
+                    // v4 -> v5: MaxTokens 설정 제거(서버 제어). 다중 루트 워크스페이스 도입 —
+                    // 기존 단일 WorkspaceRoot 를 Workspaces[0] 으로 승격.
+                    if (Current.SchemaVersion < 5)
+                    {
+                        Current.Workspaces ??= [];
+                        if (Current.Workspaces.Count == 0 && !string.IsNullOrWhiteSpace(Current.WorkspaceRoot))
+                            Current.Workspaces = [ new WorkspaceFolder { Path = Current.WorkspaceRoot, Enabled = true } ];
+                        Current.SchemaVersion = 5;
                         migrated = true;
                     }
 
@@ -157,14 +166,22 @@ public class SettingsService : ISettingsService
         RaiseSettingsChanged();
     }
 
-    public async Task UpdateServerConfigAsync(string baseUrl, string scheme, string token, string modelId, int maxIterations, int maxTokens)
+    public async Task UpdateServerConfigAsync(string baseUrl, string scheme, string token, string modelId, int maxIterations)
     {
         Current.ServerBaseUrl  = baseUrl ?? "";
         Current.AuthScheme     = scheme  ?? "Bearer";
         Current.AuthToken      = token   ?? "";
         Current.ModelId        = modelId ?? "";
         Current.MaxIterations  = maxIterations;
-        Current.MaxTokens      = maxTokens;
+        await SaveAsync().ConfigureAwait(false);
+        RaiseSettingsChanged();
+    }
+
+    public async Task UpdateWorkspacesAsync(IReadOnlyList<WorkspaceFolder> folders)
+    {
+        var list = (folders ?? []).Take(AppSettings.MaxWorkspaces).ToList();
+        Current.Workspaces = list;
+        Current.WorkspaceRoot = list.FirstOrDefault(w => w.Enabled)?.Path ?? "";
         await SaveAsync().ConfigureAwait(false);
         RaiseSettingsChanged();
     }

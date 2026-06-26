@@ -12,10 +12,13 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 ## 핵심 특징
 
 - **에이전트 루프**: `질의 → 도구 호출 → 실행 → 결과 반환 → 반복`을 `end_turn` 까지 자동 수행
-- **19개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷까지 (아래 표 참조)
-- **워크스페이스 샌드박스**: 모든 파일/셸 작업이 지정 디렉토리 기준으로 resolve, 경로 탈출 차단
+- **20개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷까지 (아래 표 참조)
+- **멀티루트 워크스페이스**: 최대 **10개** 작업 디렉토리를 동시 등록, **폴더별 접근 허용/차단 토글**. 모든 파일/셸 작업이 활성 루트 기준으로 resolve되고 경로 탈출은 차단
+- **프로젝트(대화 묶음)**: 여러 대화 세션을 상위 컨테이너로 묶어 관리. **로컬 우선 저장 + 선택적 서버 동기화**, 사이드바에서 대화를 **드래그앤드롭**으로 프로젝트에 분류
 - **권한 게이트**: Manual / Auto-Safe / Full-Auto 3단계. 위험 작업은 실행 전 사용자 승인
-- **로컬 우선**: 채팅 히스토리·설정은 로컬 영속(`%APPDATA%/OhMyAgent`), 서버는 stateless
+- **시작 로그인 게이트**: 앱 시작 시 전용 로그인 화면(`LoginWindow`)에서 인증. 설정창에는 로그인 입력이 없고 로그아웃·상태만 표시
+- **서버 프로필 표시**: 로그인 사용자의 이름/조직/이메일을 서버에서 조회해 설정창에 **읽기 전용**으로 노출(`GET /api/v1/users/me`)
+- **로컬 우선**: 채팅 히스토리·프로젝트·설정은 로컬 영속(`%APPDATA%/OhMyAgent`), 서버는 stateless
 - **데스크톱 통합**: 다크 테마, 시스템 트레이 상주, 전역 핫키(기본 `Ctrl+Space`), 플로팅 채팅창
 - **배포 무결성**: 설치 바이너리 SHA-256 / Authenticode / HMAC 매니페스트 검증 (트레이 → 무결성 검사)
 
@@ -29,10 +32,12 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 │  ViewModels          AgentSessionViewModel(루프 상태) · Settings…  │
 │  Agent Core                                                       │
 │    IAgentOrchestrator   에이전트 루프 (질의→도구→실행→반환)         │
-│    IAgentApiClient      서버 HTTP/SSE 통신 (로그인·모델·chat)       │
+│    IAgentApiClient      서버 HTTP/SSE 통신(로그인·모델·chat·프로필·동기화)│
 │    IToolRegistry        ITool[] 도구 모음 + 서버용 스키마 생성       │
 │    IPermissionService   승인/권한 게이트                           │
-│    IWorkspaceContext    작업 디렉토리 샌드박스(경로 탈출 차단)        │
+│    IWorkspaceContext    멀티루트 샌드박스(활성 루트 OR 검증·경로 탈출 차단)│
+│    IChatHistoryService  채팅 세션 로컬 영속                        │
+│    IProjectService      프로젝트(대화 묶음) 로컬 + 선택적 서버 동기화 │
 └───────────────────────────────┬──────────────────────────────────┘
                                  │ HTTP + SSE (text/event-stream)
                                  ▼
@@ -46,17 +51,17 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 
 ---
 
-## 내장 도구 (19)
+## 내장 도구 (20)
 
 | 도구 | 위험도 | 설명 |
 |------|--------|------|
 | `read_file` / `write_file` / `edit_file` | ReadOnly / Write / Write | 파일 읽기·생성·문자열 치환 수정 |
 | `list_directory` / `glob` / `grep` | ReadOnly | 디렉토리 목록 · 패턴 검색 · 내용 검색 |
 | `create_directory` / `move` / `copy` / `delete` | Write / Destructive | 디렉토리 생성 · 이동 · 복사 · 삭제 |
-| `run_command` | Execute | PowerShell / CMD 명령 실행(워크스페이스 기준) |
+| `run_command` | Execute | PowerShell / CMD 명령 실행(주 워크스페이스 루트 기준) |
 | `get_environment` | ReadOnly | 환경변수 조회 |
 | `clipboard_read` / `clipboard_write` | ReadOnly / Write | 클립보드 읽기 · 쓰기(STA 마샬링) |
-| `list_processes` | ReadOnly | 실행 프로세스 목록(이름/PID/메모리) |
+| `list_processes` / `list_processes_memory_kb` | ReadOnly | 실행 프로세스 목록(이름/PID) · 메모리 사용량(KB) 포함 목록 |
 | `start_process` / `kill_process` | Execute / Destructive | 프로세스 시작 · 종료 |
 | `http_fetch` | Execute | 사내망 HTTP 요청(폐쇄망 내부 자원 접근) |
 | `screenshot` | ReadOnly | 화면 캡처 → PNG base64(비전 모델 입력용) |
@@ -68,6 +73,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 
 ## 요구 사항
 
+- **스택**: C# **.NET 10.0** · **WPF** · **MVVM**(`CommunityToolkit.Mvvm` 소스 생성기) · `System.Text.Json`
 - **OS**: Windows 10 / 11 (WPF)
 - **.NET SDK**: 10.0 이상 (`dotnet --version`)
 - **사내 AI API 서버**: 기본 `http://localhost:8080` ([API 계약](docs/API_CONTRACT.md))
@@ -82,17 +88,27 @@ dotnet build OhMyAgent.AiAgent.Client/OhMyAgent.AiAgent.Client.csproj
 dotnet run --project OhMyAgent.AiAgent.Client
 ```
 
-> WSL에서 Windows용 dotnet을 쓰는 경우 `.claude/settings.local.json` 권한 설정 참조(`CLAUDE.md`).
+> **WSL에서 Windows용 dotnet을 쓰는 경우**: 이 프로젝트는 WPF(WinExe)라 Windows용 `dotnet.exe`로만 빌드됩니다.
+> WSL에서는 Windows 실행 파일과 Windows 경로를 직접 호출하세요.
+> ```bash
+> "/mnt/c/Program Files/dotnet/dotnet.exe" build \
+>   "C:\Users\<USERNAME>\RiderProjects\OhMyAgent.AiAgent.Client\OhMyAgent.AiAgent.Client\OhMyAgent.AiAgent.Client.csproj" \
+>   -consoleloggerparameters:ErrorsOnly
+> ```
+> 권한 설정은 `.claude/settings.local.json`(gitignore됨) 참조 — `CLAUDE.md`의 "WSL 환경" 절.
 
 ## 첫 사용 흐름
 
-1. **트레이 아이콘 → Settings** 진입
-2. **API 서버 주소** 확인(기본 `http://localhost:8080`)
-3. **사용자 ID / 비밀번호로 로그인** → JWT 자동 발급·저장(`Authorization: Bearer`)
-4. **모델 선택**(서버 `/models`의 활성 Provider 기반)
-5. **작업 디렉토리(워크스페이스)** 지정 — 에이전트 작업의 샌드박스 루트
-6. **권한 모드** 선택(기본 Manual 권장)
+1. **앱 시작 → 로그인 화면(LoginWindow)** 에서 **사용자 ID / 비밀번호로 로그인** → JWT 자동 발급·저장(`Authorization: Bearer`).
+   (로그인 입력은 시작 게이트에만 있으며 설정창에는 없음. 설정창은 로그인 상태·로그아웃만 노출.)
+2. **트레이 아이콘 → Settings** 진입 → **API 서버 주소** 확인(기본 `http://localhost:8080`)
+3. **모델 선택**(서버 `/models`의 활성 Provider 기반)
+4. **작업 디렉토리(워크스페이스)** 등록 — 최대 10개까지 추가하고 폴더별 접근 토글로 활성/비활성 제어
+5. **권한 모드** 선택(기본 Manual 권장)
+6. (선택) **프로젝트 생성** 후 사이드바에서 대화를 드래그앤드롭으로 분류, 필요 시 프로젝트별 **서버 동기화**
 7. 채팅창(`Ctrl+Space`)에 목표 입력 → 에이전트 루프 실행
+
+> **최대 토큰(MaxTokens)은 서버가 제어**합니다. 클라이언트 설정에서는 제거되었고, 와이어(`max_tokens`)에는 기본 상수만 전송됩니다.
 
 ---
 
@@ -104,6 +120,13 @@ dotnet run --project OhMyAgent.AiAgent.Client
 | `GET`  | `/api/v1/health` | 헬스 체크 (Public) |
 | `GET`  | `/api/v1/models` | 활성 Provider 기반 모델 목록 |
 | `POST` | `/api/v1/agent/chat` | **에이전트 루프** — 대화기록+도구 스키마 → SSE 응답 |
+| `GET`  | `/api/v1/users/me` | 로그인 사용자 프로필(이름/조직/이메일) — 설정창 읽기 전용 표시 |
+| `GET/POST` | `/api/v1/projects` | 프로젝트 목록 조회 / 업서트(`client_id` 기준) — *선택적 동기화* |
+| `POST` | `/api/v1/projects/{id}/conversations` | 대화 1건 업서트(push) — *선택적 동기화* |
+
+> 프로필(`/users/me`)과 프로젝트 동기화 엔드포인트는 **graceful fallback** 으로 다룹니다.
+> 미구현(404/501)·오프라인이면 프로필은 OS 사용자명으로 폴백, 동기화 버튼은 "미지원"으로 안내하고
+> 앱은 로컬 전용으로 정상 동작합니다. 상세 스펙은 서버 팀용 요구 명세 참조.
 
 **SSE 이벤트**: `message_start` · `content_delta{delta}` · `tool_call{id,name,arguments}` · `message_stop{stop_reason,usage}` · `error`.
 `stop_reason == tool_use` 면 클라이언트가 도구를 실행해 `tool` 메시지로 재요청(루프 지속), `end_turn` 이면 종료.
@@ -121,7 +144,7 @@ dotnet run --project OhMyAgent.AiAgent.Client
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
-| 배너에 **"로그인 필요"** + `missing bearer token` | 로그인 전이거나 JWT 만료 | 배너의 **[로그인]** → 설정에서 ID/비밀번호로 로그인 |
+| 배너에 **"로그인 필요"** + `missing bearer token` | 로그인 전이거나 JWT 만료 | 배너의 **[로그인]** → 시작 로그인 화면에서 ID/비밀번호로 재로그인 |
 | 배너에 **"서버 연결 실패"** | 서버 미실행 / 주소 오류 | 서버 기동 확인, 설정의 **API 서버 주소** 확인 후 **[다시 시도]** |
 | 모델 칩이 비어 있음 | 미로그인(`/models` 401) 또는 활성 Provider 없음 | 로그인 후 새로고침 / 서버에 활성 LLM Provider 등록 |
 | 채팅이 즉시 실패 | 토큰 만료(세션 중 401) | 자동으로 "로그인 필요" 안내 전환 → 재로그인 |
@@ -134,10 +157,13 @@ dotnet run --project OhMyAgent.AiAgent.Client
 |------|------|
 | 설정 | `%APPDATA%/OhMyAgent/settings.json` |
 | 채팅 세션 | `%APPDATA%/OhMyAgent/sessions/{id}.json` |
+| 프로젝트(대화 묶음) | `%APPDATA%/OhMyAgent/projects/{id}.json` |
 | 감사 로그(예정) | `%APPDATA%/OhMyAgent/audit/` |
 
-주요 설정: `ServerBaseUrl`, `AuthToken`(로그인 시 자동), `ModelId`, `WorkspaceRoot`,
-`PermissionMode`(Manual/AutoSafe/FullAuto), `MaxIterations`(기본 25), `MaxTokens`, `Hotkey`.
+주요 설정: `ServerBaseUrl`, `AuthToken`(로그인 시 자동), `ModelId`, `WorkspaceRoot`(주 루트),
+`Workspaces`(멀티루트 목록, 폴더별 `Enabled` 토글, 최대 10), `PermissionMode`(Manual/AutoSafe/FullAuto),
+`MaxIterations`(기본 25), `Hotkey`. `SchemaVersion`은 `5`(v4→v5 마이그레이션에서 `WorkspaceRoot`를
+`Workspaces` 단일 항목으로 승격, `MaxTokens` 설정 제거).
 
 ---
 
@@ -145,23 +171,26 @@ dotnet run --project OhMyAgent.AiAgent.Client
 
 ```
 OhMyAgent.AiAgent.Client/
-├── App.xaml(.cs)         컴포지션 루트 · 트레이 · 핫키
-├── MainWindow.xaml(.cs)  메인 셸
-├── Models/               AppSettings · Agent DTO(AgentMessage/ToolCall/Usage …)
-├── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry · 권한/워크스페이스/보안
-│   └── Tools/            19개 ITool 구현
-├── ViewModels/           AgentSessionViewModel · SettingsViewModel · IntegrityViewModel
-├── Views/                ChatOnlyWindow · SettingsWindow · IntegrityWindow
+├── App.xaml(.cs)         컴포지션 루트 · 트레이 · 핫키 · 로그인 게이트
+├── MainWindow.xaml(.cs)  메인 셸 · 프로젝트 사이드바(드래그앤드롭 분류)
+├── Models/               AppSettings · WorkspaceFolder · ProjectRecord/Summary ·
+│                         UserProfile · ChatSessionRecord · Agent DTO(AgentMessage/ToolCall/Usage …)
+├── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry ·
+│   │                     ProjectService · ChatHistoryService · 권한/워크스페이스/보안
+│   └── Tools/            20개 ITool 구현
+├── ViewModels/           AgentSessionViewModel · SettingsViewModel · ProjectsViewModel ·
+│                         WorkspaceFolderViewModel · LoginViewModel · IntegrityViewModel
+├── Views/                LoginWindow · ChatOnlyWindow · SettingsWindow · IntegrityWindow
 ├── Resources/            Colors · Styles · Converters · TranscriptTemplates
-└── docs/                 아키텍처 계획 · API 계약
+└── docs/                 아키텍처 계획 · API 계약 · 발표자료
 ```
 
 ---
 
 ## 보안 모델
 
-- **경로 샌드박스**: 파일/셸 도구는 워크스페이스 밖 접근 차단(`IWorkspaceContext.ResolvePath`)
-- **권한 게이트**: 위험도(ToolRisk) × 권한 모드로 실행 전 승인 결정
+- **멀티루트 경로 샌드박스**: 파일/셸 도구는 활성 워크스페이스 루트 **밖** 접근 차단(`IWorkspaceContext.ResolvePath` / `IsInsideWorkspace`). 여러 루트 중 하나라도 내부면 통과(OR 검증), 비활성 폴더는 차단
+- **권한 게이트**: 위험도(ToolRisk: ReadOnly/Write/Execute/Destructive) × 권한 모드로 실행 전 승인 결정
 - **명령 검증**: `SecurityValidator` 가 위험 명령 차단
 - **배포 무결성**: SHA-256 매니페스트 + Authenticode + HMAC 서명 검증
 

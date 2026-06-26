@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OhMyAgent · 기술 아키텍처 리뷰 (IT)</title>
+<style>
+  :root{
+    --bg:#0a0e14; --bg2:#0f1620; --surface:#151c28; --surface2:#1b2433;
+    --line:#26303f; --text:#e7edf5; --muted:#93a1b5; --dim:#5d6b7e;
+    --accent:#388bfd; --accent2:#6ea8ff; --green:#2ea043; --amber:#d29922;
+    --red:#f85149; --violet:#a371f7;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text); overflow:hidden;
+    font-family:'Pretendard','Segoe UI',-apple-system,'Malgun Gothic',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(60vw 60vw at 15% 10%, rgba(56,139,253,.18), transparent 60%),
+      radial-gradient(50vw 50vw at 85% 90%, rgba(163,113,247,.14), transparent 60%),
+      radial-gradient(40vw 40vw at 90% 12%, rgba(46,160,67,.10), transparent 60%);
+    animation:drift 18s ease-in-out infinite alternate;
+  }
+  @keyframes drift{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(0,-2%,0) scale(1.06)}}
+
+  .deck{position:relative;z-index:1;height:100vh;width:100vw}
+  .slide{
+    position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;
+    padding:6vh 8vw;opacity:0;transition:opacity .5s ease;overflow-y:auto;
+  }
+  .slide.active{display:flex;opacity:1}
+  .slide.active .rise{animation:rise .7s cubic-bezier(.2,.7,.2,1) both}
+  .slide.active .rise:nth-child(2){animation-delay:.06s}
+  .slide.active .rise:nth-child(3){animation-delay:.12s}
+  .slide.active .rise:nth-child(4){animation-delay:.18s}
+  .slide.active .rise:nth-child(5){animation-delay:.24s}
+  @keyframes rise{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+
+  .kicker{
+    display:inline-flex;align-items:center;gap:.5rem;font-size:.82rem;font-weight:600;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--accent2);
+    background:rgba(56,139,253,.10);border:1px solid rgba(56,139,253,.28);
+    padding:.4rem .8rem;border-radius:999px;width:max-content;margin-bottom:1.4rem;
+  }
+  h1{font-size:clamp(2.2rem,5.4vw,4.2rem);line-height:1.05;font-weight:800;letter-spacing:-.02em}
+  h2{font-size:clamp(1.7rem,4vw,2.8rem);line-height:1.12;font-weight:780;letter-spacing:-.02em;margin-bottom:1.3rem}
+  .grad{background:linear-gradient(100deg,var(--accent2),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lead{font-size:clamp(1rem,1.7vw,1.3rem);color:var(--muted);line-height:1.6;max-width:60ch}
+  .big{font-size:clamp(1.1rem,2vw,1.55rem);color:var(--text);line-height:1.5;font-weight:600;max-width:44ch}
+  .muted{color:var(--muted)} .dim{color:var(--dim)}
+  code{font-family:'JetBrains Mono','Consolas',monospace;font-size:.9em;background:var(--surface2);border:1px solid var(--line);border-radius:5px;padding:.05rem .35rem;color:var(--accent2)}
+
+  .cards{display:grid;gap:1rem;margin-top:1.6rem}
+  .c2{grid-template-columns:repeat(2,1fr)} .c3{grid-template-columns:repeat(3,1fr)} .c4{grid-template-columns:repeat(4,1fr)}
+  .card{
+    background:linear-gradient(180deg,var(--surface),var(--bg2));
+    border:1px solid var(--line);border-radius:14px;padding:1.2rem 1.3rem;
+    transition:transform .25s,border-color .25s,box-shadow .25s;
+  }
+  .card:hover{transform:translateY(-4px);border-color:rgba(56,139,253,.5);box-shadow:0 14px 40px rgba(0,0,0,.45)}
+  .card .ic{font-size:1.5rem;margin-bottom:.6rem;display:block}
+  .card h3{font-size:1.05rem;font-weight:700;margin-bottom:.35rem}
+  .card h3 code{font-size:.85em}
+  .card p{font-size:.9rem;color:var(--muted);line-height:1.45}
+
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:2.6rem;align-items:center}
+  @media(max-width:900px){.split{grid-template-columns:1fr}.c4,.c3{grid-template-columns:repeat(2,1fr)}}
+
+  /* layered architecture diagram */
+  .arch{display:flex;flex-direction:column;gap:.7rem;margin-top:1.4rem}
+  .layer{border:1px solid var(--line);border-radius:12px;padding:.9rem 1.1rem;background:var(--surface)}
+  .layer .lt{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent2);font-weight:700;margin-bottom:.5rem}
+  .layer .row{display:flex;gap:.5rem;flex-wrap:wrap}
+  .chip{font-size:.82rem;font-weight:600;padding:.35rem .6rem;border-radius:8px;background:var(--surface2);border:1px solid var(--line);color:var(--text)}
+  .layer.view{border-color:rgba(163,113,247,.4)}
+  .layer.vm{border-color:rgba(110,168,255,.4)}
+  .layer.svc{border-color:rgba(46,160,67,.4)}
+  .down{text-align:center;color:var(--accent);opacity:.7;font-size:1.1rem}
+
+  .flow{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-top:1.2rem}
+  .node{background:var(--surface2);border:1px solid var(--line);border-radius:11px;padding:.7rem .95rem;font-weight:650;font-size:.95rem;white-space:nowrap}
+  .node.k{border-color:rgba(56,139,253,.55);color:var(--accent2);background:rgba(56,139,253,.08)}
+  .arrow{color:var(--accent);font-size:1.2rem;opacity:.8}
+
+  table.api{border-collapse:collapse;width:100%;margin-top:1.3rem;font-size:.92rem}
+  table.api th,table.api td{text-align:left;padding:.55rem .7rem;border-bottom:1px solid var(--line)}
+  table.api th{color:var(--accent2);font-size:.74rem;letter-spacing:.1em;text-transform:uppercase}
+  table.api td code{background:none;border:none;padding:0;color:var(--text)}
+  .m{font-weight:700;font-size:.78rem;padding:.12rem .45rem;border-radius:6px}
+  .m.get{color:var(--green);background:rgba(46,160,67,.12)}
+  .m.post{color:var(--amber);background:rgba(210,153,34,.14)}
+  .opt{color:var(--dim);font-size:.8rem}
+
+  ul.checks{list-style:none;display:flex;flex-direction:column;gap:.7rem;margin-top:1.4rem}
+  ul.checks li{font-size:1.02rem;display:flex;gap:.7rem;align-items:flex-start;line-height:1.45}
+  ul.checks .ck{color:var(--green);font-weight:800;margin-top:.1rem}
+
+  .stat{display:flex;gap:2.4rem;margin-top:1.8rem;flex-wrap:wrap}
+  .stat .n{font-size:clamp(2rem,3.6vw,2.9rem);font-weight:800;line-height:1}
+  .stat .l{color:var(--muted);font-size:.9rem;margin-top:.4rem}
+
+  .topbar{position:fixed;top:0;left:0;right:0;height:4px;z-index:5;background:transparent}
+  .progress{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--violet));transition:width .4s}
+  .brand{position:fixed;top:22px;left:34px;z-index:5;display:flex;align-items:center;gap:.6rem;font-weight:700;letter-spacing:-.01em}
+  .brand .logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--violet));display:grid;place-items:center;font-size:.95rem;color:#fff;font-weight:800}
+  .brand .tag{font-size:.72rem;color:var(--dim);font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+  .nav{position:fixed;bottom:22px;right:30px;z-index:5;display:flex;align-items:center;gap:14px;color:var(--muted)}
+  .nav button{background:var(--surface);border:1px solid var(--line);color:var(--text);width:38px;height:38px;border-radius:10px;font-size:1.1rem;cursor:pointer;transition:.2s}
+  .nav button:hover{border-color:var(--accent);color:var(--accent2)}
+  .count{font-variant-numeric:tabular-nums;font-size:.9rem}
+  .dots{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:5;display:flex;gap:7px}
+  .dots i{width:8px;height:8px;border-radius:50%;background:var(--line);cursor:pointer;transition:.25s}
+  .dots i.on{background:var(--accent);transform:scale(1.35)}
+  .hint{position:fixed;bottom:24px;left:34px;z-index:5;color:var(--dim);font-size:.8rem}
+  kbd{background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:.1rem .45rem;font-size:.75rem;font-family:inherit}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="progress" id="prog"></div></div>
+<div class="brand"><span class="logo">A</span> OhMyAgent <span class="tag">기술 리뷰 · IT</span></div>
+
+<div class="deck" id="deck">
+
+  <!-- 1 · Title -->
+  <section class="slide">
+    <span class="kicker rise">아키텍처 &amp; 기술 리뷰</span>
+    <h1 class="rise">폐쇄망 에이전트<br><span class="grad">클라이언트 설계 리뷰</span></h1>
+    <p class="lead rise" style="margin-top:1.5rem">
+      서버가 LLM을 중계하고 클라이언트가 도구를 실행하는 <b>얇은 클라이언트 + 에이전트 루프</b> 구조.
+      WPF/MVVM 레이어링, 멀티루트 샌드박스, 서버 API 계약, 도구·권한 시스템을 검토합니다.
+    </p>
+    <p class="dim rise" style="margin-top:1.8rem;font-size:.9rem">C# · .NET 10 (net10.0-windows) · WPF · MVVM(CommunityToolkit.Mvvm) · System.Text.Json</p>
+  </section>
+
+  <!-- 2 · Tech stack & principles -->
+  <section class="slide">
+    <span class="kicker rise">스택 &amp; 원칙</span>
+    <h2 class="rise">경량 · 무의존 · <span class="grad">계약 중심</span></h2>
+    <div class="cards c3">
+      <div class="card rise"><span class="ic">🪟</span><h3>WPF · WinExe</h3><p>net10.0-windows. 데스크톱 네이티브, 트레이 상주, 전역 핫키.</p></div>
+      <div class="card rise"><span class="ic">🧩</span><h3>MVVM</h3><p>CommunityToolkit.Mvvm 소스 생성기(<code>[ObservableProperty]</code>·<code>[RelayCommand]</code>).</p></div>
+      <div class="card rise"><span class="ic">🔗</span><h3>System.Text.Json</h3><p>와이어용 <code>AgentJson.Options</code>(snake_case) · 영속용 <code>PersistenceOptions</code>(PascalCase) 분리.</p></div>
+      <div class="card rise"><span class="ic">🧱</span><h3>수동 컴포지션 루트</h3><p><code>App.OnStartup</code>에서 조립. 외부 DI 컨테이너 없음.</p></div>
+      <div class="card rise"><span class="ic">📦</span><h3>NuGet 의존성 0</h3><p>모든 도구는 BCL/WPF/WinForms 내장만. 폐쇄망 배포 부담 최소화.</p></div>
+      <div class="card rise"><span class="ic">⚙️</span><h3>async 규약</h3><p>서비스 전 구간 <code>ConfigureAwait(false)</code>.</p></div>
+    </div>
+  </section>
+
+  <!-- 3 · Layered architecture -->
+  <section class="slide">
+    <span class="kicker rise">MVVM 레이어링</span>
+    <h2 class="rise">View · ViewModel · <span class="grad">Service</span></h2>
+    <div class="arch rise">
+      <div class="layer view">
+        <div class="lt">View (XAML)</div>
+        <div class="row">
+          <span class="chip">LoginWindow</span><span class="chip">MainWindow(사이드바·DnD)</span>
+          <span class="chip">ChatOnlyWindow</span><span class="chip">SettingsWindow</span><span class="chip">IntegrityWindow</span>
+        </div>
+      </div>
+      <div class="down">▼ 데이터 바인딩</div>
+      <div class="layer vm">
+        <div class="lt">ViewModel</div>
+        <div class="row">
+          <span class="chip">AgentSessionViewModel</span><span class="chip">ProjectsViewModel</span>
+          <span class="chip">SettingsViewModel</span><span class="chip">WorkspaceFolderViewModel</span><span class="chip">LoginViewModel</span>
+        </div>
+      </div>
+      <div class="down">▼ 인터페이스 호출</div>
+      <div class="layer svc">
+        <div class="lt">Service / Agent Core</div>
+        <div class="row">
+          <span class="chip">IAgentOrchestrator</span><span class="chip">IAgentApiClient</span>
+          <span class="chip">IToolRegistry</span><span class="chip">IPermissionService</span>
+          <span class="chip">IWorkspaceContext</span><span class="chip">IChatHistoryService</span><span class="chip">IProjectService</span>
+        </div>
+      </div>
+    </div>
+    <p class="dim rise" style="margin-top:1.1rem">View는 코드비하인드 최소화, 모든 상태·명령은 ViewModel. 서비스는 인터페이스로 추상화.</p>
+  </section>
+
+  <!-- 4 · Agent loop -->
+  <section class="slide">
+    <span class="kicker rise">에이전트 루프</span>
+    <h2 class="rise"><code>IAgentOrchestrator</code> <span class="grad">상태 머신</span></h2>
+    <div class="flow rise">
+      <div class="node">질의 + 도구 스키마</div><span class="arrow">→</span>
+      <div class="node k">서버 SSE 스트림</div><span class="arrow">→</span>
+      <div class="node"><code>stop_reason</code> 판정</div><span class="arrow">→</span>
+      <div class="node">도구 실행(권한 게이트)</div><span class="arrow">→</span>
+      <div class="node k"><code>tool</code> 메시지 재요청 ↺</div>
+    </div>
+    <ul class="checks rise">
+      <li><span class="ck">›</span> SSE 이벤트: <code>message_start</code> · <code>content_delta{delta}</code> · <code>tool_call{id,name,arguments}</code> · <code>message_stop{stop_reason,usage}</code> · <code>error</code></li>
+      <li><span class="ck">›</span> <code>stop_reason == tool_use</code> → 클라가 도구 실행 후 <code>tool</code> 메시지로 재요청(루프 지속). <code>end_turn</code> → 종료</li>
+      <li><span class="ck">›</span> <code>tool_call.arguments</code>는 JSON 문자열로 송수신, 클라가 객체 복원. 루프 상한 <code>MaxIterations</code>(기본 25)</li>
+      <li><span class="ck">›</span> <code>max_tokens</code>는 서버 제어 — 클라 설정 제거, 와이어엔 상수(<code>DefaultMaxTokens=4096</code>)만 전송</li>
+    </ul>
+  </section>
+
+  <!-- 5 · Multi-root sandbox -->
+  <section class="slide">
+    <span class="kicker rise">보안 모델 ①</span>
+    <h2 class="rise">멀티루트 <span class="grad">샌드박스</span></h2>
+    <div class="split">
+      <div class="rise">
+        <p class="big"><code>IWorkspaceContext</code>가 모든 파일/셸 경로를 활성 루트 기준으로 검증.</p>
+        <ul class="checks">
+          <li><span class="ck">✓</span> 최대 10개 루트 동시 등록 + 폴더별 <code>Enabled</code> 토글(전역 설정, 프로젝트 비귀속)</li>
+          <li><span class="ck">✓</span> <code>ResolvePath</code>: 상대→주 루트 Combine, 검증은 <b>활성 루트 OR</b>(하나라도 내부면 통과)</li>
+          <li><span class="ck">✓</span> 심볼릭/실경로 정규화 후 비교로 <code>..</code>·절대경로 탈출 차단</li>
+          <li><span class="ck">✓</span> <code>run_command</code> cwd = 주 루트. 시스템 프롬프트에 <code>Roots</code> 전체 고지</li>
+        </ul>
+      </div>
+      <div class="rise">
+        <div class="card">
+          <span class="ic">🧭</span><h3>인터페이스</h3>
+          <p style="color:var(--text);font-family:monospace;font-size:.82rem;line-height:1.7">
+            string Root { get; }<br>
+            IReadOnlyList&lt;string&gt; Roots { get; }<br>
+            string ResolvePath(string p);<br>
+            bool IsInsideWorkspace(string p);<br>
+            void SetRoot(string r);<br>
+            void SetRoots(IReadOnlyList&lt;string&gt; r);
+          </p>
+        </div>
+        <p class="dim" style="margin-top:.9rem;font-size:.85rem">기존 도구는 <code>Root</code>/<code>ResolvePath</code>/<code>IsInsideWorkspace</code> 시그니처 유지로 무수정.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · Tool system + permission gate -->
+  <section class="slide">
+    <span class="kicker rise">보안 모델 ② · 도구 시스템</span>
+    <h2 class="rise"><code>ITool</code> + <span class="grad">권한 게이트</span></h2>
+    <div class="split">
+      <div class="rise">
+        <p class="big">20개 도구, 공통 <code>ITool</code> 계약. <code>ToolRegistry</code>가 서버용 스키마 생성.</p>
+        <ul class="checks">
+          <li><span class="ck">✓</span> <code>ToolRisk</code>: ReadOnly · Write · Execute · Destructive</li>
+          <li><span class="ck">✓</span> <code>IPermissionService</code> = 위험도 × <code>PermissionMode</code>(Manual/AutoSafe/FullAuto)로 승인 결정</li>
+          <li><span class="ck">✓</span> ReadOnly는 항상 자동, Destructive/Execute는 Manual·AutoSafe에서 승인 카드</li>
+          <li><span class="ck">✓</span> <code>run_command</code>는 <code>SecurityValidator</code> 블랙리스트로 위험 명령 차단(FullAuto에서도 적용)</li>
+        </ul>
+      </div>
+      <div class="cards rise" style="margin-top:0">
+        <div class="card"><span class="ic">📄</span><h3>파일·검색</h3><p>read/write/edit · list/glob/grep · create/move/copy/delete</p></div>
+        <div class="card"><span class="ic">🖥️</span><h3>셸·시스템</h3><p>run_command · get_environment · list_processes(+memory_kb) · start/kill_process</p></div>
+        <div class="card"><span class="ic">🔌</span><h3>통합</h3><p>clipboard_read/write · http_fetch(사내망) · screenshot(비전 입력)</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 · Server API contract -->
+  <section class="slide">
+    <span class="kicker rise">서버 연동 · API 계약</span>
+    <h2 class="rise">stateless HTTP + <span class="grad">SSE</span></h2>
+    <table class="api rise">
+      <thead><tr><th>Method</th><th>Path</th><th>용도</th></tr></thead>
+      <tbody>
+        <tr><td><span class="m post">POST</span></td><td><code>/api/v1/auth/login</code></td><td>로그인 → JWT</td></tr>
+        <tr><td><span class="m get">GET</span></td><td><code>/api/v1/health</code></td><td>헬스 체크 (Public)</td></tr>
+        <tr><td><span class="m get">GET</span></td><td><code>/api/v1/models</code></td><td>활성 Provider 모델 목록</td></tr>
+        <tr><td><span class="m post">POST</span></td><td><code>/api/v1/agent/chat</code></td><td>에이전트 루프 — messages + 도구 스키마 → SSE</td></tr>
+        <tr><td><span class="m get">GET</span></td><td><code>/api/v1/users/me</code></td><td>프로필(username/display_name/organization/email)</td></tr>
+        <tr><td><span class="m get">GET</span>/<span class="m post">POST</span></td><td><code>/api/v1/projects</code> <span class="opt">(선택)</span></td><td>프로젝트 목록 / 업서트(<code>client_id</code> 키)</td></tr>
+        <tr><td><span class="m post">POST</span></td><td><code>/api/v1/projects/{id}/conversations</code> <span class="opt">(선택)</span></td><td>대화 업서트(push) — chat의 <code>messages</code> 스키마 재사용</td></tr>
+      </tbody>
+    </table>
+    <p class="dim rise" style="margin-top:1rem">모든 엔드포인트 <code>Authorization: Bearer &lt;JWT&gt;</code>. 미구현(404/501)·오프라인은 graceful fallback(프로필→OS 사용자명, 동기화→"미지원").</p>
+  </section>
+
+  <!-- 8 · Project & conversation sync design -->
+  <section class="slide">
+    <span class="kicker rise">프로젝트/대화 · 로컬 + 동기화</span>
+    <h2 class="rise">로컬 우선, <span class="grad">선택적 push 동기화</span></h2>
+    <div class="split">
+      <div class="rise">
+        <ul class="checks">
+          <li><span class="ck">✓</span> <code>IChatHistoryService</code> → <code>%APPDATA%/OhMyAgent/sessions/{id}.json</code></li>
+          <li><span class="ck">✓</span> <code>IProjectService</code> → <code>.../projects/{id}.json</code>. 원자적 upsert, 동일 직렬화 옵션</li>
+          <li><span class="ck">✓</span> <code>ChatSessionRecord.ProjectId</code>(null=미분류)로 N:1 귀속. <code>ConversationCount</code>는 group-by 산출</li>
+          <li><span class="ck">✓</span> 동기화 키 = <code>client_id</code>(클라 GUID). 충돌 해소 = <code>updated_utc</code> last-write-wins</li>
+          <li><span class="ck">✓</span> push(로컬→서버) 위주. pull은 목록 수준(타 PC 프로젝트 표시)</li>
+        </ul>
+      </div>
+      <div class="rise">
+        <div class="card"><span class="ic">🗂️</span><h3>도메인</h3>
+          <p style="color:var(--text);line-height:1.7">
+            <b>Project</b> = 대화 세션 컨테이너(작업 폴더 비포함)<br>
+            <b>Conversation</b> = 메시지 묶음, Project에 N:1<br>
+            DTO: <code>ProjectRecord</code> · <code>ChatSessionRecord</code> · <code>UserProfile</code>
+          </p>
+        </div>
+        <p class="dim" style="margin-top:.9rem;font-size:.85rem">사이드바: 프로젝트 그룹 + 미분류, 대화 드래그앤드롭 분류. 동기화는 사용자 트리거 시에만.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 · Integrity & deployment security -->
+  <section class="slide">
+    <span class="kicker rise">배포 무결성</span>
+    <h2 class="rise">변조 탐지 <span class="grad">3중 검증</span></h2>
+    <div class="cards c3">
+      <div class="card rise"><span class="ic">🔢</span><h3>SHA-256 매니페스트</h3><p><code>IBinaryIntegrityService</code> — 설치 파일 해시 대조.</p></div>
+      <div class="card rise"><span class="ic">✍️</span><h3>Authenticode</h3><p><code>IAuthenticodeVerifier</code> — 코드 서명 검증.</p></div>
+      <div class="card rise"><span class="ic">🔑</span><h3>HMAC 서명</h3><p>매니페스트 HMAC 서명으로 변조·치환 탐지.</p></div>
+    </div>
+    <p class="lead rise" style="margin-top:1.5rem">트레이 → "무결성 검사"에서 사용자가 직접 검증 실행. <code>IntegrityWindow</code>에 파일별 결과 표시.</p>
+  </section>
+
+  <!-- 10 · Status / extension / roadmap -->
+  <section class="slide">
+    <span class="kicker rise">현황 · 확장 · 과제</span>
+    <h2 class="rise">검증 상태와 <span class="grad">확장 포인트</span></h2>
+    <div class="stat rise">
+      <div><div class="n grad">20</div><div class="l">내장 도구</div></div>
+      <div><div class="n grad">10</div><div class="l">동시 워크스페이스 루트</div></div>
+      <div><div class="n grad">0 / 0</div><div class="l">빌드 경고 / 오류</div></div>
+    </div>
+    <ul class="checks rise">
+      <li><span class="ck">✓</span> 확장 포인트: <code>ITool</code> 구현 추가(스키마 자동 노출) · 서버 Provider 교체(중립 와이어) · 권한 정책 커스터마이즈</li>
+      <li><span class="ck">›</span> 향후 과제: 감사 로그(<code>%APPDATA%/OhMyAgent/audit/</code>) · 양방향 pull 동기화 · 서버측 projects API 구현 · 도구별 세분화 권한</li>
+    </ul>
+    <p class="dim rise" style="margin-top:1.2rem">현재 범위: 클라이언트 인터페이스 + graceful fallback까지. 서버 projects/users API는 별도 스펙 문서로 요청.</p>
+  </section>
+
+</div>
+
+<div class="nav">
+  <span class="count"><span id="cur">1</span> / <span id="tot">10</span></span>
+  <button id="prev" aria-label="이전">‹</button>
+  <button id="next" aria-label="다음">›</button>
+</div>
+<div class="dots" id="dots"></div>
+<div class="hint"><kbd>←</kbd> <kbd>→</kbd> 이동 · <kbd>F</kbd> 전체화면</div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  const tot=slides.length; let i=0;
+  const prog=document.getElementById('prog'), cur=document.getElementById('cur');
+  document.getElementById('tot').textContent=tot;
+  const dotsWrap=document.getElementById('dots');
+  slides.forEach((_,n)=>{const d=document.createElement('i');d.onclick=()=>go(n);dotsWrap.appendChild(d)});
+  const dots=[...dotsWrap.children];
+
+  function go(n){
+    i=Math.max(0,Math.min(tot-1,n));
+    slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+    dots.forEach((d,k)=>d.classList.toggle('on',k===i));
+    prog.style.width=((i+1)/tot*100)+'%';
+    cur.textContent=i+1;
+  }
+  const next=()=>go(i+1), prev=()=>go(i-1);
+  document.getElementById('next').onclick=next;
+  document.getElementById('prev').onclick=prev;
+  addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();next()}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();prev()}
+    else if(e.key==='Home')go(0); else if(e.key==='End')go(tot-1);
+    else if(e.key.toLowerCase()==='f'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}
+  });
+  let sx=0; addEventListener('touchstart',e=>sx=e.touches[0].clientX,{passive:true});
+  addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>50)dx<0?next():prev()},{passive:true});
+  go(0);
+</script>
+</body>
+</html>

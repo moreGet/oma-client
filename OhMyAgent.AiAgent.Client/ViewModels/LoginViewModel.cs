@@ -78,7 +78,7 @@ public sealed partial class LoginViewModel : ObservableObject
             // 발급 토큰을 영속(Bearer 고정). 다른 서버 설정은 유지.
             var c = _settings.Current;
             await _settings.UpdateServerConfigAsync(
-                c.ServerBaseUrl, "Bearer", result.Token, c.ModelId, c.MaxIterations, c.MaxTokens)
+                c.ServerBaseUrl, "Bearer", result.Token, c.ModelId, c.MaxIterations)
                 .ConfigureAwait(true);
 
             Password = string.Empty;

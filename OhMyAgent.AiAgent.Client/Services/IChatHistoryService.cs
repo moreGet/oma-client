@@ -20,8 +20,8 @@ public interface IChatHistoryService
     /// <summary>{id}.json 삭제(없어도 무해).</summary>
     Task DeleteAsync(string id, CancellationToken ct = default);
 
-    /// <summary>새 빈 record 생성(Id=Guid, Title="새 대화", Created=Updated=now, Messages=[]). 디스크 미기록.</summary>
-    ChatSessionRecord CreateNew(string? workspaceRoot = null);
+    /// <summary>새 빈 record 생성(Id=Guid, Title="새 대화", Created=Updated=now, Messages=[]). 디스크 미기록. projectId로 프로젝트 귀속 가능.</summary>
+    ChatSessionRecord CreateNew(string? workspaceRoot = null, string? projectId = null);
 
     /// <summary>메시지 목록으로부터 Title 생성: 첫 user 메시지 Content를 1줄·앞 40자로 요약(없으면 "새 대화").</summary>
     string BuildTitle(IReadOnlyList<AgentMessage> messages);

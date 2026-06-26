@@ -24,4 +24,18 @@ public interface IAgentApiClient
 
     /// <summary>POST /api/v1/auth/login (Public). {username,password} → {token}. 성공 시 Token 보유한 LoginResult.</summary>
     Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default);
+
+    /// <summary>GET /api/v1/users/me (Bearer). 200→UserProfile, 401/404/오프라인→null(graceful).</summary>
+    Task<UserProfile?> GetProfileAsync(CancellationToken ct = default);
+
+    // ── 프로젝트 서버 동기화(선택). 미구현 서버(404/501)는 graceful 실패로 다룬다. ──
+
+    /// <summary>GET /api/v1/projects — 원격 프로젝트 목록. 미지원/오프라인이면 빈 목록.</summary>
+    Task<IReadOnlyList<RemoteProject>> ListRemoteProjectsAsync(CancellationToken ct = default);
+
+    /// <summary>POST /api/v1/projects — 원격 프로젝트 upsert. 실패 시 AgentException.</summary>
+    Task<RemoteProject> UpsertRemoteProjectAsync(RemoteProjectUpsert body, CancellationToken ct = default);
+
+    /// <summary>POST /api/v1/projects/{remoteProjectId}/conversations — 대화 push. 실패 시 AgentException.</summary>
+    Task UpsertRemoteConversationAsync(string remoteProjectId, RemoteConversation body, CancellationToken ct = default);
 }

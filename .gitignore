@@ -1,6 +1,17 @@
 # ── .NET 빌드 아티팩트 ────────────────────────────────────────
 bin/
 obj/
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+build/
+bld/
+[Oo]ut/
+x64/
+x86/
 *.dll
 *.exe
 !tools/*.exe
@@ -13,6 +24,13 @@ obj/
 *.userprefs
 *.userosscache
 *.sln.docstates
+
+# ── 테스트 결과 / 커버리지 ───────────────────────────────────
+[Tt]est[Rr]esult*/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
 
 # ── NuGet ───────────────────────────────────────────────────
 packages/
@@ -29,6 +47,8 @@ project.fragment.lock.json
 .idea/.idea.*/.idea/workspace.xml
 .idea/.idea.*/.idea/*.iml
 .idea/.idea.*/.idea/modules.xml
+# Rider 사용자별 솔루션 설정(공유 *.DotSettings 는 추적 유지)
+*.DotSettings.user
 
 # ── IDE — Visual Studio ──────────────────────────────────────
 .vs/
@@ -61,10 +81,16 @@ plugins/
 import/
 
 # ── Claude Code 임시 파일 ────────────────────────────────────
-# 워크스페이스는 세션마다 재생성되는 임시 파일
+# 워크스페이스(에이전트 산출물)는 세션마다 재생성되는 임시 디렉터리.
+# 위치(루트 / 프로젝트 하위 / .claude 하위)와 무관하게 모두 제외.
+_workspace/
+_workspace_prev/
+_workspace*/
+**/_workspace/
+**/_workspace*/
 .claude/_workspace*/
 
-# 로컬 PC 전용 설정 (절대경로·사용자 토큰 등 포함)
+# 로컬 PC 전용 설정 (절대경로·사용자 토큰 등 포함) — 팀 공유 .claude/* 파일은 추적 유지
 .claude/settings.local.json
 
 # 메모리 디렉터리 (사용자별 개인 기록)

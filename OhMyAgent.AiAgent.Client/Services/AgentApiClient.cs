@@ -15,10 +15,12 @@ namespace OhMyAgent.AiAgent.Client.Services;
 
 public sealed class AgentApiClient(HttpClient httpClient, ISettingsService settings) : IAgentApiClient
 {
-    private const string ChatPath   = "/api/v1/agent/chat";
-    private const string HealthPath = "/api/v1/health";
-    private const string ModelsPath = "/api/v1/models";
-    private const string LoginPath  = "/api/v1/auth/login";
+    private const string ChatPath     = "/api/v1/agent/chat";
+    private const string HealthPath   = "/api/v1/health";
+    private const string ModelsPath   = "/api/v1/models";
+    private const string LoginPath    = "/api/v1/auth/login";
+    private const string ProfilePath  = "/api/v1/users/me";
+    private const string ProjectsPath = "/api/v1/projects";
 
     public async IAsyncEnumerable<AgentStreamEvent> SendAsync(
         AgentRequest request,
@@ -222,6 +224,137 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         catch (Exception ex)
         {
             return LoginResult.Fail($"AI 서버에 연결할 수 없습니다: {ex.Message}");
+        }
+    }
+
+    public async Task<UserProfile?> GetProfileAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, ProfilePath);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return null;   // 401/404/기타 → graceful null
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            return await JsonSerializer
+                .DeserializeAsync<UserProfile>(stream, AgentJson.Options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;   // 오프라인/파싱 실패 → graceful
+        }
+    }
+
+    public async Task<IReadOnlyList<RemoteProject>> ListRemoteProjectsAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, ProjectsPath);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return Array.Empty<RemoteProject>();   // 404/501 등 미지원 → 빈 목록
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+
+            // {"projects":[...]} 또는 평면 배열 둘 다 수용.
+            JsonElement arrayEl;
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                arrayEl = doc.RootElement;
+            else if (doc.RootElement.TryGetProperty("projects", out var p) && p.ValueKind == JsonValueKind.Array)
+                arrayEl = p;
+            else
+                return Array.Empty<RemoteProject>();
+
+            var list = arrayEl.Deserialize<List<RemoteProject>>(AgentJson.Options);
+            return list ?? new List<RemoteProject>();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return Array.Empty<RemoteProject>();
+        }
+    }
+
+    public async Task<RemoteProject> UpsertRemoteProjectAsync(RemoteProjectUpsert body, CancellationToken ct = default)
+    {
+        try
+        {
+            var payload = JsonSerializer.Serialize(body, AgentJson.Options);
+            using var req = new HttpRequestMessage(HttpMethod.Post, ProjectsPath)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            };
+            ApplyAuth(req);
+
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await ReadErrorAsync(resp, ct).ConfigureAwait(false);
+                throw new AgentException($"프로젝트 동기화 실패: {err.Message}");
+            }
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            var dto = await JsonSerializer
+                .DeserializeAsync<RemoteProject>(stream, AgentJson.Options, ct)
+                .ConfigureAwait(false);
+            return dto ?? throw new AgentException("프로젝트 동기화 응답이 비었습니다.");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (AgentException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new AgentException($"AI 서버에 연결할 수 없습니다: {ex.Message}", ex);
+        }
+    }
+
+    public async Task UpsertRemoteConversationAsync(string remoteProjectId, RemoteConversation body, CancellationToken ct = default)
+    {
+        try
+        {
+            var path    = $"{ProjectsPath}/{Uri.EscapeDataString(remoteProjectId)}/conversations";
+            var payload = JsonSerializer.Serialize(body, AgentJson.Options);
+            using var req = new HttpRequestMessage(HttpMethod.Post, path)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            };
+            ApplyAuth(req);
+
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await ReadErrorAsync(resp, ct).ConfigureAwait(false);
+                throw new AgentException($"대화 동기화 실패: {err.Message}");
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (AgentException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new AgentException($"AI 서버에 연결할 수 없습니다: {ex.Message}", ex);
         }
     }
 

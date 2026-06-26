@@ -22,12 +22,12 @@ public partial class SettingsWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e)
         => Close();
 
-    // Folder picker → persists via SetWorkspaceRootAsync.
-    private void BrowseWorkspace_Click(object sender, RoutedEventArgs e)
+    // Folder picker → adds a new workspace root via AddWorkspaceByPathAsync (multi-root, max 10).
+    private void AddWorkspace_Click(object sender, RoutedEventArgs e)
     {
         using var dialog = new System.Windows.Forms.FolderBrowserDialog
         {
-            Description = "작업 디렉토리를 선택하세요",
+            Description = "작업 디렉토리를 추가하세요",
             UseDescriptionForTitle = true,
             ShowNewFolderButton = true,
         };
@@ -36,14 +36,7 @@ public partial class SettingsWindow : Window
             dialog.SelectedPath = _vm.WorkspaceRoot;
 
         if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            _ = _vm.SetWorkspaceRootAsync(dialog.SelectedPath);
-    }
-
-    // Login PasswordBox is not bindable — push the value into the VM on change.
-    private void LoginPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is SettingsViewModel vm)
-            vm.Password = LoginPasswordBox.Password;
+            _ = _vm.AddWorkspaceByPathAsync(dialog.SelectedPath);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)

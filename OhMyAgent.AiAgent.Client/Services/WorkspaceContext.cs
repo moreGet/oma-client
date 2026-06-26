@@ -1,35 +1,62 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace OhMyAgent.AiAgent.Client.Services;
 
 public sealed class WorkspaceContext : IWorkspaceContext
 {
-    private string _root;
-    private string _realRoot;
+    // 활성 루트 전체. 첫 항목이 주 루트. 항상 최소 1개(빈 입력이면 Desktop 폴백).
+    private List<(string root, string realRoot)> _roots = [];
 
     public WorkspaceContext(ISettingsService settings)
     {
-        _root = Normalize(settings.Current.WorkspaceRoot);
-        _realRoot = RealPath(_root);
+        var enabled = settings.Current.Workspaces
+            ?.Where(w => w.Enabled && !string.IsNullOrWhiteSpace(w.Path))
+            .Select(w => w.Path)
+            .ToList() ?? [];
+
+        if (enabled.Count > 0)
+            SetRoots(enabled);
+        else
+            SetRoot(settings.Current.WorkspaceRoot);
     }
 
-    public string Root => _root;
+    public string Root => _roots.Count > 0 ? _roots[0].root : Normalize("");
 
-    public void SetRoot(string root)
+    public IReadOnlyList<string> Roots => _roots.Select(r => r.root).ToList();
+
+    public void SetRoot(string root) => SetRoots([root]);
+
+    public void SetRoots(IReadOnlyList<string> roots)
     {
-        _root = Normalize(root);
-        _realRoot = RealPath(_root);
+        var normalized = (roots ?? [])
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Select(Normalize)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(r => (root: r, realRoot: RealPath(r)))
+            .ToList();
+
+        // 빈 목록이면 Desktop 폴백 단일 루트 보장.
+        if (normalized.Count == 0)
+        {
+            var fallback = Normalize("");
+            normalized = [ (fallback, RealPath(fallback)) ];
+        }
+
+        _roots = normalized;
     }
 
     public string ResolvePath(string relativeOrAbsolute)
     {
         if (string.IsNullOrWhiteSpace(relativeOrAbsolute))
-            return _root;
+            return Root;
 
+        // 상대 경로는 주 루트 기준 결합.
         var combined = Path.IsPathRooted(relativeOrAbsolute)
             ? relativeOrAbsolute
-            : Path.Combine(_root, relativeOrAbsolute);
+            : Path.Combine(Root, relativeOrAbsolute);
 
         string full;
         try
@@ -41,16 +68,16 @@ public sealed class WorkspaceContext : IWorkspaceContext
             throw new AgentException($"잘못된 경로입니다: {relativeOrAbsolute}", ex);
         }
 
-        // 1) 사전적(lexical) 검증: ".." / 절대경로 탈출 차단.
-        if (!IsInside(full, _root))
-            throw new AgentException($"경로가 작업 디렉토리를 벗어났습니다: {relativeOrAbsolute}");
+        var real = RealPath(full);
 
-        // 2) R1: 심볼릭 링크/정션(junction) 해석 후 실제 경로 재검증 —
-        //    워크스페이스 내부에서 외부를 가리키는 링크를 통한 탈출 차단.
-        if (!IsInside(RealPath(full), _realRoot))
-            throw new AgentException($"경로가 링크를 통해 작업 디렉토리를 벗어났습니다: {relativeOrAbsolute}");
+        // 활성 루트 중 하나라도 양 단계(사전적 + 링크 해석) 모두 통과하면 허용.
+        foreach (var (root, realRoot) in _roots)
+        {
+            if (IsInside(full, root) && IsInside(real, realRoot))
+                return full;
+        }
 
-        return full;
+        throw new AgentException($"경로가 작업 디렉토리를 벗어났습니다: {relativeOrAbsolute}");
     }
 
     public bool IsInsideWorkspace(string path)
@@ -68,7 +95,8 @@ public sealed class WorkspaceContext : IWorkspaceContext
             return false;
         }
 
-        return IsInside(full, _root) && IsInside(RealPath(full), _realRoot);
+        var real = RealPath(full);
+        return _roots.Any(r => IsInside(full, r.root) && IsInside(real, r.realRoot));
     }
 
     private static bool IsInside(string full, string root)

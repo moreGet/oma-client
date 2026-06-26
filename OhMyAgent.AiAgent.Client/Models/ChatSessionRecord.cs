@@ -12,5 +12,6 @@ public sealed record ChatSessionRecord
     [JsonPropertyName("created_utc")]    public DateTimeOffset CreatedUtc { get; init; }
     [JsonPropertyName("updated_utc")]    public DateTimeOffset UpdatedUtc { get; init; }
     [JsonPropertyName("workspace_root")] public string? WorkspaceRoot { get; init; }
+    [JsonPropertyName("project_id")]     public string? ProjectId { get; init; }   // null = 미분류
     [JsonPropertyName("messages")]       public IReadOnlyList<AgentMessage> Messages { get; init; } = [];
 }

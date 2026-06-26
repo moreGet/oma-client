@@ -34,6 +34,37 @@
                 </TextBlock.Style>
             </TextBlock>
         </DataTemplate>
+
+        <!-- 폴더 접근 허용/차단 토글 스위치 (CheckBox 기반, BCL/WPF only) -->
+        <Style x:Key="SwitchToggle" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Track" Width="40" Height="22" CornerRadius="11"
+                                Background="{StaticResource Surface2Bg}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                            <Border x:Name="Thumb" Width="16" Height="16" CornerRadius="8"
+                                    HorizontalAlignment="Left" Margin="3,0,0,0"
+                                    Background="{StaticResource TextMuted}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                                <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
+                                <Setter TargetName="Thumb" Property="Background" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Track" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="2">
@@ -92,7 +123,7 @@
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,4,0">
             <StackPanel Margin="22,18">
 
-              <!-- ═══ 카드: 사용자 프로필 ══════════════════════════ -->
+              <!-- ═══ 카드: 사용자 프로필 (서버 조회, 읽기 전용) ══════════ -->
               <Border Style="{StaticResource FloatingCard}" Margin="0,0,0,16">
                 <StackPanel>
                 <TextBlock Text="사용자 프로필"
@@ -102,29 +133,121 @@
                            FontWeight="SemiBold"
                            Margin="0,0,0,14"/>
 
-                <TextBlock Text="사용자 이름"
-                           Foreground="{StaticResource TextSecondary}"
-                           FontSize="11"
-                           Margin="0,0,0,4"/>
-                <TextBox Style="{StaticResource DarkTextBox}"
-                         Text="{Binding UserDisplayName, UpdateSourceTrigger=PropertyChanged}"
-                         FontSize="13"
-                         MinHeight="36"
-                         Margin="0,0,0,4"
-                         VerticalContentAlignment="Center"/>
-                <TextBlock Text="환영 화면 인사말에 표시됩니다. 비워두면 Windows 사용자명이 사용됩니다."
-                           Foreground="{StaticResource TextMuted}"
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="84"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 이름 -->
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="이름"
+                               Foreground="{StaticResource TextSecondary}"
+                               FontSize="12" VerticalAlignment="Center"
+                               Margin="0,0,0,8"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1"
+                               Foreground="{StaticResource TextPrimary}"
+                               FontSize="13" FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" Margin="0,0,0,8">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="{Binding ProfileDisplayName}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ProfileDisplayName}" Value="">
+                                        <Setter Property="Text" Value="—"/>
+                                        <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ProfileDisplayName}" Value="{x:Null}">
+                                        <Setter Property="Text" Value="—"/>
+                                        <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <!-- 조직 -->
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="조직"
+                               Foreground="{StaticResource TextSecondary}"
+                               FontSize="12" VerticalAlignment="Center"
+                               Margin="0,0,0,8"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1"
+                               Foreground="{StaticResource TextPrimary}"
+                               FontSize="13"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" Margin="0,0,0,8">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="{Binding ProfileOrganization}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ProfileOrganization}" Value="">
+                                        <Setter Property="Text" Value="—"/>
+                                        <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ProfileOrganization}" Value="{x:Null}">
+                                        <Setter Property="Text" Value="—"/>
+                                        <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <!-- 이메일 -->
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="이메일"
+                               Foreground="{StaticResource TextSecondary}"
+                               FontSize="12" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1"
+                               Foreground="{StaticResource TextPrimary}"
+                               FontSize="13"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="{Binding ProfileEmail}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ProfileEmail}" Value="">
+                                        <Setter Property="Text" Value="—"/>
+                                        <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ProfileEmail}" Value="{x:Null}">
+                                        <Setter Property="Text" Value="—"/>
+                                        <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+
+                <!-- 로딩/실패 상태 안내 (ProfileStatus 비면 숨김) -->
+                <TextBlock Text="{Binding ProfileStatus}"
                            FontSize="11"
                            TextWrapping="Wrap"
-                           Margin="0,0,0,8"/>
-
-                <Button Content="프로필 저장"
-                        Command="{Binding SaveUserProfileCommand}"
-                        Style="{StaticResource PrimaryButton}"
-                        HorizontalAlignment="Right"
-                        Padding="18,7"
-                        FontSize="12"
-                        Margin="0,4,0,0"/>
+                           Margin="0,12,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ProfileStatus}" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding ProfileStatus}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding ProfileStatus}" Value="프로필을 불러오지 못했습니다">
+                                    <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
                 </StackPanel>
               </Border>
 
@@ -138,49 +261,95 @@
                            FontWeight="SemiBold"
                            Margin="0,0,0,14"/>
 
-                <!-- ════ 작업 디렉토리 ════════════════════════════ -->
+                <!-- ════ 작업 디렉토리 (다중 루트, 최대 10) ════════════ -->
                 <TextBlock Text="작업 디렉토리"
                            Foreground="{StaticResource TextPrimary}"
                            FontSize="14"
                            FontWeight="SemiBold"
                            Margin="0,0,0,8"/>
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0"
-                             Style="{StaticResource DarkTextBox}"
-                             Text="{Binding WorkspaceRoot, Mode=OneWay}"
-                             IsReadOnly="True"
-                             FontSize="12"
-                             MinHeight="36"
-                             VerticalContentAlignment="Center"
-                             ToolTip="{Binding WorkspaceRoot}"/>
-                    <Button Grid.Column="1"
-                            Content="찾아보기..."
-                            Click="BrowseWorkspace_Click"
-                            Style="{StaticResource OutlineButton}"
-                            Padding="14,6"
-                            FontSize="12"
-                            MinHeight="36"
-                            Margin="8,0,0,0"
-                            ToolTip="에이전트가 파일·셸 작업을 수행할 폴더를 선택합니다."/>
-                </Grid>
+
+                <!-- 다중 루트 목록 -->
+                <ItemsControl ItemsSource="{Binding Workspaces}" Margin="0,0,0,4">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:WorkspaceFolderViewModel}">
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- 접근 허용/차단 토글 스위치 -->
+                                <CheckBox Grid.Column="0"
+                                          Style="{StaticResource SwitchToggle}"
+                                          IsChecked="{Binding Enabled, Mode=TwoWay}"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,10,0"
+                                          ToolTip="이 폴더에 대한 에이전트 접근 허용/차단"/>
+
+                                <!-- 경로 (말줄임 + ToolTip) -->
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Path}"
+                                           ToolTip="{Binding Path}"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           FontSize="12"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Enabled}" Value="False">
+                                                    <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <!-- 삭제 (부모 SettingsViewModel.RemoveWorkspaceCommand) -->
+                                <Button Grid.Column="2"
+                                        Style="{StaticResource ComposerIconButton}"
+                                        Width="26" Height="26" FontSize="12"
+                                        Content="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                        Margin="6,0,0,0"
+                                        Command="{Binding DataContext.RemoveWorkspaceCommand,
+                                                  RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip="목록에서 제거"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- 빈 목록 경고 -->
+                <TextBlock Text="⚠ 작업 디렉토리가 지정되지 않았습니다. 작업을 시작하려면 폴더를 먼저 추가하세요."
+                           Foreground="{StaticResource WarningBrush}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,2,0,6"
+                           Visibility="{Binding HasNoWorkspaces, Converter={StaticResource BoolToVisibility}}"/>
+
+                <!-- 폴더 추가 + 안내 -->
+                <Button Content="폴더 추가..."
+                        Click="AddWorkspace_Click"
+                        IsEnabled="{Binding CanAddWorkspace}"
+                        Style="{StaticResource OutlineButton}"
+                        HorizontalAlignment="Left"
+                        Padding="14,6"
+                        FontSize="12"
+                        MinHeight="34"
+                        Margin="0,2,0,0"
+                        ToolTip="에이전트가 파일·셸 작업을 수행할 폴더를 추가합니다."/>
                 <TextBlock Foreground="{StaticResource TextMuted}"
                            FontSize="11"
                            TextWrapping="Wrap"
-                           Margin="0,0,0,16">
+                           Margin="0,8,0,16">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
-                            <Setter Property="Text" Value="에이전트의 모든 파일·셸 작업은 이 폴더 안에서만 이루어집니다."/>
+                            <Setter Property="Text" Value="에이전트의 모든 파일·셸 작업은 허용된 폴더 안에서만 이루어집니다. 폴더별로 접근을 허용/차단할 수 있습니다 (최대 10개)."/>
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding WorkspaceRoot}" Value="">
-                                    <Setter Property="Text" Value="⚠ 작업 디렉토리가 지정되지 않았습니다. 작업을 시작하려면 폴더를 먼저 선택하세요."/>
-                                    <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding WorkspaceRoot}" Value="{x:Null}">
-                                    <Setter Property="Text" Value="⚠ 작업 디렉토리가 지정되지 않았습니다. 작업을 시작하려면 폴더를 먼저 선택하세요."/>
+                                <DataTrigger Binding="{Binding CanAddWorkspace}" Value="False">
+                                    <Setter Property="Text" Value="작업 디렉토리는 최대 10개까지 추가할 수 있습니다. 추가하려면 기존 폴더를 제거하세요."/>
                                     <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
                                 </DataTrigger>
                             </Style.Triggers>
@@ -219,35 +388,24 @@
                            FontSize="14"
                            FontWeight="SemiBold"
                            Margin="0,0,0,8"/>
-                <Grid Margin="0,0,0,16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="12"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="최대 반복 (1–100)"
-                                   Foreground="{StaticResource TextSecondary}"
-                                   FontSize="11"
-                                   Margin="0,0,0,4"/>
-                        <TextBox Style="{StaticResource DarkTextBox}"
-                                 Text="{Binding MaxIterations, UpdateSourceTrigger=PropertyChanged}"
-                                 FontSize="13"
-                                 MinHeight="36"
-                                 VerticalContentAlignment="Center"/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="최대 토큰"
-                                   Foreground="{StaticResource TextSecondary}"
-                                   FontSize="11"
-                                   Margin="0,0,0,4"/>
-                        <TextBox Style="{StaticResource DarkTextBox}"
-                                 Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}"
-                                 FontSize="13"
-                                 MinHeight="36"
-                                 VerticalContentAlignment="Center"/>
-                    </StackPanel>
-                </Grid>
+                <StackPanel Margin="0,0,0,16">
+                    <TextBlock Text="최대 반복 (1–100)"
+                               Foreground="{StaticResource TextSecondary}"
+                               FontSize="11"
+                               Margin="0,0,0,4"/>
+                    <TextBox Style="{StaticResource DarkTextBox}"
+                             Text="{Binding MaxIterations, UpdateSourceTrigger=PropertyChanged}"
+                             FontSize="13"
+                             MinHeight="36"
+                             HorizontalAlignment="Left"
+                             MinWidth="160"
+                             VerticalContentAlignment="Center"/>
+                    <TextBlock Text="최대 토큰은 서버가 제어합니다."
+                               Foreground="{StaticResource TextMuted}"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,0"/>
+                </StackPanel>
                 </StackPanel>
               </Border>
 
@@ -278,38 +436,7 @@
                            TextWrapping="Wrap"
                            Margin="0,0,0,10"/>
 
-                <!-- ════ 로그인 (JWT) ═════════════════════════════ -->
-                <Grid Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="12"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="사용자 ID"
-                                   Foreground="{StaticResource TextSecondary}"
-                                   FontSize="11"
-                                   Margin="0,0,0,4"/>
-                        <TextBox Style="{StaticResource DarkTextBox}"
-                                 Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
-                                 FontSize="13"
-                                 MinHeight="36"
-                                 VerticalContentAlignment="Center"/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="비밀번호"
-                                   Foreground="{StaticResource TextSecondary}"
-                                   FontSize="11"
-                                   Margin="0,0,0,4"/>
-                        <PasswordBox x:Name="LoginPasswordBox"
-                                     PasswordChanged="LoginPasswordBox_PasswordChanged"
-                                     Style="{StaticResource DarkPasswordBox}"
-                                     FontSize="13"
-                                     MinHeight="36"/>
-                    </StackPanel>
-                </Grid>
-
-                <!-- 로그인 상태 + 버튼 -->
+                <!-- 로그인 상태 + 로그아웃 (로그인 자체는 시작 게이트에서 처리) -->
                 <Grid Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -342,11 +469,11 @@
                                     <Style.Triggers>
                                         <!-- 미로그인(빈 상태): 안내 문구 -->
                                         <DataTrigger Binding="{Binding LoginStatus}" Value="">
-                                            <Setter Property="Text" Value="로그인 전 — 인증이 필요합니다."/>
+                                            <Setter Property="Text" Value="로그인 화면에서 인증하세요."/>
                                             <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding LoginStatus}" Value="{x:Null}">
-                                            <Setter Property="Text" Value="로그인 전 — 인증이 필요합니다."/>
+                                            <Setter Property="Text" Value="로그인 화면에서 인증하세요."/>
                                             <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding LoginStatus}" Value="로그인 중...">
@@ -361,43 +488,13 @@
                         </TextBlock>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Command="{Binding LogoutCommand}"
-                            Padding="14,7" FontSize="12" MinHeight="36" Margin="0,0,8,0"
+                    <Button Grid.Column="1"
+                            Command="{Binding LogoutCommand}"
+                            Padding="14,7" FontSize="12" MinHeight="36"
                             Content="로그아웃"
                             Style="{StaticResource OutlineButton}"
                             ToolTip="저장된 토큰을 제거하고 로그아웃합니다."
                             Visibility="{Binding IsLoggedIn, Converter={StaticResource BoolToVisibility}}"/>
-                    <Button Command="{Binding LoginCommand}"
-                            Padding="18,7"
-                            FontSize="12"
-                            MinHeight="36"
-                            ToolTip="사용자 ID/비밀번호로 인증해 토큰을 발급받습니다.">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource OutlineButton}">
-                                <Setter Property="Content" Value="로그인"/>
-                                <Style.Triggers>
-                                    <!-- 사용자 ID 비었으면 비활성 -->
-                                    <DataTrigger Binding="{Binding Username}" Value="">
-                                        <Setter Property="IsEnabled" Value="False"/>
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding Username}" Value="{x:Null}">
-                                        <Setter Property="IsEnabled" Value="False"/>
-                                    </DataTrigger>
-                                    <!-- 로그인 진행 중이면 비활성 + 라벨 변경 -->
-                                    <DataTrigger Binding="{Binding LoginStatus}" Value="로그인 중...">
-                                        <Setter Property="IsEnabled" Value="False"/>
-                                        <Setter Property="Content" Value="로그인 중..."/>
-                                    </DataTrigger>
-                                    <!-- 이미 로그인됨이면 라벨을 다시 로그인으로 -->
-                                    <DataTrigger Binding="{Binding IsLoggedIn}" Value="True">
-                                        <Setter Property="Content" Value="다시 로그인"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                    </StackPanel>
                 </Grid>
 
                 <TextBlock Text="모델 ID"

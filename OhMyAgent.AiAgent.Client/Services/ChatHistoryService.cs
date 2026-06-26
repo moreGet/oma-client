@@ -49,7 +49,8 @@ public sealed class ChatHistoryService : IChatHistoryService
                             record.Title,
                             record.UpdatedUtc,
                             record.WorkspaceRoot,
-                            record.Messages.Count));
+                            record.Messages.Count,
+                            record.ProjectId));
                     }
                     catch (Exception ex)
                     {
@@ -139,7 +140,7 @@ public sealed class ChatHistoryService : IChatHistoryService
         }, ct).ConfigureAwait(false);
     }
 
-    public ChatSessionRecord CreateNew(string? workspaceRoot = null)
+    public ChatSessionRecord CreateNew(string? workspaceRoot = null, string? projectId = null)
     {
         var now = DateTimeOffset.UtcNow;
         return new ChatSessionRecord
@@ -149,6 +150,7 @@ public sealed class ChatHistoryService : IChatHistoryService
             CreatedUtc = now,
             UpdatedUtc = now,
             WorkspaceRoot = workspaceRoot,
+            ProjectId = projectId,
             Messages = []
         };
     }

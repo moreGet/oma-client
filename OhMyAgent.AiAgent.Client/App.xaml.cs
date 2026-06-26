@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -29,6 +30,7 @@ public partial class App : Application
     private IChatWindowCoordinator?   _windowCoordinator;
     private AgentSessionViewModel?    _mainVm;
     private IAgentApiClient?          _api;
+    private IProjectService?          _projectService;
     private IBinaryIntegrityService?  _binaryIntegrity;
     internal ISettingsService SettingsService => _settingsService!;
     internal IAgentApiClient? Api => _api;
@@ -79,6 +81,7 @@ public partial class App : Application
             new ClipboardReadTool(),
             new ClipboardWriteTool(),
             new ListProcessesTool(),
+            new ListProcessesMemoryKbTool(),
             new StartProcessTool(),
             new KillProcessTool(),
             new HttpFetchTool(_toolHttpClient),
@@ -108,13 +111,20 @@ public partial class App : Application
         var attachments = new FileAttachmentService();
         var suggestions = new StubSuggestionService();
 
+        // 9c) 프로젝트(대화 컨테이너) 로컬 영속 + 선택적 서버 동기화 (v5 — #4)
+        //     ProjectsViewModel 조립은 ViewModel 에이전트가 추가한다.
+        _projectService = new ProjectService(chatHistory, _api);
+
         // 10) 루트 ViewModel
         _mainVm = new AgentSessionViewModel(
             orchestrator, _api, permissions, workspace, _settingsService,
             workspaceHistory, chatHistory, attachments, suggestions);
 
-        // 10a) 배너의 "로그인" 요청 → 설정창을 연다(닫히면 연결/인증 재점검).
-        _mainVm.LoginRequested += (_, _) => OpenSettingsWindow();
+        // 10b) 프로젝트 사이드바 VM 조립·주입 (#4). 메인 DataContext에서 Projects.* 로 바인딩.
+        _mainVm.Projects = new ProjectsViewModel(_projectService, chatHistory);
+
+        // 10a) 배너의 "로그인" 요청 → 로그인 게이트를 다시 연다(설정창엔 더 이상 로그인이 없음).
+        _mainVm.LoginRequested += (_, _) => ReopenLogin();
 
         // 11) Main Window
         _mainWindow = new MainWindow(_mainVm);
@@ -138,7 +148,15 @@ public partial class App : Application
         // 15) 설정 변경 시 workspace 동기화 + 워크스페이스 히스토리 자동 기록 + 핫키 재등록
         _settingsService.SettingsChanged += (_, s) =>
         {
-            workspace.SetRoot(s.WorkspaceRoot);
+            // v5: 다중 루트 동기화 — 활성(Enabled) 폴더 전체를 워크스페이스에 반영. 비면 주 루트 폴백.
+            var activeRoots = s.Workspaces
+                .Where(w => w.Enabled && !string.IsNullOrWhiteSpace(w.Path))
+                .Select(w => w.Path)
+                .ToList();
+            if (activeRoots.Count > 0)
+                workspace.SetRoots(activeRoots);
+            else
+                workspace.SetRoot(s.WorkspaceRoot);
             if (!string.IsNullOrWhiteSpace(s.WorkspaceRoot))
                 // AddAsync는 RaiseSettingsChanged를 호출하지 않으므로 이 핸들러로 재진입하지 않는다.
                 _ = workspaceHistory.AddAsync(s.WorkspaceRoot);
@@ -262,6 +280,25 @@ public partial class App : Application
     }
 
     /// 설정창을 연다(트레이 메뉴 + 배너 로그인 공용). 닫히면 연결/인증 상태를 재점검해 배너를 갱신한다.
+    /// 세션 중 401(로그인 필요) 발생 시 로그인 게이트를 모달로 다시 연다.
+    /// 시작 게이트(ShowLoginLanding)와 달리 닫아도 앱을 종료하지 않는다 — 성공 시 연결만 재점검.
+    private void ReopenLogin()
+    {
+        if (_api == null || _settingsService == null) return;
+
+        var loginVm = new LoginViewModel(_api, _settingsService);
+        var login   = new LoginWindow(loginVm) { Owner = _mainWindow };
+
+        loginVm.Succeeded += (_, _) =>
+        {
+            login.Close();
+            if (_mainVm is { } vm)
+                _ = vm.RetryConnectionCommand.ExecuteAsync(null);
+        };
+
+        login.ShowDialog();
+    }
+
     private void OpenSettingsWindow()
     {
         if (_settingsService == null || _api == null) return;

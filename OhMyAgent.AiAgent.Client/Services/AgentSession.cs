@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using OhMyAgent.AiAgent.Client.Models;
 
 namespace OhMyAgent.AiAgent.Client.Services;
@@ -30,21 +31,33 @@ public sealed class AgentSession
     }
 
     public static string DefaultSystemPrompt(string workspaceRoot, PermissionMode mode) =>
+        DefaultSystemPrompt(workspaceRoot, mode, null);
+
+    public static string DefaultSystemPrompt(string workspaceRoot, PermissionMode mode, IReadOnlyList<string>? roots)
+    {
+        // 활성 루트가 여러 개면 전체 허용 루트를 줄바꿈 목록으로 고지한다(주 루트 = 첫 항목 = 셸 cwd).
+        var allRoots = (roots != null && roots.Count > 0) ? roots : [workspaceRoot];
+        var rootsBlock = string.Join("\n", allRoots.Select(r => $"  - {r}"));
+
+        return
         $"""
         You are a Windows desktop automation agent embedded in a WPF client.
         You accomplish the user's goal by calling the provided tools in a loop until the task is done.
 
         Environment:
         - OS: Windows
-        - Workspace root: {workspaceRoot}
+        - Primary workspace root (shell cwd): {workspaceRoot}
         - Permission mode: {mode}
+        - Allowed workspace roots (file access is permitted in any of these):
+        {rootsBlock}
 
         Rules:
-        - All file operations are sandboxed to the workspace root. Never attempt to access paths outside it.
+        - All file operations are sandboxed to the allowed workspace roots above. Never attempt to access paths outside them.
         - Prefer the most specific tool (read_file/write_file/edit_file/glob/grep/...) over run_command when possible.
         - Use run_command only for tasks no dedicated tool covers; specify shell as "powershell" or "cmd".
         - Tool arguments must strictly follow each tool's JSON Schema.
         - When the task is complete, stop calling tools and reply with a concise summary in Korean.
         - If a tool returns an error, read it, adjust, and retry; do not loop indefinitely.
         """;
+    }
 }

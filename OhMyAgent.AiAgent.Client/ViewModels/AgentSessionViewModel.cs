@@ -65,6 +65,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private string _statusText = "연결 중...";
     [ObservableProperty] private string _workspaceRoot = string.Empty;
+
+    /// <summary>주 루트 외 추가 활성 작업 디렉토리 표시. 활성이 2개 이상일 때 "외 N개"(N=활성-1), 아니면 빈 문자열.</summary>
+    [ObservableProperty] private string _extraWorkspacesText = string.Empty;
     [ObservableProperty] private PermissionMode _currentPermissionMode = PermissionMode.Manual;
     [ObservableProperty] private double _windowOpacity = 1.0;
     [ObservableProperty] private ApprovalRequestViewModel? _pendingApproval;
@@ -101,6 +104,12 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     public IReadOnlyList<PermissionMode> PermissionModes { get; } =
         [PermissionMode.Manual, PermissionMode.AutoSafe, PermissionMode.FullAuto];
 
+    /// <summary>
+    /// 프로젝트(대화 컨테이너) 사이드바 VM. App.xaml.cs가 조립 후 주입한다(없을 수 있음).
+    /// UIDesigner는 메인 DataContext에서 <c>Projects.*</c>로 바인딩한다.
+    /// </summary>
+    public ProjectsViewModel? Projects { get; set; }
+
     // ── Constructor ────────────────────────────────────────────────────
 
     public AgentSessionViewModel(
@@ -130,6 +139,10 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         // B — keep the sidebar workspace list in sync with persisted history.
         _workspaceHistory.HistoryChanged += OnWorkspaceHistoryChanged;
 
+        // #3 — 설정(작업 디렉토리 추가/토글/제거)이 바뀌면 메인 칩·인사말을 즉시 갱신.
+        //       SettingsService가 UI 디스패처로 발화하므로 핸들러는 UI 스레드에서 실행된다.
+        _settings.SettingsChanged += OnSettingsChanged;
+
         // D — mirror attachment count onto HasAttachments.
         Attachments.CollectionChanged += (_, _) => HasAttachments = Attachments.Count > 0;
 
@@ -153,13 +166,29 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
     // ── Initialization ─────────────────────────────────────────────────
 
+    private void OnSettingsChanged(object? sender, AppSettings e) => SeedFromSettings();
+
     private void SeedFromSettings()
     {
         _suppressPersist = true;
         try
         {
             var s = _settings.Current;
-            WorkspaceRoot = string.IsNullOrWhiteSpace(s.WorkspaceRoot) ? _workspace.Root : s.WorkspaceRoot;
+
+            // #3 — 활성(Enabled) 작업 디렉토리 기준으로 주 루트와 "외 N개" 표시를 계산.
+            var activePaths = (s.Workspaces ?? [])
+                .Where(w => w.Enabled && !string.IsNullOrWhiteSpace(w.Path))
+                .Select(w => w.Path)
+                .ToList();
+
+            var primary = activePaths.FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(primary))
+                primary = string.IsNullOrWhiteSpace(s.WorkspaceRoot) ? _workspace.Root : s.WorkspaceRoot;
+
+            WorkspaceRoot = primary;
+            var extra = activePaths.Count - 1;
+            ExtraWorkspacesText = extra >= 1 ? $"외 {extra}개" : string.Empty;
+
             CurrentPermissionMode = s.PermissionMode;
             WindowOpacity = s.Opacity;
 
@@ -185,7 +214,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 Text = "에이전트 서버에 연결되었습니다. 무엇을 도와드릴까요?",
             });
 
-        // C — populate the sidebar chat list from local history.
+        // C — populate the sidebar chat list + project groups from local history.
         await RefreshChatSessionsAsync();
 
         // G — fetch action hints (currently a stubbed empty list).
@@ -351,7 +380,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 ErrorTitle = "로그인 필요";
                 PrimaryActionText = "로그인";
                 StatusText = "로그인 필요";
-                ErrorMessage = "서버에는 연결되었지만 로그인이 필요합니다.\n설정에서 사용자 ID와 비밀번호로 로그인하세요.";
+                ErrorMessage = "서버에는 연결되었지만 로그인이 필요합니다.\n로그인 화면에서 다시 인증하세요.";
                 break;
 
             default: // Disconnected
@@ -516,13 +545,20 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         var messages = _session.Messages.ToList();
         if (messages.Count == 0) return;
 
+        // 기존 레코드가 있으면 ProjectId(프로젝트 분류)와 CreatedUtc(최초 생성시각)를 보존한다.
+        // 보존하지 않으면 분류한 대화를 이어 채팅할 때 미분류로 되돌아가는 버그가 생긴다.
+        ChatSessionRecord? existing = null;
+        try { existing = await _chatHistory.LoadAsync(_session.Id).ConfigureAwait(false); }
+        catch { /* best-effort: 없으면 신규 취급 */ }
+
         var record = new ChatSessionRecord
         {
             Id = _session.Id,
             Title = _chatHistory.BuildTitle(messages),
-            CreatedUtc = DateTimeOffset.UtcNow,
+            CreatedUtc = existing?.CreatedUtc ?? DateTimeOffset.UtcNow,
             UpdatedUtc = DateTimeOffset.UtcNow,
             WorkspaceRoot = WorkspaceRoot,
+            ProjectId = existing?.ProjectId,
             Messages = messages,
         };
 
@@ -555,6 +591,10 @@ public sealed partial class AgentSessionViewModel : ObservableObject
             foreach (var s in list)
                 ChatSessions.Add(s);
         }).ConfigureAwait(false);
+
+        // #4 — 사이드바 프로젝트 그룹도 함께 갱신(삭제·신규·편입이 즉시 반영되도록 단일 갱신 지점).
+        if (Projects is { } projects)
+            await projects.LoadAsync().ConfigureAwait(false);
     }
 
     /// <summary>C — replace the active session and re-project its transcript (UI thread).</summary>
