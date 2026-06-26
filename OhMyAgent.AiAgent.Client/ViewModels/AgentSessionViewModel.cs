@@ -84,6 +84,14 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     /// <summary>D — convenience flag mirroring <c>Attachments.Count &gt; 0</c>.</summary>
     [ObservableProperty] private bool _hasAttachments;
 
+    // ── Version / update notice ────────────────────────────────────────
+
+    /// <summary>업데이트 알림 배너 문구. 비어 있으면 배너 숨김(StringToVisibility).</summary>
+    [ObservableProperty] private string _updateNotice = string.Empty;
+
+    /// <summary>필수 업데이트 여부. true면 배너를 경고색으로 표시.</summary>
+    [ObservableProperty] private bool _updateMandatory;
+
     // ── Collections ────────────────────────────────────────────────────
 
     public ObservableCollection<ITranscriptItem> Transcript { get; } = [];
@@ -209,10 +217,15 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         RefreshWorkspaceList();
         await RetryConnectionAsync();
         if (IsConnected && !NeedsLogin)
+        {
             Transcript.Add(new SystemNoticeViewModel
             {
                 Text = "에이전트 서버에 연결되었습니다. 무엇을 도와드릴까요?",
             });
+
+            // 연결 성공 후 best-effort 버전 점검(서버 미구현이면 조용히 무시).
+            _ = CheckVersionAsync();
+        }
 
         // C — populate the sidebar chat list + project groups from local history.
         await RefreshChatSessionsAsync();
@@ -220,6 +233,63 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         // G — fetch action hints (currently a stubbed empty list).
         _ = LoadSuggestionsAsync();
     }
+
+    /// <summary>
+    /// 서버 버전 정책을 best-effort로 점검해 업데이트 알림을 노출한다.
+    /// 서버 미구현/오프라인이면 조용히 종료(하드 블록 없음 — 알림만).
+    /// </summary>
+    private async Task CheckVersionAsync()
+    {
+        ClientVersionInfo? info;
+        try
+        {
+            info = await _api.GetClientVersionAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            return;   // graceful — 점검 실패가 앱 동작을 막지 않는다.
+        }
+
+        if (info is null) return;
+
+        var current = ParseVersion(AppVersion.Semantic);
+        var minimum = ParseVersion(info.MinimumSupported);
+        var latest  = ParseVersion(info.Latest);
+
+        var download = string.IsNullOrWhiteSpace(info.DownloadUrl)
+            ? string.Empty
+            : $" 다운로드: {info.DownloadUrl}";
+        var notice = string.IsNullOrWhiteSpace(info.Notice) ? string.Empty : $" {info.Notice}";
+
+        string banner;
+        bool mandatory;
+
+        if (current is not null && minimum is not null && current < minimum)
+        {
+            mandatory = true;
+            banner = $"필수 업데이트 필요: 최소 지원 버전 {info.MinimumSupported} (현재 {AppVersion.Semantic}).{notice}{download}";
+        }
+        else if (current is not null && latest is not null && current < latest)
+        {
+            mandatory = false;
+            banner = $"새 버전 {info.Latest} 사용 가능. (현재 {AppVersion.Semantic}){notice}{download}";
+        }
+        else
+        {
+            mandatory = false;
+            banner = string.Empty;   // 최신 또는 비교 불가 → 배너 숨김.
+        }
+
+        await UiInvokeAsync(() =>
+        {
+            UpdateMandatory = mandatory;
+            UpdateNotice = banner;
+        }).ConfigureAwait(false);
+    }
+
+    /// <summary>SemVer 문자열을 <see cref="Version"/>으로 파싱. 실패 시 null(비교 생략).</summary>
+    private static Version? ParseVersion(string? value)
+        => Version.TryParse(value, out var v) ? v : null;
 
     /// <summary>B — refresh <see cref="RecentWorkspaces"/> from the history service snapshot.</summary>
     private void RefreshWorkspaceList()

@@ -28,6 +28,9 @@ public interface IAgentApiClient
     /// <summary>GET /api/v1/users/me (Bearer). 200→UserProfile, 401/404/오프라인→null(graceful).</summary>
     Task<UserProfile?> GetProfileAsync(CancellationToken ct = default);
 
+    /// <summary>GET /api/v1/client/version (Bearer). 200→ClientVersionInfo, 그 외/404/오프라인→null(graceful, 예외 없음).</summary>
+    Task<ClientVersionInfo?> GetClientVersionAsync(CancellationToken ct = default);
+
     // ── 프로젝트 서버 동기화(선택). 미구현 서버(404/501)는 graceful 실패로 다룬다. ──
 
     /// <summary>GET /api/v1/projects — 원격 프로젝트 목록. 미지원/오프라인이면 빈 목록.</summary>

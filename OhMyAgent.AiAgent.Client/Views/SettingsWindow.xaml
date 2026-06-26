@@ -628,6 +628,13 @@
                         FontSize="{StaticResource FontSizeBody}"/>
                 </StackPanel>
               </Border>
+
+              <!-- 앱 버전 표시 (빌드 해시 포함) -->
+              <TextBlock Text="{Binding AppVersionText}"
+                         Foreground="{StaticResource TextMuted}"
+                         FontSize="{StaticResource FontSizeXSmall}"
+                         HorizontalAlignment="Right"
+                         Margin="0,16,4,0"/>
             </StackPanel>
             </ScrollViewer>
         </Grid>

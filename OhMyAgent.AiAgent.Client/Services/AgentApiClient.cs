@@ -21,6 +21,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     private const string LoginPath    = "/api/v1/auth/login";
     private const string ProfilePath  = "/api/v1/users/me";
     private const string ProjectsPath = "/api/v1/projects";
+    private const string VersionPath  = "/api/v1/client/version";
 
     public async IAsyncEnumerable<AgentStreamEvent> SendAsync(
         AgentRequest request,
@@ -249,6 +250,31 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         catch
         {
             return null;   // 오프라인/파싱 실패 → graceful
+        }
+    }
+
+    public async Task<ClientVersionInfo?> GetClientVersionAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, VersionPath);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return null;   // 404(미구현)/기타 → graceful null
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            return await JsonSerializer
+                .DeserializeAsync<ClientVersionInfo>(stream, AgentJson.Options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;   // 오프라인/파싱 실패 → graceful (예외 던지지 않음)
         }
     }
 

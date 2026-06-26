@@ -244,6 +244,7 @@
         <Grid Grid.Column="1" Background="{StaticResource WindowBg}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="44"/>   <!-- 타이틀바 / 칩 / 캡션버튼 -->
+                <RowDefinition Height="Auto"/> <!-- 업데이트 알림 배너 -->
                 <RowDefinition Height="*"/>    <!-- 컨텐츠 -->
                 <RowDefinition Height="Auto"/> <!-- 하단 컴포저/배너 -->
             </Grid.RowDefinitions>
@@ -312,8 +313,48 @@
                 </Grid>
             </Border>
 
+            <!-- ── 업데이트 알림 배너 (UpdateNotice 비어있지 않을 때만) ── -->
+            <Border Grid.Row="1" Margin="16,0,16,0" Padding="14,8"
+                    CornerRadius="{StaticResource RadiusMd}"
+                    Visibility="{Binding UpdateNotice, Converter={StaticResource StringToVisibility}}">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <!-- 권장 업데이트: 액센트 소프트 -->
+                        <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}"/>
+                        <Setter Property="BorderBrush" Value="{StaticResource AccentSoftBrush}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Style.Triggers>
+                            <!-- 필수 업데이트: 경고색 -->
+                            <DataTrigger Binding="{Binding UpdateMandatory}" Value="True">
+                                <Setter Property="BorderBrush" Value="{StaticResource WarningBrush}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               FontSize="{StaticResource FontSizeSmall}" VerticalAlignment="Center"
+                               Margin="0,0,8,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource AccentSoftBrush}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding UpdateMandatory}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="{Binding UpdateNotice}" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondary}"
+                               FontSize="{StaticResource FontSizeSmall}"
+                               TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+            </Border>
+
             <!-- ── 컨텐츠: 환영(빈 트랜스크립트) ↔ 트랜스크립트 ── -->
-            <Grid Grid.Row="1">
+            <Grid Grid.Row="2">
 
                 <!-- 트랜스크립트 뷰 (항목 있을 때) -->
                 <ScrollViewer x:Name="ChatScrollViewer" Padding="24,8"
@@ -398,7 +439,7 @@
 
             <!-- ── 하단: 컴포저 + 워크스페이스 칩 + 인라인 승인 + 배너 ── -->
             <!-- 하단 컴포저: 창 너비에 맞춰 늘어남(고정 캡 제거). -->
-            <StackPanel Grid.Row="2" Margin="24,0,24,18"
+            <StackPanel Grid.Row="3" Margin="24,0,24,18"
                         HorizontalAlignment="Stretch">
 
                 <!-- 인라인 승인 카드 (PendingApproval) -->

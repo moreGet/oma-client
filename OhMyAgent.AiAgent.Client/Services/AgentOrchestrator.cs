@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -16,8 +15,8 @@ public sealed class AgentOrchestrator(
     IWorkspaceContext workspace,
     ISettingsService settings) : IAgentOrchestrator
 {
-    private static readonly string ClientVersion =
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0";
+    // 서버엔 깔끔한 SemVer 를 전송한다(빌드 메타·해시 제외).
+    private static readonly string ClientVersion = AppVersion.Semantic;
 
     // MaxTokens 설정 제거 후 와이어 필드(max_tokens)는 서버 제어 전제의 상수 기본값으로 전송.
     private const int DefaultMaxTokens = 4096;

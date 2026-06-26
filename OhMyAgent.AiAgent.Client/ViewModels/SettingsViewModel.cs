@@ -81,6 +81,9 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Model ids fetched from the server (free-text fallback in the View).</summary>
     public ObservableCollection<string> AvailableModels { get; } = [];
 
+    /// <summary>앱 버전 표시(빌드 해시 포함). 예: "v1.3.0+abc1234".</summary>
+    public string AppVersionText => $"v{AppVersion.Full}";
+
     public SettingsViewModel(ISettingsService settings, IAgentApiClient api)
     {
         _settings = settings;
