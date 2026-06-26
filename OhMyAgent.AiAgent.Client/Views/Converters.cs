@@ -175,3 +175,18 @@ public sealed class ToolRiskToTextConverter : IValueConverter
     public object ConvertBack(object value, Type t, object p, CultureInfo c)
         => throw new NotSupportedException();
 }
+
+/// <summary>double × parameter(fraction). 컨테이너 ActualWidth 에 곱해 반응형 MaxWidth 산출.</summary>
+public sealed class MultiplyConverter : IValueConverter
+{
+    public object Convert(object value, Type t, object p, CultureInfo c)
+    {
+        if (value is double d && !double.IsNaN(d) && d > 0 &&
+            double.TryParse(p as string, NumberStyles.Any, CultureInfo.InvariantCulture, out var f))
+            return d * f;
+        return double.PositiveInfinity; // 컨테이너 폭 미확정 시 제한 없음(잘림 방지).
+    }
+
+    public object ConvertBack(object value, Type t, object p, CultureInfo c)
+        => throw new NotSupportedException();
+}
