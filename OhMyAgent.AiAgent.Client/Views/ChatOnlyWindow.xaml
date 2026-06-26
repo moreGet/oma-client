@@ -38,16 +38,16 @@
                 MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
             <Grid Margin="12,0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Width="18" Height="18" CornerRadius="6"
+                    <Border Width="18" Height="18" CornerRadius="{StaticResource RadiusSm}"
                             Background="{StaticResource AccentGradient}"
                             Margin="0,0,7,0">
-                        <TextBlock Text="✦" Foreground="White" FontSize="10"
+                        <TextBlock Text="✦" Foreground="White" FontSize="{StaticResource FontSizeCaption}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <TextBlock Text="OhMyAgent"
                                Foreground="{StaticResource TextPrimary}"
                                FontFamily="{StaticResource AppFont}"
-                               FontSize="12"
+                               FontSize="{StaticResource FontSizeSmall}"
                                FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                Margin="0,0,10,0"/>
@@ -57,14 +57,14 @@
                              ToolTip="{Binding StatusText}"/>
                     <TextBlock Text="{Binding StatusText}"
                                Foreground="{StaticResource TextMuted}"
-                               FontSize="11"
+                               FontSize="{StaticResource FontSizeXSmall}"
                                VerticalAlignment="Center"/>
                 </StackPanel>
                 <Button Content="✕"
                         Click="CloseButton_Click"
                         HorizontalAlignment="Right"
                         Width="30" Height="24"
-                        FontSize="11"
+                        FontSize="{StaticResource FontSizeXSmall}"
                         Background="Transparent"
                         BorderThickness="0"
                         Foreground="{StaticResource TextSecondary}"
@@ -72,7 +72,7 @@
                         ToolTip="닫기 (Esc)">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="8">
+                            <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="{StaticResource RadiusMd}">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <ControlTemplate.Triggers>
@@ -114,25 +114,25 @@
                 <Border Background="{StaticResource SurfaceBg}"
                         BorderBrush="{StaticResource ErrorDot}"
                         BorderThickness="1"
-                        CornerRadius="10"
+                        CornerRadius="{StaticResource RadiusLg}"
                         Padding="20,16"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         MaxWidth="320">
                     <StackPanel HorizontalAlignment="Center">
                         <TextBlock Text="⚠️"
-                                   FontSize="28"
+                                   FontSize="{StaticResource FontSizeHeadingLarge}"
                                    HorizontalAlignment="Center"
                                    Margin="0,0,0,10"/>
                         <TextBlock Text="{Binding ErrorTitle}"
                                    Foreground="{StaticResource ErrorDot}"
-                                   FontSize="14"
+                                   FontSize="{StaticResource FontSizeBodyLarge}"
                                    FontWeight="SemiBold"
                                    HorizontalAlignment="Center"
                                    Margin="0,0,0,8"/>
                         <TextBlock Text="{Binding ErrorMessage}"
                                    Foreground="{StaticResource TextSecondary}"
-                                   FontSize="12"
+                                   FontSize="{StaticResource FontSizeSmall}"
                                    TextWrapping="Wrap"
                                    TextAlignment="Center"
                                    Margin="0,0,0,16"
@@ -142,7 +142,7 @@
                                 Style="{StaticResource PrimaryButton}"
                                 HorizontalAlignment="Center"
                                 Padding="14,6"
-                                FontSize="12"/>
+                                FontSize="{StaticResource FontSizeSmall}"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -160,7 +160,7 @@
 
                 <Border Background="{StaticResource SurfaceBg}"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                        CornerRadius="14" Padding="12,8" Effect="{StaticResource SoftShadow}">
+                        CornerRadius="{StaticResource Radius2Xl}" Padding="12,8" Effect="{StaticResource SoftShadow}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -171,7 +171,7 @@
                             <TextBox x:Name="InputBox"
                                      Background="Transparent" BorderThickness="0"
                                      Foreground="{StaticResource TextPrimary}"
-                                     FontFamily="{StaticResource AppFont}" FontSize="13"
+                                     FontFamily="{StaticResource AppFont}" FontSize="{StaticResource FontSizeBody}"
                                      CaretBrush="{StaticResource AccentBrush}"
                                      SelectionBrush="{StaticResource AccentBrush}"
                                      Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
@@ -181,7 +181,7 @@
                                      IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}"
                                      KeyDown="InputBox_KeyDown"/>
                             <TextBlock Text="작업을 입력하세요 (Enter 전송)" IsHitTestVisible="False"
-                                       Foreground="{StaticResource TextMuted}" FontSize="13"
+                                       Foreground="{StaticResource TextMuted}" FontSize="{StaticResource FontSizeBody}"
                                        Margin="2,0,0,0" VerticalAlignment="Center">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">

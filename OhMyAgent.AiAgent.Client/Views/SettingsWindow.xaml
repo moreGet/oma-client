@@ -42,10 +42,10 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
-                        <Border x:Name="Track" Width="40" Height="22" CornerRadius="11"
+                        <Border x:Name="Track" Width="40" Height="22" CornerRadius="{StaticResource RadiusPill}"
                                 Background="{StaticResource Surface2Bg}"
                                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
-                            <Border x:Name="Thumb" Width="16" Height="16" CornerRadius="8"
+                            <Border x:Name="Thumb" Width="16" Height="16" CornerRadius="{StaticResource RadiusMd}"
                                     HorizontalAlignment="Left" Margin="3,0,0,0"
                                     Background="{StaticResource TextMuted}"/>
                         </Border>
@@ -67,7 +67,7 @@
         </Style>
     </Window.Resources>
 
-    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="2">
+    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource RadiusTiny}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="40"/>
@@ -80,16 +80,16 @@
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Grid Margin="16,0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Width="20" Height="20" CornerRadius="6"
+                        <Border Width="20" Height="20" CornerRadius="{StaticResource RadiusSm}"
                                 Background="{StaticResource AccentGradient}"
                                 Margin="0,0,8,0">
-                            <TextBlock Text="⚙" Foreground="White" FontSize="11"
+                            <TextBlock Text="⚙" Foreground="White" FontSize="{StaticResource FontSizeXSmall}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <TextBlock Text="설정"
                                    Foreground="{StaticResource TextPrimary}"
                                    FontFamily="{StaticResource AppFont}"
-                                   FontSize="13"
+                                   FontSize="{StaticResource FontSizeBody}"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
@@ -97,14 +97,14 @@
                             Click="CloseButton_Click"
                             HorizontalAlignment="Right"
                             Width="30" Height="24"
-                            FontSize="11"
+                            FontSize="{StaticResource FontSizeXSmall}"
                             Background="Transparent"
                             BorderThickness="0"
                             Foreground="{StaticResource TextSecondary}"
                             Cursor="Hand">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
-                                <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="8">
+                                <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="{StaticResource RadiusMd}">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
                                 <ControlTemplate.Triggers>
@@ -129,7 +129,7 @@
                 <TextBlock Text="사용자 프로필"
                            Foreground="{StaticResource AccentSoftBrush}"
                            FontFamily="{StaticResource AppFont}"
-                           FontSize="12"
+                           FontSize="{StaticResource FontSizeSmall}"
                            FontWeight="SemiBold"
                            Margin="0,0,0,14"/>
 
@@ -147,11 +147,11 @@
                     <!-- 이름 -->
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="이름"
                                Foreground="{StaticResource TextSecondary}"
-                               FontSize="12" VerticalAlignment="Center"
+                               FontSize="{StaticResource FontSizeSmall}" VerticalAlignment="Center"
                                Margin="0,0,0,8"/>
                     <TextBlock Grid.Row="0" Grid.Column="1"
                                Foreground="{StaticResource TextPrimary}"
-                               FontSize="13" FontWeight="SemiBold"
+                               FontSize="{StaticResource FontSizeBody}" FontWeight="SemiBold"
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center" Margin="0,0,0,8">
                         <TextBlock.Style>
@@ -174,11 +174,11 @@
                     <!-- 조직 -->
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="조직"
                                Foreground="{StaticResource TextSecondary}"
-                               FontSize="12" VerticalAlignment="Center"
+                               FontSize="{StaticResource FontSizeSmall}" VerticalAlignment="Center"
                                Margin="0,0,0,8"/>
                     <TextBlock Grid.Row="1" Grid.Column="1"
                                Foreground="{StaticResource TextPrimary}"
-                               FontSize="13"
+                               FontSize="{StaticResource FontSizeBody}"
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center" Margin="0,0,0,8">
                         <TextBlock.Style>
@@ -201,10 +201,10 @@
                     <!-- 이메일 -->
                     <TextBlock Grid.Row="2" Grid.Column="0" Text="이메일"
                                Foreground="{StaticResource TextSecondary}"
-                               FontSize="12" VerticalAlignment="Center"/>
+                               FontSize="{StaticResource FontSizeSmall}" VerticalAlignment="Center"/>
                     <TextBlock Grid.Row="2" Grid.Column="1"
                                Foreground="{StaticResource TextPrimary}"
-                               FontSize="13"
+                               FontSize="{StaticResource FontSizeBody}"
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center">
                         <TextBlock.Style>
@@ -227,7 +227,7 @@
 
                 <!-- 로딩/실패 상태 안내 (ProfileStatus 비면 숨김) -->
                 <TextBlock Text="{Binding ProfileStatus}"
-                           FontSize="11"
+                           FontSize="{StaticResource FontSizeXSmall}"
                            TextWrapping="Wrap"
                            Margin="0,12,0,0">
                     <TextBlock.Style>
@@ -257,14 +257,14 @@
                 <TextBlock Text="에이전트"
                            Foreground="{StaticResource AccentSoftBrush}"
                            FontFamily="{StaticResource AppFont}"
-                           FontSize="12"
+                           FontSize="{StaticResource FontSizeSmall}"
                            FontWeight="SemiBold"
                            Margin="0,0,0,14"/>
 
                 <!-- ════ 작업 디렉토리 (다중 루트, 최대 10) ════════════ -->
                 <TextBlock Text="작업 디렉토리"
                            Foreground="{StaticResource TextPrimary}"
-                           FontSize="14"
+                           FontSize="{StaticResource FontSizeBodyLarge}"
                            FontWeight="SemiBold"
                            Margin="0,0,0,8"/>
 
@@ -292,7 +292,7 @@
                                            Text="{Binding Path}"
                                            ToolTip="{Binding Path}"
                                            Foreground="{StaticResource TextPrimary}"
-                                           FontSize="12"
+                                           FontSize="{StaticResource FontSizeSmall}"
                                            VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis">
                                     <TextBlock.Style>
@@ -309,7 +309,7 @@
                                 <!-- 삭제 (부모 SettingsViewModel.RemoveWorkspaceCommand) -->
                                 <Button Grid.Column="2"
                                         Style="{StaticResource ComposerIconButton}"
-                                        Width="26" Height="26" FontSize="12"
+                                        Width="26" Height="26" FontSize="{StaticResource FontSizeSmall}"
                                         Content="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                         Margin="6,0,0,0"
                                         Command="{Binding DataContext.RemoveWorkspaceCommand,
@@ -324,7 +324,7 @@
                 <!-- 빈 목록 경고 -->
                 <TextBlock Text="⚠ 작업 디렉토리가 지정되지 않았습니다. 작업을 시작하려면 폴더를 먼저 추가하세요."
                            Foreground="{StaticResource WarningBrush}"
-                           FontSize="11"
+                           FontSize="{StaticResource FontSizeXSmall}"
                            TextWrapping="Wrap"
                            Margin="0,2,0,6"
                            Visibility="{Binding HasNoWorkspaces, Converter={StaticResource BoolToVisibility}}"/>
@@ -336,12 +336,12 @@
                         Style="{StaticResource OutlineButton}"
                         HorizontalAlignment="Left"
                         Padding="14,6"
-                        FontSize="12"
+                        FontSize="{StaticResource FontSizeSmall}"
                         MinHeight="34"
                         Margin="0,2,0,0"
                         ToolTip="에이전트가 파일·셸 작업을 수행할 폴더를 추가합니다."/>
                 <TextBlock Foreground="{StaticResource TextMuted}"
-                           FontSize="11"
+                           FontSize="{StaticResource FontSizeXSmall}"
                            TextWrapping="Wrap"
                            Margin="0,8,0,16">
                     <TextBlock.Style>
@@ -360,7 +360,7 @@
                 <!-- ════ 권한 모드 ════════════════════════════════ -->
                 <TextBlock Text="권한 모드"
                            Foreground="{StaticResource TextPrimary}"
-                           FontSize="14"
+                           FontSize="{StaticResource FontSizeBodyLarge}"
                            FontWeight="SemiBold"
                            Margin="0,0,0,8"/>
                 <ComboBox ItemsSource="{Binding PermissionModes}"
@@ -371,13 +371,13 @@
                           ToolTip="수동 승인: 매 도구 실행 전 확인 · 안전 작업 자동: 읽기 등 안전 도구만 자동 · 전체 자동: 모든 도구 자동"/>
                 <TextBlock Text="수동 승인은 도구 실행 전마다 확인을 요청합니다. 안전 작업 자동은 읽기 등 위험이 낮은 도구만 자동 실행합니다."
                            Foreground="{StaticResource TextMuted}"
-                           FontSize="11"
+                           FontSize="{StaticResource FontSizeXSmall}"
                            TextWrapping="Wrap"
                            Margin="0,6,0,16"
                            Visibility="{Binding ShowFullAutoWarning, Converter={StaticResource InverseBoolToVisibility}}"/>
                 <TextBlock Text="⚠ 전체 자동: 모든 도구가 자동 승인됩니다 (파일 삭제 등 파괴적 작업 포함). 신뢰할 수 있는 작업에만 사용하세요."
                            Foreground="{StaticResource WarningBrush}"
-                           FontSize="11"
+                           FontSize="{StaticResource FontSizeXSmall}"
                            TextWrapping="Wrap"
                            Margin="0,6,0,16"
                            Visibility="{Binding ShowFullAutoWarning, Converter={StaticResource BoolToVisibility}}"/>
@@ -385,24 +385,24 @@
                 <!-- ════ 실행 한도 ════════════════════════════════ -->
                 <TextBlock Text="실행 한도"
                            Foreground="{StaticResource TextPrimary}"
-                           FontSize="14"
+                           FontSize="{StaticResource FontSizeBodyLarge}"
                            FontWeight="SemiBold"
                            Margin="0,0,0,8"/>
                 <StackPanel Margin="0,0,0,16">
                     <TextBlock Text="최대 반복 (1–100)"
                                Foreground="{StaticResource TextSecondary}"
-                               FontSize="11"
+                               FontSize="{StaticResource FontSizeXSmall}"
                                Margin="0,0,0,4"/>
                     <TextBox Style="{StaticResource DarkTextBox}"
                              Text="{Binding MaxIterations, UpdateSourceTrigger=PropertyChanged}"
-                             FontSize="13"
+                             FontSize="{StaticResource FontSizeBody}"
                              MinHeight="36"
                              HorizontalAlignment="Left"
                              MinWidth="160"
                              VerticalContentAlignment="Center"/>
                     <TextBlock Text="최대 토큰은 서버가 제어합니다."
                                Foreground="{StaticResource TextMuted}"
-                               FontSize="11"
+                               FontSize="{StaticResource FontSizeXSmall}"
                                TextWrapping="Wrap"
                                Margin="0,6,0,0"/>
                 </StackPanel>
@@ -415,24 +415,24 @@
                 <TextBlock Text="서버 설정"
                            Foreground="{StaticResource AccentSoftBrush}"
                            FontFamily="{StaticResource AppFont}"
-                           FontSize="12"
+                           FontSize="{StaticResource FontSizeSmall}"
                            FontWeight="SemiBold"
                            Margin="0,0,0,14"/>
 
                 <TextBlock Text="API 서버 주소"
                            Foreground="{StaticResource TextSecondary}"
-                           FontSize="11"
+                           FontSize="{StaticResource FontSizeXSmall}"
                            Margin="0,0,0,4"/>
                 <TextBox Style="{StaticResource DarkTextBox}"
                          Text="{Binding ServerBaseUrl, UpdateSourceTrigger=PropertyChanged}"
-                         FontSize="13"
+                         FontSize="{StaticResource FontSizeBody}"
                          MinHeight="36"
                          Margin="0,0,0,4"
                          VerticalContentAlignment="Center"
                          ToolTip="사내 AI 에이전트 API 서버의 기본 주소 (예: http://10.0.0.10:8080)"/>
                 <TextBlock Text="사내 폐쇄망 AI 에이전트 API 서버의 기본 주소입니다."
                            Foreground="{StaticResource TextMuted}"
-                           FontSize="11"
+                           FontSize="{StaticResource FontSizeXSmall}"
                            TextWrapping="Wrap"
                            Margin="0,0,0,10"/>
 
@@ -460,7 +460,7 @@
                             </Ellipse.Style>
                         </Ellipse>
                         <TextBlock Text="{Binding LoginStatus}"
-                                   FontSize="11"
+                                   FontSize="{StaticResource FontSizeXSmall}"
                                    TextWrapping="Wrap"
                                    VerticalAlignment="Center">
                             <TextBlock.Style>
@@ -490,7 +490,7 @@
 
                     <Button Grid.Column="1"
                             Command="{Binding LogoutCommand}"
-                            Padding="14,7" FontSize="12" MinHeight="36"
+                            Padding="14,7" FontSize="{StaticResource FontSizeSmall}" MinHeight="36"
                             Content="로그아웃"
                             Style="{StaticResource OutlineButton}"
                             ToolTip="저장된 토큰을 제거하고 로그아웃합니다."
@@ -499,7 +499,7 @@
 
                 <TextBlock Text="모델 ID"
                            Foreground="{StaticResource TextSecondary}"
-                           FontSize="11"
+                           FontSize="{StaticResource FontSizeXSmall}"
                            Margin="0,0,0,4"/>
                 <Grid Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
@@ -518,7 +518,7 @@
                             Command="{Binding LoadModelsCommand}"
                             Style="{StaticResource OutlineButton}"
                             Padding="12,6"
-                            FontSize="12"
+                            FontSize="{StaticResource FontSizeSmall}"
                             MinHeight="36"
                             Margin="8,0,0,0"
                             ToolTip="서버에서 사용 가능한 모델 목록을 불러옵니다. (로그인 필요)"/>
@@ -529,7 +529,7 @@
                         Style="{StaticResource PrimaryButton}"
                         HorizontalAlignment="Right"
                         Padding="18,7"
-                        FontSize="12"
+                        FontSize="{StaticResource FontSizeSmall}"
                         Margin="0,4,0,0"/>
                 </StackPanel>
               </Border>
@@ -540,7 +540,7 @@
                 <TextBlock Text="채팅 단축키"
                            Foreground="{StaticResource AccentSoftBrush}"
                            FontFamily="{StaticResource AppFont}"
-                           FontSize="12"
+                           FontSize="{StaticResource FontSizeSmall}"
                            FontWeight="SemiBold"
                            Margin="0,0,0,14"/>
 
@@ -555,7 +555,7 @@
                     <TextBox Grid.Column="0"
                              Text="{Binding DisplayText, Mode=OneWay}"
                              IsReadOnly="True"
-                             FontSize="13"
+                             FontSize="{StaticResource FontSizeBody}"
                              MinHeight="36"
                              VerticalContentAlignment="Center">
                         <TextBox.Style>
@@ -575,7 +575,7 @@
                             Command="{Binding StartCaptureCommand}"
                             Style="{StaticResource OutlineButton}"
                             Padding="14,6"
-                            FontSize="12"
+                            FontSize="{StaticResource FontSizeSmall}"
                             MinHeight="36"
                             Margin="8,0,0,0"/>
 
@@ -584,7 +584,7 @@
                             Command="{Binding CancelCaptureCommand}"
                             Style="{StaticResource OutlineButton}"
                             Padding="14,6"
-                            FontSize="12"
+                            FontSize="{StaticResource FontSizeSmall}"
                             MinHeight="36"
                             Margin="6,0,0,0"
                             IsEnabled="{Binding IsCapturing}"/>
@@ -593,14 +593,14 @@
                 <!-- 안내 메시지 (캡처 중) -->
                 <TextBlock Text="새 단축키를 입력하세요... (Esc: 취소)"
                            Foreground="{StaticResource AccentBrush}"
-                           FontSize="11"
+                           FontSize="{StaticResource FontSizeXSmall}"
                            Margin="0,0,0,4"
                            Visibility="{Binding IsCapturing, Converter={StaticResource BoolToVisibility}}"/>
 
                 <!-- ValidationError -->
                 <TextBlock Text="{Binding ValidationError}"
                            Foreground="{StaticResource ErrorDot}"
-                           FontSize="11"
+                           FontSize="{StaticResource FontSizeXSmall}"
                            Margin="0,0,0,4"
                            TextWrapping="Wrap">
                     <TextBlock.Style>
@@ -625,7 +625,7 @@
                         HorizontalAlignment="Right"
                         Margin="0,16,0,0"
                         Padding="22,8"
-                        FontSize="13"/>
+                        FontSize="{StaticResource FontSizeBody}"/>
                 </StackPanel>
               </Border>
             </StackPanel>

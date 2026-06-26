@@ -22,7 +22,7 @@
         <Setter Property="Background"      Value="{StaticResource SurfaceBg}"/>
         <Setter Property="BorderBrush"     Value="{StaticResource BorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="CornerRadius"    Value="14"/>
+        <Setter Property="CornerRadius"    Value="{StaticResource Radius2Xl}"/>
         <Setter Property="Padding"         Value="18,16"/>
         <Setter Property="Effect"          Value="{StaticResource SoftShadow}"/>
     </Style>
@@ -42,7 +42,7 @@
                                         <ControlTemplate TargetType="Thumb">
                                             <Border x:Name="Th"
                                                     Background="#363C4C"
-                                                    CornerRadius="4"
+                                                    CornerRadius="{StaticResource RadiusXs}"
                                                     Margin="2,0"/>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
@@ -78,7 +78,7 @@
         <Setter Property="FontFamily"      Value="{StaticResource AppFont}"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Padding"         Value="22,11"/>
-        <Setter Property="FontSize"        Value="14"/>
+        <Setter Property="FontSize"        Value="{StaticResource FontSizeBodyLarge}"/>
         <Setter Property="FontWeight"      Value="SemiBold"/>
         <Setter Property="Cursor"          Value="Hand"/>
         <Setter Property="Template">
@@ -86,7 +86,7 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Root"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="11"
+                            CornerRadius="{StaticResource RadiusPill}"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center"/>
@@ -128,7 +128,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="11"
+                            CornerRadius="{StaticResource RadiusPill}"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
@@ -162,7 +162,7 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Root"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="8">
+                            CornerRadius="{StaticResource RadiusMd}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -184,7 +184,7 @@
         <Setter Property="BorderBrush"     Value="{StaticResource BorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding"         Value="14,11"/>
-        <Setter Property="FontSize"        Value="14"/>
+        <Setter Property="FontSize"        Value="{StaticResource FontSizeBodyLarge}"/>
         <Setter Property="CaretBrush"      Value="{StaticResource AccentBrush}"/>
         <Setter Property="SelectionBrush"  Value="{StaticResource AccentBrush}"/>
         <Setter Property="SelectionOpacity" Value="0.4"/>
@@ -195,7 +195,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="12">
+                            CornerRadius="{StaticResource RadiusXl}">
                         <ScrollViewer x:Name="PART_ContentHost"
                                       Margin="{TemplateBinding Padding}"
                                       VerticalAlignment="Center"/>
@@ -227,7 +227,7 @@
         <Setter Property="BorderBrush"     Value="{StaticResource BorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding"         Value="14,11"/>
-        <Setter Property="FontSize"        Value="14"/>
+        <Setter Property="FontSize"        Value="{StaticResource FontSizeBodyLarge}"/>
         <Setter Property="CaretBrush"      Value="{StaticResource AccentBrush}"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -236,7 +236,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="12">
+                            CornerRadius="{StaticResource RadiusXl}">
                         <ScrollViewer x:Name="PART_ContentHost"
                                       Margin="{TemplateBinding Padding}"
                                       VerticalAlignment="Center"/>
@@ -260,7 +260,7 @@
                             Background="{StaticResource Surface2Bg}"
                             BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="10">
+                            CornerRadius="{StaticResource RadiusLg}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -272,7 +272,7 @@
                                               VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="⌄"
                                        Foreground="{StaticResource TextSecondary}"
-                                       FontSize="13" Margin="8,0,12,2"
+                                       FontSize="{StaticResource FontSizeBody}" Margin="8,0,12,2"
                                        VerticalAlignment="Center"/>
                         </Grid>
                     </Border>
@@ -296,7 +296,7 @@
         <Setter Property="BorderBrush"     Value="{StaticResource BorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding"         Value="12,7"/>
-        <Setter Property="FontSize"        Value="13"/>
+        <Setter Property="FontSize"        Value="{StaticResource FontSizeBody}"/>
         <Setter Property="MinWidth"        Value="140"/>
         <Setter Property="Cursor"          Value="Hand"/>
         <Setter Property="Template">
@@ -334,7 +334,7 @@
                             <Border Background="{StaticResource Surface2Bg}"
                                     BorderBrush="{StaticResource BorderLight}"
                                     BorderThickness="1"
-                                    CornerRadius="10"
+                                    CornerRadius="{StaticResource RadiusLg}"
                                     MinWidth="{TemplateBinding ActualWidth}"
                                     Margin="0,4,0,0"
                                     Effect="{StaticResource SoftShadow}">
@@ -362,7 +362,7 @@
     <!-- ComboBox 항목 -->
     <Style TargetType="ComboBoxItem">
         <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-        <Setter Property="FontSize"   Value="13"/>
+        <Setter Property="FontSize"   Value="{StaticResource FontSizeBody}"/>
         <Setter Property="Padding"    Value="12,8"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -396,7 +396,7 @@
                 <ControlTemplate TargetType="ToggleButton">
                     <Border x:Name="Track"
                             Width="44" Height="24"
-                            CornerRadius="12"
+                            CornerRadius="{StaticResource RadiusXl}"
                             Background="{StaticResource Surface3Bg}"
                             BorderBrush="{StaticResource BorderLight}"
                             BorderThickness="1">
@@ -424,7 +424,7 @@
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
         <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
-        <Setter Property="FontSize"   Value="13"/>
+        <Setter Property="FontSize"   Value="{StaticResource FontSizeBody}"/>
         <Setter Property="Cursor"     Value="Hand"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -432,13 +432,13 @@
                     <StackPanel Orientation="Horizontal">
                         <Border x:Name="Box"
                                 Width="20" Height="20"
-                                CornerRadius="6"
+                                CornerRadius="{StaticResource RadiusSm}"
                                 Background="{StaticResource Surface2Bg}"
                                 BorderBrush="{StaticResource BorderLight}"
                                 BorderThickness="1"
                                 VerticalAlignment="Center">
                             <TextBlock x:Name="Check" Text="✓"
-                                       Foreground="White" FontSize="12" FontWeight="Bold"
+                                       Foreground="White" FontSize="{StaticResource FontSizeSmall}" FontWeight="Bold"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Visibility="Collapsed"/>
                         </Border>
@@ -466,13 +466,13 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Slider">
                     <Grid VerticalAlignment="Center">
-                        <Border Height="4" CornerRadius="2" Background="{StaticResource Surface3Bg}"/>
+                        <Border Height="4" CornerRadius="{StaticResource RadiusTiny}" Background="{StaticResource Surface3Bg}"/>
                         <Track x:Name="PART_Track">
                             <Track.DecreaseRepeatButton>
                                 <RepeatButton Command="Slider.DecreaseLarge">
                                     <RepeatButton.Template>
                                         <ControlTemplate TargetType="RepeatButton">
-                                            <Border Height="4" CornerRadius="2" Background="{StaticResource AccentBrush}"/>
+                                            <Border Height="4" CornerRadius="{StaticResource RadiusTiny}" Background="{StaticResource AccentBrush}"/>
                                         </ControlTemplate>
                                     </RepeatButton.Template>
                                 </RepeatButton>
@@ -518,7 +518,7 @@
 
     <!-- ── 칩(chip) 배지 — 상태/위험도용 ──────────────────────────── -->
     <Style x:Key="Chip" TargetType="Border">
-        <Setter Property="CornerRadius"      Value="8"/>
+        <Setter Property="CornerRadius"      Value="{StaticResource RadiusMd}"/>
         <Setter Property="Padding"           Value="8,3"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
@@ -536,7 +536,7 @@
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Foreground"      Value="{StaticResource TextSecondary}"/>
         <Setter Property="FontFamily"      Value="{StaticResource AppFont}"/>
-        <Setter Property="FontSize"        Value="13"/>
+        <Setter Property="FontSize"        Value="{StaticResource FontSizeBody}"/>
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         <Setter Property="Cursor"          Value="Hand"/>
         <Setter Property="Template">
@@ -571,7 +571,7 @@
     <Style x:Key="SidebarSectionHeader" TargetType="TextBlock">
         <Setter Property="Foreground"  Value="{StaticResource TextMuted}"/>
         <Setter Property="FontFamily"  Value="{StaticResource AppFont}"/>
-        <Setter Property="FontSize"    Value="11"/>
+        <Setter Property="FontSize"    Value="{StaticResource FontSizeXSmall}"/>
         <Setter Property="FontWeight"  Value="SemiBold"/>
         <Setter Property="Margin"      Value="10,16,0,4"/>
     </Style>
@@ -642,7 +642,7 @@
         <Setter Property="Background"      Value="Transparent"/>
         <Setter Property="Foreground"      Value="{StaticResource TextSecondary}"/>
         <Setter Property="FontFamily"      Value="{StaticResource AppFont}"/>
-        <Setter Property="FontSize"        Value="12"/>
+        <Setter Property="FontSize"        Value="{StaticResource FontSizeSmall}"/>
         <Setter Property="Cursor"          Value="Hand"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -669,7 +669,7 @@
 
     <!-- 제안 항목 행 (아이콘 + 텍스트, 호버 하이라이트) -->
     <Style x:Key="SuggestionItemButton" TargetType="Button" BasedOn="{StaticResource SidebarItemButton}">
-        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
         <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
     </Style>
 

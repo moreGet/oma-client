@@ -26,7 +26,7 @@
         </Style>
     </Window.Resources>
 
-    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="2">
+    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource RadiusTiny}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="40"/>          <!-- 타이틀바 -->
@@ -44,16 +44,16 @@
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Grid Margin="16,0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Width="20" Height="20" CornerRadius="6"
+                        <Border Width="20" Height="20" CornerRadius="{StaticResource RadiusSm}"
                                 Background="{StaticResource AccentGradient}"
                                 Margin="0,0,8,0">
-                            <TextBlock Text="🛡" Foreground="White" FontSize="11"
+                            <TextBlock Text="🛡" Foreground="White" FontSize="{StaticResource FontSizeXSmall}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <TextBlock Text="무결성 검사"
                                    Foreground="{StaticResource TextPrimary}"
                                    FontFamily="{StaticResource AppFont}"
-                                   FontSize="13"
+                                   FontSize="{StaticResource FontSizeBody}"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
@@ -61,7 +61,7 @@
                             Click="CloseButton_Click"
                             HorizontalAlignment="Right"
                             Width="30" Height="24"
-                            FontSize="11"
+                            FontSize="{StaticResource FontSizeXSmall}"
                             Foreground="{StaticResource TextSecondary}"
                             Style="{StaticResource CaptionButton}"/>
                 </Grid>
@@ -73,7 +73,7 @@
                     <TextBlock Text="검사 대상 디렉토리"
                                Foreground="{StaticResource AccentSoftBrush}"
                                FontFamily="{StaticResource AppFont}"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource FontSizeSmall}" FontWeight="SemiBold"
                                Margin="0,0,0,8"/>
                     <Grid Margin="0,0,0,14">
                         <Grid.ColumnDefinitions>
@@ -85,7 +85,7 @@
                                  Style="{StaticResource DarkTextBox}"
                                  Text="{Binding TargetDirectory, Mode=OneWay}"
                                  IsReadOnly="True"
-                                 FontSize="12"
+                                 FontSize="{StaticResource FontSizeSmall}"
                                  MinHeight="36"
                                  VerticalContentAlignment="Center"
                                  ToolTip="{Binding TargetDirectory}"/>
@@ -93,13 +93,13 @@
                                 Content="찾아보기..."
                                 Click="BrowseTarget_Click"
                                 Style="{StaticResource OutlineButton}"
-                                Padding="14,6" FontSize="12" MinHeight="36"
+                                Padding="14,6" FontSize="{StaticResource FontSizeSmall}" MinHeight="36"
                                 Margin="8,0,0,0"/>
                         <Button Grid.Column="2"
                                 Content="매니페스트 열기"
                                 Click="OpenManifestLocation_Click"
                                 Style="{StaticResource OutlineButton}"
-                                Padding="14,6" FontSize="12" MinHeight="36"
+                                Padding="14,6" FontSize="{StaticResource FontSizeSmall}" MinHeight="36"
                                 Margin="8,0,0,0"
                                 IsEnabled="{Binding HasManifest}"
                                 ToolTip="매니페스트가 저장된 폴더를 탐색기에서 엽니다."/>
@@ -125,13 +125,13 @@
                                     HorizontalAlignment="Right" VerticalAlignment="Center">
                             <TextBlock Text="확장자"
                                        Foreground="{StaticResource TextSecondary}"
-                                       FontSize="11"
+                                       FontSize="{StaticResource FontSizeXSmall}"
                                        VerticalAlignment="Center"
                                        Margin="0,0,8,0"/>
                             <TextBox Style="{StaticResource DarkTextBox}"
                                      Text="{Binding IncludeExtensionsText, UpdateSourceTrigger=PropertyChanged}"
                                      Width="200" MinHeight="32"
-                                     FontSize="12"
+                                     FontSize="{StaticResource FontSizeSmall}"
                                      VerticalContentAlignment="Center"
                                      ToolTip="콤마/세미콜론/공백 구분. 비우면 모든 파일. 예: exe,dll"/>
                         </StackPanel>
@@ -145,18 +145,18 @@
                 <Button Content="검사 시작"
                         Command="{Binding ScanCommand}"
                         Style="{StaticResource PrimaryButton}"
-                        Padding="22,9" FontSize="13"
+                        Padding="22,9" FontSize="{StaticResource FontSizeBody}"
                         Margin="0,0,8,0"/>
                 <Button Content="기준 매니페스트 생성"
                         Click="GenerateBaseline_Click"
                         Style="{StaticResource OutlineButton}"
-                        Padding="18,9" FontSize="13"
+                        Padding="18,9" FontSize="{StaticResource FontSizeBody}"
                         Margin="0,0,8,0"
                         ToolTip="현재 디렉토리 상태를 캡처해 기준 매니페스트를 만듭니다."/>
                 <Button Content="취소"
                         Command="{Binding CancelCommand}"
                         Style="{StaticResource OutlineButton}"
-                        Padding="18,9" FontSize="13"
+                        Padding="18,9" FontSize="{StaticResource FontSizeBody}"
                         Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>
 
@@ -172,7 +172,7 @@
                                  BorderThickness="0"/>
                     <TextBlock Text="{Binding ProgressText}"
                                Foreground="{StaticResource TextSecondary}"
-                               FontSize="11"
+                               FontSize="{StaticResource FontSizeXSmall}"
                                Margin="2,6,0,0"/>
                 </StackPanel>
             </Border>
@@ -191,7 +191,7 @@
                         <StackPanel Orientation="Horizontal">
                             <Ellipse Width="9" Height="9" VerticalAlignment="Center"
                                      Fill="{StaticResource IntegrityOkBrush}" Margin="0,0,6,0"/>
-                            <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="12" VerticalAlignment="Center">
+                            <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="{StaticResource FontSizeSmall}" VerticalAlignment="Center">
                                 <Run Text="정상 "/><Run Text="{Binding OkCount, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
                             </TextBlock>
                         </StackPanel>
@@ -200,7 +200,7 @@
                         <StackPanel Orientation="Horizontal">
                             <Ellipse Width="9" Height="9" VerticalAlignment="Center"
                                      Fill="{StaticResource IntegrityModifiedBrush}" Margin="0,0,6,0"/>
-                            <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="12" VerticalAlignment="Center">
+                            <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="{StaticResource FontSizeSmall}" VerticalAlignment="Center">
                                 <Run Text="변조 "/><Run Text="{Binding ModifiedCount, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
                             </TextBlock>
                         </StackPanel>
@@ -209,7 +209,7 @@
                         <StackPanel Orientation="Horizontal">
                             <Ellipse Width="9" Height="9" VerticalAlignment="Center"
                                      Fill="{StaticResource IntegrityCorruptedBrush}" Margin="0,0,6,0"/>
-                            <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="12" VerticalAlignment="Center">
+                            <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="{StaticResource FontSizeSmall}" VerticalAlignment="Center">
                                 <Run Text="손상 "/><Run Text="{Binding CorruptedCount, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
                             </TextBlock>
                         </StackPanel>
@@ -218,7 +218,7 @@
                         <StackPanel Orientation="Horizontal">
                             <Ellipse Width="9" Height="9" VerticalAlignment="Center"
                                      Fill="{StaticResource IntegrityMissingBrush}" Margin="0,0,6,0"/>
-                            <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="12" VerticalAlignment="Center">
+                            <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="{StaticResource FontSizeSmall}" VerticalAlignment="Center">
                                 <Run Text="누락 "/><Run Text="{Binding MissingCount, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
                             </TextBlock>
                         </StackPanel>
@@ -227,7 +227,7 @@
                         <StackPanel Orientation="Horizontal">
                             <Ellipse Width="9" Height="9" VerticalAlignment="Center"
                                      Fill="{StaticResource IntegrityUnexpectedBrush}" Margin="0,0,6,0"/>
-                            <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="12" VerticalAlignment="Center">
+                            <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="{StaticResource FontSizeSmall}" VerticalAlignment="Center">
                                 <Run Text="추가 "/><Run Text="{Binding UnexpectedCount, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
                             </TextBlock>
                         </StackPanel>
@@ -248,7 +248,7 @@
                             </Style.Triggers>
                         </Style>
                     </Border.Style>
-                    <TextBlock Foreground="White" FontSize="12" FontWeight="SemiBold">
+                    <TextBlock Foreground="White" FontSize="{StaticResource FontSizeSmall}" FontWeight="SemiBold">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Text" Value="⚠ 무결성 경고"/>
@@ -278,7 +278,7 @@
                           AlternatingRowBackground="Transparent"
                           Foreground="{StaticResource TextPrimary}"
                           FontFamily="{StaticResource AppFont}"
-                          FontSize="12"
+                          FontSize="{StaticResource FontSizeSmall}"
                           RowHeight="32"
                           EnableRowVirtualization="True"
                           EnableColumnVirtualization="True"
@@ -292,7 +292,7 @@
                         <Style TargetType="DataGridColumnHeader">
                             <Setter Property="Background" Value="{StaticResource Surface2Bg}"/>
                             <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-                            <Setter Property="FontSize" Value="11"/>
+                            <Setter Property="FontSize" Value="{StaticResource FontSizeXSmall}"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                             <Setter Property="Padding" Value="10,8"/>
                             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
@@ -444,7 +444,7 @@
                     Padding="22,8">
                 <TextBlock Text="{Binding StatusMessage}"
                            Foreground="{StaticResource TextSecondary}"
-                           FontSize="11"
+                           FontSize="{StaticResource FontSizeXSmall}"
                            TextTrimming="CharacterEllipsis"
                            VerticalAlignment="Center"/>
             </Border>

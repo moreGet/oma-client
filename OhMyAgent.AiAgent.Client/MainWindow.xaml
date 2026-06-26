@@ -70,7 +70,7 @@
                             ToolTip="새 채팅 (트랜스크립트 초기화)">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE70F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                       FontSize="15" Width="24" VerticalAlignment="Center"/>
+                                       FontSize="{StaticResource FontSizeSubtitle}" Width="24" VerticalAlignment="Center"/>
                             <TextBlock Text="새 채팅" VerticalAlignment="Center" FontWeight="SemiBold"/>
                         </StackPanel>
                     </Button>
@@ -89,7 +89,7 @@
                                        Margin="0" VerticalAlignment="Center"/>
                             <!-- 새 프로젝트 -->
                             <Button Grid.Column="1" Style="{StaticResource ComposerIconButton}"
-                                    Width="24" Height="24" FontSize="13"
+                                    Width="24" Height="24" FontSize="{StaticResource FontSizeBody}"
                                     Content="&#xE710;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                     Click="NewProject_Click"
                                     ToolTip="새 프로젝트"/>
@@ -115,23 +115,23 @@
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Grid.Column="0" Text="&#xE8B7;"
                                                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                           FontSize="{StaticResource FontSizeBody}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding Name}"
                                                            Foreground="{StaticResource TextPrimary}"
-                                                           FontSize="13" FontWeight="SemiBold"
+                                                           FontSize="{StaticResource FontSizeBody}" FontWeight="SemiBold"
                                                            VerticalAlignment="Center"
                                                            TextTrimming="CharacterEllipsis"/>
                                                 <!-- 동기화 배지 -->
                                                 <TextBlock Grid.Column="2" Text="&#xE753;"
                                                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                            Foreground="{StaticResource AccentSoftBrush}"
-                                                           FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center"
+                                                           FontSize="{StaticResource FontSizeXSmall}" Margin="4,0,0,0" VerticalAlignment="Center"
                                                            ToolTip="서버 동기화됨"
                                                            Visibility="{Binding Synced, Converter={StaticResource BoolToVisibility}}"/>
                                                 <!-- 대화 수 -->
                                                 <TextBlock Grid.Column="3" Text="{Binding ConversationCount}"
                                                            Foreground="{StaticResource TextMuted}"
-                                                           FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                                           FontSize="{StaticResource FontSizeXSmall}" Margin="6,0,0,0" VerticalAlignment="Center"/>
                                                 <!-- 실제 프로젝트만 컨텍스트 메뉴(rename/delete/sync) -->
                                                 <Grid.ContextMenu>
                                                     <ContextMenu>
@@ -177,12 +177,12 @@
                                                                 </Grid.ColumnDefinitions>
                                                                 <TextBlock Grid.Column="0" Text="&#xE8BD;"
                                                                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                                           FontSize="13" VerticalAlignment="Center"/>
+                                                                           FontSize="{StaticResource FontSizeBody}" VerticalAlignment="Center"/>
                                                                 <TextBlock Grid.Column="1" Text="{Binding Title}"
                                                                            VerticalAlignment="Center" MaxWidth="130"
                                                                            TextTrimming="CharacterEllipsis"/>
                                                                 <Button Grid.Column="2" Style="{StaticResource ComposerIconButton}"
-                                                                        Width="22" Height="22" FontSize="11"
+                                                                        Width="22" Height="22" FontSize="{StaticResource FontSizeXSmall}"
                                                                         Content="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                                         Command="{Binding DataContext.DeleteChatSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                         CommandParameter="{Binding}"
@@ -215,13 +215,13 @@
                         <!-- 빈 상태: 프로젝트/대화 모두 없을 때 -->
                         <TextBlock Text="채팅 없음"
                                    Foreground="{StaticResource TextMuted}"
-                                   FontSize="13" Margin="10,2,0,0"
+                                   FontSize="{StaticResource FontSizeBody}" Margin="10,2,0,0"
                                    Visibility="{Binding Projects.Projects.Count, Converter={StaticResource EmptyCountToVisibility}}"/>
 
                         <!-- 동기화/상태 안내 -->
                         <TextBlock Text="{Binding Projects.StatusMessage}"
                                    Foreground="{StaticResource TextMuted}"
-                                   FontSize="11" Margin="10,4,0,0" TextWrapping="Wrap"
+                                   FontSize="{StaticResource FontSizeXSmall}" Margin="10,4,0,0" TextWrapping="Wrap"
                                    Visibility="{Binding Projects.StatusMessage, Converter={StaticResource StringToVisibility}}"/>
                     </StackPanel>
                 </ScrollViewer>
@@ -231,7 +231,7 @@
                         Click="MenuItem_HotkeySettings_Click" ToolTip="설정">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                   FontSize="15" Width="24" VerticalAlignment="Center"/>
+                                   FontSize="{StaticResource FontSizeSubtitle}" Width="24" VerticalAlignment="Center"/>
                         <TextBlock Text="설정" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
@@ -258,7 +258,7 @@
                                  Fill="{Binding IsConnected, Converter={StaticResource BoolToStatusBrush}}"
                                  ToolTip="{Binding StatusText}"/>
                         <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextSecondary}"
-                                   FontSize="12" VerticalAlignment="Center"/>
+                                   FontSize="{StaticResource FontSizeSmall}" VerticalAlignment="Center"/>
 
                         <!-- 승인 대기 배지 (PendingApproval 존재 시) -->
                         <Border Style="{StaticResource Chip}" Margin="12,0,0,0"
@@ -267,11 +267,11 @@
                                 Visibility="{Binding PendingApproval, Converter={StaticResource NullToVisibility}}"
                                 ToolTip="아래 카드에서 도구 실행을 승인하거나 거부하세요.">
                             <TextBlock Text="승인 대기" Foreground="{StaticResource WarningBrush}"
-                                       FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                       FontSize="{StaticResource FontSizeXSmall}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </Border>
 
                         <TextBlock Text="{Binding LastUsageText}" Foreground="{StaticResource TextMuted}"
-                                   FontSize="11" VerticalAlignment="Center" Margin="12,0,0,0"
+                                   FontSize="{StaticResource FontSizeXSmall}" VerticalAlignment="Center" Margin="12,0,0,0"
                                    ToolTip="마지막 응답의 토큰 사용량 (입력/출력)"
                                    Visibility="{Binding LastUsageText, Converter={StaticResource StringToVisibility}}"/>
                     </StackPanel>
@@ -284,19 +284,19 @@
                                 SmallChange="0.05" LargeChange="0.1" ToolTip="창 투명도"/>
                         <Button Content="&#xE921;" Click="MinimizeButton_Click"
                                 Style="{StaticResource CaptionButton}" Width="34" Height="28"
-                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11" ToolTip="최소화"/>
+                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="{StaticResource FontSizeXSmall}" ToolTip="최소화"/>
                         <Button Content="&#xE944;" Click="TrayButton_Click"
                                 Style="{StaticResource CaptionButton}" Width="34" Height="28"
-                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11"
+                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="{StaticResource FontSizeXSmall}"
                                 Margin="2,0,0,0" ToolTip="트레이로 숨기기"/>
                         <Button Content="&#xE8BB;" Click="CloseButton_Click" Width="34" Height="28"
-                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11"
+                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="{StaticResource FontSizeXSmall}"
                                 Background="Transparent" BorderThickness="0"
                                 Foreground="{StaticResource TextSecondary}" Cursor="Hand"
                                 Margin="2,0,0,0" ToolTip="종료">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
-                                    <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="8">
+                                    <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="{StaticResource RadiusMd}">
                                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                     <ControlTemplate.Triggers>
@@ -336,13 +336,13 @@
                                        TextAlignment="Center" TextWrapping="Wrap"
                                        Foreground="{StaticResource TextPrimary}"
                                        FontFamily="{StaticResource AppFont}"
-                                       FontSize="26" FontWeight="SemiBold"
+                                       FontSize="{StaticResource FontSizeHeading}" FontWeight="SemiBold"
                                        Margin="0,0,0,10"/>
 
                             <!-- 안내 부제: 현재 작업 공간 -->
                             <TextBlock TextAlignment="Center" TextWrapping="Wrap"
                                        Foreground="{StaticResource TextSecondary}"
-                                       FontSize="13" Margin="0,0,0,4">
+                                       FontSize="{StaticResource FontSizeBody}" Margin="0,0,0,4">
                                 <Run Text="작업 공간"/>
                                 <Run Text="{Binding WorkspaceRoot, Mode=OneWay}" FontWeight="SemiBold"
                                      Foreground="{StaticResource TextPrimary}"/>
@@ -351,7 +351,7 @@
                             <TextBlock Text="아래 입력창에 하고 싶은 작업을 적어 보세요."
                                        TextAlignment="Center"
                                        Foreground="{StaticResource TextMuted}"
-                                       FontSize="12" Margin="0,0,0,14"/>
+                                       FontSize="{StaticResource FontSizeSmall}" Margin="0,0,0,14"/>
 
                             <!-- 제안 항목 (Suggestions 바인딩, 비면 숨김) -->
                             <ItemsControl ItemsSource="{Binding Suggestions}" Margin="0,20,0,0"
@@ -361,7 +361,7 @@
                                         <Button Style="{StaticResource SuggestionItemButton}">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xE9D5;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="14" Width="26" VerticalAlignment="Center"/>
+                                                           FontSize="{StaticResource FontSizeBodyLarge}" Width="26" VerticalAlignment="Center"/>
                                                 <TextBlock Text="{Binding Text}" VerticalAlignment="Center"/>
                                             </StackPanel>
                                         </Button>
@@ -377,17 +377,17 @@
                       Background="{StaticResource WindowBg}">
                     <Border Background="{StaticResource SurfaceBg}"
                             BorderBrush="{StaticResource ErrorDot}" BorderThickness="1"
-                            CornerRadius="14" Padding="40,32"
+                            CornerRadius="{StaticResource Radius2Xl}" Padding="40,32"
                             HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="480">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="&#xE783;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        Foreground="{StaticResource ErrorDot}"
-                                       FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                                       FontSize="{StaticResource FontSizeDisplay}" HorizontalAlignment="Center" Margin="0,0,0,16"/>
                             <TextBlock Text="{Binding ErrorTitle}" Foreground="{StaticResource ErrorDot}"
-                                       FontSize="18" FontWeight="SemiBold"
+                                       FontSize="{StaticResource FontSizeTitle}" FontWeight="SemiBold"
                                        HorizontalAlignment="Center" Margin="0,0,0,12"/>
                             <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource TextSecondary}"
-                                       FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                                       FontSize="{StaticResource FontSizeBody}" TextWrapping="Wrap" TextAlignment="Center"
                                        Margin="0,0,0,24" LineHeight="20"/>
                             <Button Content="{Binding PrimaryActionText}" Command="{Binding ConnectionActionCommand}"
                                     Style="{StaticResource PrimaryButton}" HorizontalAlignment="Center"/>
@@ -417,7 +417,7 @@
                 <!-- 대형 라운드 컴포저 카드 -->
                 <Border Background="{StaticResource SurfaceBg}"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                        CornerRadius="18" Padding="16,12" Effect="{StaticResource CardShadow}">
+                        CornerRadius="{StaticResource Radius3Xl}" Padding="16,12" Effect="{StaticResource CardShadow}">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/> <!-- 첨부 칩 -->
@@ -442,14 +442,14 @@
                                             Margin="0,0,6,6">
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="&#xE8A5;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                       Foreground="{StaticResource TextMuted}" FontSize="11"
+                                                       Foreground="{StaticResource TextMuted}" FontSize="{StaticResource FontSizeXSmall}"
                                                        Margin="0,0,5,0" VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding FileName}" Foreground="{StaticResource TextSecondary}"
-                                                       FontSize="11" VerticalAlignment="Center"
+                                                       FontSize="{StaticResource FontSizeXSmall}" VerticalAlignment="Center"
                                                        MaxWidth="180" TextTrimming="CharacterEllipsis"/>
                                             <Button Content="&#xE8BB;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                     Style="{StaticResource ComposerIconButton}"
-                                                    Width="18" Height="18" FontSize="9" Margin="5,0,0,0"
+                                                    Width="18" Height="18" FontSize="{StaticResource FontSizeMicro}" Margin="5,0,0,0"
                                                     Command="{Binding DataContext.RemoveAttachmentCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                     CommandParameter="{Binding}"
                                                     ToolTip="첨부 제거"/>
@@ -464,7 +464,7 @@
                             <TextBox x:Name="InputBox"
                                      Background="Transparent" BorderThickness="0"
                                      Foreground="{StaticResource TextPrimary}"
-                                     FontFamily="{StaticResource AppFont}" FontSize="14"
+                                     FontFamily="{StaticResource AppFont}" FontSize="{StaticResource FontSizeBodyLarge}"
                                      CaretBrush="{StaticResource AccentBrush}"
                                      SelectionBrush="{StaticResource AccentBrush}"
                                      Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
@@ -475,7 +475,7 @@
                                      KeyDown="InputBox_KeyDown"/>
                             <!-- Placeholder -->
                             <TextBlock Text="작업을 입력하세요 (Enter 전송 · Shift+Enter 줄바꿈)" IsHitTestVisible="False"
-                                       Foreground="{StaticResource TextMuted}" FontSize="14"
+                                       Foreground="{StaticResource TextMuted}" FontSize="{StaticResource FontSizeBodyLarge}"
                                        Margin="2,2,0,0" VerticalAlignment="Top">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
@@ -526,7 +526,7 @@
                                     ToolTip="모델은 설정 → 서버 설정에서 변경합니다.">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="모델: 설정값" Foreground="{StaticResource TextSecondary}"
-                                               FontSize="11" VerticalAlignment="Center"/>
+                                               FontSize="{StaticResource FontSizeXSmall}" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
 
@@ -556,16 +556,16 @@
                         ToolTip="작업 공간 변경 (설정)">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="&#xE8B7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                   FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                   FontSize="{StaticResource FontSizeBody}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding WorkspaceRoot}" VerticalAlignment="Center"
                                    MaxWidth="280" TextTrimming="CharacterEllipsis"/>
                         <!-- 활성 디렉토리 2개 이상이면 "외 N개" 표시 (잘리지 않게 경로 칩과 분리) -->
                         <TextBlock Text="{Binding ExtraWorkspacesText}" VerticalAlignment="Center"
-                                   Margin="7,0,0,0" FontSize="11" FontWeight="SemiBold"
+                                   Margin="7,0,0,0" FontSize="{StaticResource FontSizeXSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource AccentSoftBrush}"
                                    Visibility="{Binding ExtraWorkspacesText, Converter={StaticResource StringToVisibility}}"/>
                         <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                   FontSize="10" Margin="6,1,0,0" VerticalAlignment="Center"/>
+                                   FontSize="{StaticResource FontSizeCaption}" Margin="6,1,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
             </StackPanel>
