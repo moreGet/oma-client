@@ -161,6 +161,18 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    /// <summary>로그아웃 — 저장된 토큰을 제거한다. 설정창이 닫히면 메인이 재점검해 "로그인 필요"로 전환된다.</summary>
+    [RelayCommand]
+    private async Task LogoutAsync()
+    {
+        AuthToken = string.Empty;
+        Password = string.Empty;
+        await _settings.UpdateServerConfigAsync(
+            ServerBaseUrl, "Bearer", string.Empty, ModelId, MaxIterations, MaxTokens);
+        IsLoggedIn = false;
+        LoginStatus = "로그아웃됨";
+    }
+
     // ── User profile (F) ───────────────────────────────────────────────
 
     [RelayCommand]

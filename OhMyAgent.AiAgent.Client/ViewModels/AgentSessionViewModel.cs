@@ -58,6 +58,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     private bool _isBusy;
 
     [ObservableProperty] private bool _isConnected;
+    [ObservableProperty] private bool _needsLogin;
+    [ObservableProperty] private string _errorTitle = "서버 연결 실패";
+    [ObservableProperty] private string _primaryActionText = "다시 시도";
     [ObservableProperty] private bool _hasError;
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private string _statusText = "연결 중...";
@@ -176,7 +179,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         SeedFromSettings();
         RefreshWorkspaceList();
         await RetryConnectionAsync();
-        if (IsConnected)
+        if (IsConnected && !NeedsLogin)
             Transcript.Add(new SystemNoticeViewModel
             {
                 Text = "에이전트 서버에 연결되었습니다. 무엇을 도와드릴까요?",
@@ -295,24 +298,69 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanStop))]
     private void Stop() => _cts?.Cancel();
 
+    /// <summary>배너의 주 버튼이 누를 동작 — 로그인 필요 시 로그인(설정) 열기, 아니면 재연결.</summary>
+    [RelayCommand]
+    private async Task ConnectionActionAsync()
+    {
+        if (NeedsLogin)
+        {
+            LoginRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        await RetryConnectionAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>배너의 "로그인" 버튼이 요청 → View(또는 App)가 설정창을 연다.</summary>
+    public event EventHandler? LoginRequested;
+
     [RelayCommand]
     private async Task RetryConnectionAsync()
     {
         StatusText = "연결 중...";
+
+        ServerReadiness readiness;
         try
         {
-            IsConnected = await _api.CheckHealthAsync().ConfigureAwait(false);
+            readiness = await _api.CheckReadinessAsync().ConfigureAwait(false);
         }
         catch
         {
-            IsConnected = false;
+            readiness = ServerReadiness.Disconnected;
         }
 
-        StatusText = IsConnected ? "Connected" : "Disconnected";
-        if (!IsConnected)
+        ApplyReadiness(readiness);
+    }
+
+    /// <summary>연결/인증 상태를 화면 상태(배너 제목·문구·버튼)로 반영한다.</summary>
+    private void ApplyReadiness(ServerReadiness readiness)
+    {
+        IsConnected = readiness != ServerReadiness.Disconnected;
+        NeedsLogin  = readiness == ServerReadiness.Unauthenticated;
+
+        switch (readiness)
         {
-            HasError = true;
-            ErrorMessage = $"에이전트 서버({_settings.Current.ServerBaseUrl})에 연결할 수 없습니다.\n서버가 실행 중인지 확인하세요.";
+            case ServerReadiness.Ready:
+                HasError = false;
+                ErrorMessage = string.Empty;
+                StatusText = "연결됨";
+                break;
+
+            case ServerReadiness.Unauthenticated:
+                HasError = true;
+                ErrorTitle = "로그인 필요";
+                PrimaryActionText = "로그인";
+                StatusText = "로그인 필요";
+                ErrorMessage = "서버에는 연결되었지만 로그인이 필요합니다.\n설정에서 사용자 ID와 비밀번호로 로그인하세요.";
+                break;
+
+            default: // Disconnected
+                HasError = true;
+                ErrorTitle = "서버 연결 실패";
+                PrimaryActionText = "다시 시도";
+                StatusText = "연결 끊김";
+                ErrorMessage = $"에이전트 서버({_settings.Current.ServerBaseUrl})에 연결할 수 없습니다.\n서버가 실행 중인지 확인하세요.";
+                break;
         }
     }
 
@@ -661,10 +709,21 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 break;
 
             case AgentError err:
-                HasError = true;
-                ErrorMessage = err.Message;
-                StatusText = "오류";
-                Transcript.Add(new SystemNoticeViewModel { Text = $"오류 [{err.Code}]: {err.Message}" });
+                if (IsAuthError(err.Code, err.Message))
+                {
+                    // 토큰 없음/만료 → "오류"가 아니라 "로그인 필요" 상태로 안내(다시 시도 무한반복 방지).
+                    ApplyReadiness(ServerReadiness.Unauthenticated);
+                    Transcript.Add(new SystemNoticeViewModel { Text = "로그인이 필요합니다. 설정에서 로그인하세요." });
+                }
+                else
+                {
+                    HasError = true;
+                    ErrorTitle = "오류";
+                    PrimaryActionText = "다시 시도";
+                    ErrorMessage = err.Message;
+                    StatusText = "오류";
+                    Transcript.Add(new SystemNoticeViewModel { Text = $"오류 [{err.Code}]: {err.Message}" });
+                }
                 break;
         }
     }
@@ -681,6 +740,19 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     }
 
     // ── Helpers ────────────────────────────────────────────────────────
+
+    /// <summary>서버의 인증 실패(401/403, missing/invalid bearer token)인지 판별.</summary>
+    private static bool IsAuthError(string? code, string? message)
+    {
+        var c = code ?? string.Empty;
+        var m = message ?? string.Empty;
+        return c.Contains("401", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("403", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("forbidden", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("bearer", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("token", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>Pretty-prints tool-call JSON arguments for display.</summary>
     private static string RenderArgs(JsonElement args)

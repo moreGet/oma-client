@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
@@ -118,6 +119,41 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         catch
         {
             return false;
+        }
+    }
+
+    public async Task<ServerReadiness> CheckReadinessAsync(CancellationToken ct = default)
+    {
+        // 1) 연결성: Public /health.
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, HealthPath);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return ServerReadiness.Disconnected;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { return ServerReadiness.Disconnected; }
+
+        // 2) 토큰 부재 → 로그인 필요.
+        if (string.IsNullOrWhiteSpace(settings.Current.AuthToken))
+            return ServerReadiness.Unauthenticated;
+
+        // 3) 토큰 유효성: 보호된 엔드포인트(/models)가 401/403 이면 만료/무효.
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, ModelsPath);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            return resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+                ? ServerReadiness.Unauthenticated
+                : ServerReadiness.Ready;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch
+        {
+            // 연결성은 이미 입증됨 — 일시 오류로 로그인 상태를 단정하지 않는다.
+            return ServerReadiness.Ready;
         }
     }
 

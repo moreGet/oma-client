@@ -361,12 +361,17 @@
                         </TextBlock>
                     </StackPanel>
 
-                    <Button Grid.Column="1"
-                            Command="{Binding LoginCommand}"
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Command="{Binding LogoutCommand}"
+                            Padding="14,7" FontSize="12" MinHeight="36" Margin="0,0,8,0"
+                            Content="로그아웃"
+                            Style="{StaticResource OutlineButton}"
+                            ToolTip="저장된 토큰을 제거하고 로그아웃합니다."
+                            Visibility="{Binding IsLoggedIn, Converter={StaticResource BoolToVisibility}}"/>
+                    <Button Command="{Binding LoginCommand}"
                             Padding="18,7"
                             FontSize="12"
                             MinHeight="36"
-                            Margin="8,0,0,0"
                             ToolTip="사용자 ID/비밀번호로 인증해 토큰을 발급받습니다.">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource OutlineButton}">
@@ -392,20 +397,8 @@
                             </Style>
                         </Button.Style>
                     </Button>
+                    </StackPanel>
                 </Grid>
-
-                <!-- 인증 토큰: 로그인 성공 시 자동 채워짐. 직접 붙여넣기도 가능. -->
-                <TextBlock Text="인증 토큰 (로그인 시 자동 입력)"
-                           Foreground="{StaticResource TextSecondary}"
-                           FontSize="11"
-                           Margin="0,0,0,4"/>
-                <PasswordBox x:Name="AuthTokenBox"
-                             PasswordChanged="AuthTokenBox_PasswordChanged"
-                             Style="{StaticResource DarkPasswordBox}"
-                             FontSize="13"
-                             MinHeight="36"
-                             Margin="0,0,0,10"
-                             ToolTip="로그인하면 자동으로 채워집니다. 토큰을 직접 발급받은 경우 여기에 붙여넣을 수 있습니다."/>
 
                 <TextBlock Text="모델 ID"
                            Foreground="{StaticResource TextSecondary}"

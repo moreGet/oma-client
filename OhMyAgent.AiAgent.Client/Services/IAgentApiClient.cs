@@ -13,6 +13,12 @@ public interface IAgentApiClient
     /// <summary>GET /api/v1/health — 200 + {status:"ok"}.</summary>
     Task<bool> CheckHealthAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// 연결 + 인증을 함께 점검한다. /health(Public) 도달 여부와 토큰 유효성(보호된 엔드포인트 401 여부)을
+    /// 묶어 <see cref="ServerReadiness"/> 로 반환 — 화면이 "연결 실패"와 "로그인 필요"를 구분하도록.
+    /// </summary>
+    Task<ServerReadiness> CheckReadinessAsync(CancellationToken ct = default);
+
     /// <summary>GET /api/v1/models — ModelInfo[]. 엔드포인트 없으면 빈 목록.</summary>
     Task<IReadOnlyList<ModelInfo>> GetModelsAsync(CancellationToken ct = default);
 

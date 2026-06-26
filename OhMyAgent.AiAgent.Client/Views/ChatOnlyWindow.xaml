@@ -124,7 +124,7 @@
                                    FontSize="28"
                                    HorizontalAlignment="Center"
                                    Margin="0,0,0,10"/>
-                        <TextBlock Text="서버 연결 실패"
+                        <TextBlock Text="{Binding ErrorTitle}"
                                    Foreground="{StaticResource ErrorDot}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
@@ -137,8 +137,8 @@
                                    TextAlignment="Center"
                                    Margin="0,0,0,16"
                                    LineHeight="18"/>
-                        <Button Content="🔄  다시 시도"
-                                Command="{Binding RetryConnectionCommand}"
+                        <Button Content="{Binding PrimaryActionText}"
+                                Command="{Binding ConnectionActionCommand}"
                                 Style="{StaticResource PrimaryButton}"
                                 HorizontalAlignment="Center"
                                 Padding="14,6"

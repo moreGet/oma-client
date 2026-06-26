@@ -14,9 +14,6 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-
-        // PasswordBox cannot bind; seed it from the VM once.
-        AuthTokenBox.Password = vm.AuthToken;
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -40,13 +37,6 @@ public partial class SettingsWindow : Window
 
         if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             _ = _vm.SetWorkspaceRootAsync(dialog.SelectedPath);
-    }
-
-    // PasswordBox is not bindable — push the value into the VM on change.
-    private void AuthTokenBox_PasswordChanged(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is SettingsViewModel vm)
-            vm.AuthToken = AuthTokenBox.Password;
     }
 
     // Login PasswordBox is not bindable — push the value into the VM on change.
