@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Interop;
 using FontStyle = System.Drawing.FontStyle;
 using System.Windows.Forms;
+using OhMyAgent.AiAgent.Client.Models;
 using OhMyAgent.AiAgent.Client.Services;
 using OhMyAgent.AiAgent.Client.Services.Tools;
 using OhMyAgent.AiAgent.Client.ViewModels;
@@ -35,6 +36,9 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // 트레이 상주 앱 — 창을 닫아도(트레이로 숨김) 종료되지 않게. 종료는 ExitApplication() 단일 경로.
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         // 1) Settings 먼저 로드 — 모두가 이를 읽는다.
         _settingsService = new SettingsService();
@@ -109,6 +113,9 @@ public partial class App : Application
             orchestrator, _api, permissions, workspace, _settingsService,
             workspaceHistory, chatHistory, attachments, suggestions);
 
+        // 10a) 배너의 "로그인" 요청 → 설정창을 연다(닫히면 연결/인증 재점검).
+        _mainVm.LoginRequested += (_, _) => OpenSettingsWindow();
+
         // 11) Main Window
         _mainWindow = new MainWindow(_mainVm);
         MainWindow  = _mainWindow;
@@ -139,9 +146,44 @@ public partial class App : Application
             _globalHotkey.Register(s.Hotkey);
         };
 
-        // 16) 표시 + 초기화
-        _mainWindow.Show();
-        _ = _mainVm.InitializeAsync();
+        // 16) 로그인 게이트 — 인증돼 있으면 바로 메인, 아니면 로그인 랜딩부터.
+        var readiness = await _api.CheckReadinessAsync();
+        if (readiness == ServerReadiness.Ready)
+            ShowMainWindow(initialize: true);
+        else
+            ShowLoginLanding();
+    }
+
+    /// 메인 윈도우를 표시하고(최초 1회) 초기화한다.
+    private void ShowMainWindow(bool initialize)
+    {
+        _mainWindow!.Show();
+        _mainWindow.Activate();
+        if (initialize)
+            _ = _mainVm!.InitializeAsync();
+    }
+
+    /// 첫 랜딩 = 로그인 페이지. 로그인 성공 시에만 메인으로 진입, 미로그인 종료 시 앱 종료.
+    private void ShowLoginLanding()
+    {
+        var loginVm = new LoginViewModel(_api!, _settingsService!);
+        var login   = new LoginWindow(loginVm);
+        var success = false;
+
+        loginVm.Succeeded += (_, _) =>
+        {
+            success = true;
+            ShowMainWindow(initialize: true);   // 창 공백 없이 메인 먼저 띄우고
+            login.Close();                      // 그다음 로그인 닫기
+        };
+        login.Closed += (_, _) =>
+        {
+            if (!success && !IsExiting)
+                ExitApplication();              // 로그인 없이 닫으면 메인 진입 차단 → 종료
+        };
+
+        login.Show();
+        login.Activate();
     }
 
     /// MainWindow의 HWND가 확보된 시점에 호출. 글로벌 핫키 후크를 건다.
@@ -161,11 +203,12 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _globalHotkey?.Dispose();
-        _trayIcon?.Dispose();
-        _httpClient?.Dispose();
-        _toolHttpClient?.Dispose();
+        IsExiting = true;
+        DisposeAll();
         base.OnExit(e);
+
+        // 어떤 비백그라운드 스레드/후크가 남아도 프로세스를 확실히 종료(좀비 방지).
+        Environment.Exit(e.ApplicationExitCode);
     }
 
     // ── 시스템 트레이 ────────────────────────────────────────────────
@@ -187,14 +230,7 @@ public partial class App : Application
         showItem.Click += (_, _) => ShowMainWindow();
 
         var settingsItem = new ToolStripMenuItem("Settings");
-        settingsItem.Click += (_, _) =>
-        {
-            if (_settingsService == null || _api == null) return;
-            var settingsVm     = new SettingsViewModel(_settingsService, _api);
-            var settingsWindow = new SettingsWindow(settingsVm);
-            settingsWindow.Show();
-            settingsWindow.Activate();
-        };
+        settingsItem.Click += (_, _) => OpenSettingsWindow();
 
         var integrityItem = new ToolStripMenuItem("무결성 검사");
         integrityItem.Click += (_, _) =>
@@ -225,12 +261,48 @@ public partial class App : Application
         _mainWindow?.Activate();
     }
 
+    /// 설정창을 연다(트레이 메뉴 + 배너 로그인 공용). 닫히면 연결/인증 상태를 재점검해 배너를 갱신한다.
+    private void OpenSettingsWindow()
+    {
+        if (_settingsService == null || _api == null) return;
+
+        var settingsVm     = new SettingsViewModel(_settingsService, _api);
+        _ = settingsVm.InitializeAsync();
+        var settingsWindow = new SettingsWindow(settingsVm) { Owner = _mainWindow };
+        settingsWindow.Closed += (_, _) =>
+        {
+            if (_mainVm is { } vm)
+                _ = vm.RetryConnectionCommand.ExecuteAsync(null);
+        };
+        settingsWindow.Show();
+        settingsWindow.Activate();
+    }
+
+    /// 모든 종료 신호(메인 X · 트레이 Exit · 미로그인 종료)의 단일 진입점.
+    /// 자원을 정리하고 프로세스를 완전히 종료한다(좀비 방지).
     internal void ExitApplication()
     {
+        if (IsExiting) return;   // 재진입 방지
         IsExiting = true;
-        _globalHotkey?.Dispose();
-        _trayIcon?.Dispose();
+        DisposeAll();
         Shutdown();
+    }
+
+    /// 모든 백그라운드 자원/후크/트레이 아이콘 정리. 여러 번 호출돼도 안전.
+    private void DisposeAll()
+    {
+        try { _globalHotkey?.Dispose(); } catch { /* ignore */ }
+        try
+        {
+            if (_trayIcon is not null)
+            {
+                _trayIcon.Visible = false;   // 트레이 고스트 아이콘 방지
+                _trayIcon.Dispose();
+            }
+        }
+        catch { /* ignore */ }
+        try { _httpClient?.Dispose(); }     catch { /* ignore */ }
+        try { _toolHttpClient?.Dispose(); } catch { /* ignore */ }
     }
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -238,15 +310,54 @@ public partial class App : Application
 
     private static Icon CreateAppIcon()
     {
-        using var bmp  = new Bitmap(32, 32);
-        using var g    = System.Drawing.Graphics.FromImage(bmp);
-        g.Clear(Color.FromArgb(0x38, 0x8B, 0xFD));
-        using var font  = new Font("Segoe UI", 16, FontStyle.Bold, GraphicsUnit.Pixel);
-        using var brush = new SolidBrush(Color.White);
-        g.DrawString("A", font, brush, new PointF(5f, 4f));
+        using var bmp = new Bitmap(32, 32);
+        using var g   = System.Drawing.Graphics.FromImage(bmp);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+        // 라운드 그라데이션 배경 (보라 → 블루)
+        using (var bgPath = RoundedRectPath(new RectangleF(0, 0, 31, 31), 8f))
+        using (var bg = new System.Drawing.Drawing2D.LinearGradientBrush(
+                   new RectangleF(0, 0, 32, 32),
+                   Color.FromArgb(0x7C, 0x5C, 0xFF), Color.FromArgb(0x38, 0x8B, 0xFD), 55f))
+            g.FillPath(bg, bgPath);
+
+        // 화이트 스파클 심볼
+        using (var sparkle = SparklePath(16f, 16f, 11f))
+        using (var white = new SolidBrush(Color.White))
+            g.FillPath(white, sparkle);
+
         var hIcon = bmp.GetHicon();
         var icon  = (Icon)Icon.FromHandle(hIcon).Clone();
         DestroyIcon(hIcon);
         return icon;
+    }
+
+    /// 4-포인트 스파클(반짝임) 경로 — 트레이/브랜드 심볼.
+    private static System.Drawing.Drawing2D.GraphicsPath SparklePath(float cx, float cy, float r)
+    {
+        var ri = r * 0.34f;
+        var d  = ri * 0.7071f;
+        var pts = new[]
+        {
+            new PointF(cx, cy - r), new PointF(cx + d, cy - d),
+            new PointF(cx + r, cy), new PointF(cx + d, cy + d),
+            new PointF(cx, cy + r), new PointF(cx - d, cy + d),
+            new PointF(cx - r, cy), new PointF(cx - d, cy - d),
+        };
+        var p = new System.Drawing.Drawing2D.GraphicsPath();
+        p.AddClosedCurve(pts, 0.25f);
+        return p;
+    }
+
+    private static System.Drawing.Drawing2D.GraphicsPath RoundedRectPath(RectangleF r, float radius)
+    {
+        var d = radius * 2f;
+        var p = new System.Drawing.Drawing2D.GraphicsPath();
+        p.AddArc(r.X, r.Y, d, d, 180, 90);
+        p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+        p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+        p.CloseFigure();
+        return p;
     }
 }
