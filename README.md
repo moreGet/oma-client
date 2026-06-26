@@ -1,0 +1,172 @@
+# OhMyAgent.AiAgent.Client
+
+폐쇄망 사내 환경을 위한 **Windows 네이티브 AI 에이전트 데스크톱 앱**입니다.
+Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서버와 연동하여
+**지정한 작업 디렉토리 안에서 파일·셸·시스템 작업을 자율적으로 수행**합니다.
+
+> 단순 채팅 클라이언트가 아니라, 서버가 내린 **도구 호출(tool call)을 클라이언트가 실제로 실행하고
+> 그 결과를 다시 서버로 돌려주는 에이전트 루프(agentic loop)** 를 도는 실행 호스트입니다.
+
+---
+
+## 핵심 특징
+
+- **에이전트 루프**: `질의 → 도구 호출 → 실행 → 결과 반환 → 반복`을 `end_turn` 까지 자동 수행
+- **19개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷까지 (아래 표 참조)
+- **워크스페이스 샌드박스**: 모든 파일/셸 작업이 지정 디렉토리 기준으로 resolve, 경로 탈출 차단
+- **권한 게이트**: Manual / Auto-Safe / Full-Auto 3단계. 위험 작업은 실행 전 사용자 승인
+- **로컬 우선**: 채팅 히스토리·설정은 로컬 영속(`%APPDATA%/OhMyAgent`), 서버는 stateless
+- **데스크톱 통합**: 다크 테마, 시스템 트레이 상주, 전역 핫키(기본 `Ctrl+Space`), 플로팅 채팅창
+- **배포 무결성**: 설치 바이너리 SHA-256 / Authenticode / HMAC 매니페스트 검증 (트레이 → 무결성 검사)
+
+---
+
+## 아키텍처
+
+```
+┌─ WPF App (OhMyAgent.AiAgent.Client) ─────────────────────────────┐
+│  Views (XAML)        채팅·트랜스크립트 / 설정 / 무결성 / 승인 카드   │
+│  ViewModels          AgentSessionViewModel(루프 상태) · Settings…  │
+│  Agent Core                                                       │
+│    IAgentOrchestrator   에이전트 루프 (질의→도구→실행→반환)         │
+│    IAgentApiClient      서버 HTTP/SSE 통신 (로그인·모델·chat)       │
+│    IToolRegistry        ITool[] 도구 모음 + 서버용 스키마 생성       │
+│    IPermissionService   승인/권한 게이트                           │
+│    IWorkspaceContext    작업 디렉토리 샌드박스(경로 탈출 차단)        │
+└───────────────────────────────┬──────────────────────────────────┘
+                                 │ HTTP + SSE (text/event-stream)
+                                 ▼
+                  사내 AI API 서버 (OhMyAgent.AiAgent.Server)
+                  활성 LLM Provider(OpenAI / Gemini / Claude / Ollama)로 중계
+```
+
+- **MVVM**: `CommunityToolkit.Mvvm` 소스 생성기(`[ObservableProperty]`, `[RelayCommand]`)
+- **직렬화**: `System.Text.Json` 단일화 — 와이어용(`AgentJson.Options`)과 영속용(`PersistenceOptions`) 분리
+- **컴포지션 루트**: `App.OnStartup` 에서 수동 조립(경량, 외부 DI 컨테이너 없음)
+
+---
+
+## 내장 도구 (19)
+
+| 도구 | 위험도 | 설명 |
+|------|--------|------|
+| `read_file` / `write_file` / `edit_file` | ReadOnly / Write / Write | 파일 읽기·생성·문자열 치환 수정 |
+| `list_directory` / `glob` / `grep` | ReadOnly | 디렉토리 목록 · 패턴 검색 · 내용 검색 |
+| `create_directory` / `move` / `copy` / `delete` | Write / Destructive | 디렉토리 생성 · 이동 · 복사 · 삭제 |
+| `run_command` | Execute | PowerShell / CMD 명령 실행(워크스페이스 기준) |
+| `get_environment` | ReadOnly | 환경변수 조회 |
+| `clipboard_read` / `clipboard_write` | ReadOnly / Write | 클립보드 읽기 · 쓰기(STA 마샬링) |
+| `list_processes` | ReadOnly | 실행 프로세스 목록(이름/PID/메모리) |
+| `start_process` / `kill_process` | Execute / Destructive | 프로세스 시작 · 종료 |
+| `http_fetch` | Execute | 사내망 HTTP 요청(폐쇄망 내부 자원 접근) |
+| `screenshot` | ReadOnly | 화면 캡처 → PNG base64(비전 모델 입력용) |
+
+> Destructive / Write / Execute 도구는 권한 모드에 따라 **실행 전 승인 카드**를 띄웁니다.
+> 모든 도구는 BCL/WPF/WinForms 내장 기능만 사용하며 추가 NuGet 의존성이 없습니다.
+
+---
+
+## 요구 사항
+
+- **OS**: Windows 10 / 11 (WPF)
+- **.NET SDK**: 10.0 이상 (`dotnet --version`)
+- **사내 AI API 서버**: 기본 `http://localhost:8080` ([API 계약](docs/API_CONTRACT.md))
+
+## 빌드 & 실행
+
+```bash
+# 빌드
+dotnet build OhMyAgent.AiAgent.Client/OhMyAgent.AiAgent.Client.csproj
+
+# 실행 (Windows)
+dotnet run --project OhMyAgent.AiAgent.Client
+```
+
+> WSL에서 Windows용 dotnet을 쓰는 경우 `.claude/settings.local.json` 권한 설정 참조(`CLAUDE.md`).
+
+## 첫 사용 흐름
+
+1. **트레이 아이콘 → Settings** 진입
+2. **API 서버 주소** 확인(기본 `http://localhost:8080`)
+3. **사용자 ID / 비밀번호로 로그인** → JWT 자동 발급·저장(`Authorization: Bearer`)
+4. **모델 선택**(서버 `/models`의 활성 Provider 기반)
+5. **작업 디렉토리(워크스페이스)** 지정 — 에이전트 작업의 샌드박스 루트
+6. **권한 모드** 선택(기본 Manual 권장)
+7. 채팅창(`Ctrl+Space`)에 목표 입력 → 에이전트 루프 실행
+
+---
+
+## 서버 연동 (요약)
+
+| Method | Path | 용도 |
+|--------|------|------|
+| `POST` | `/api/v1/auth/login` | 로그인 → JWT (`{token}`) |
+| `GET`  | `/api/v1/health` | 헬스 체크 (Public) |
+| `GET`  | `/api/v1/models` | 활성 Provider 기반 모델 목록 |
+| `POST` | `/api/v1/agent/chat` | **에이전트 루프** — 대화기록+도구 스키마 → SSE 응답 |
+
+**SSE 이벤트**: `message_start` · `content_delta{delta}` · `tool_call{id,name,arguments}` · `message_stop{stop_reason,usage}` · `error`.
+`stop_reason == tool_use` 면 클라이언트가 도구를 실행해 `tool` 메시지로 재요청(루프 지속), `end_turn` 이면 종료.
+`tool_call.arguments` 는 JSON 문자열로 주고받으며 클라이언트가 객체로 복원합니다.
+
+상세: [`docs/AGENT_ARCHITECTURE_PLAN.md`](docs/AGENT_ARCHITECTURE_PLAN.md) · [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)
+
+> **연결 ≠ 로그인**: `/health` 는 인증이 필요 없으므로(Public) 로그인 전에도 서버에 "연결"은 됩니다.
+> 앱은 연결 상태와 인증 상태를 구분하여 `Disconnected`(서버 다운) / `Unauthenticated`(로그인 필요) /
+> `Ready`(사용 가능) 3단계로 안내합니다.
+
+---
+
+## 문제 해결 (Troubleshooting)
+
+| 증상 | 원인 | 해결 |
+|------|------|------|
+| 배너에 **"로그인 필요"** + `missing bearer token` | 로그인 전이거나 JWT 만료 | 배너의 **[로그인]** → 설정에서 ID/비밀번호로 로그인 |
+| 배너에 **"서버 연결 실패"** | 서버 미실행 / 주소 오류 | 서버 기동 확인, 설정의 **API 서버 주소** 확인 후 **[다시 시도]** |
+| 모델 칩이 비어 있음 | 미로그인(`/models` 401) 또는 활성 Provider 없음 | 로그인 후 새로고침 / 서버에 활성 LLM Provider 등록 |
+| 채팅이 즉시 실패 | 토큰 만료(세션 중 401) | 자동으로 "로그인 필요" 안내 전환 → 재로그인 |
+
+---
+
+## 설정 / 데이터 위치
+
+| 항목 | 경로 |
+|------|------|
+| 설정 | `%APPDATA%/OhMyAgent/settings.json` |
+| 채팅 세션 | `%APPDATA%/OhMyAgent/sessions/{id}.json` |
+| 감사 로그(예정) | `%APPDATA%/OhMyAgent/audit/` |
+
+주요 설정: `ServerBaseUrl`, `AuthToken`(로그인 시 자동), `ModelId`, `WorkspaceRoot`,
+`PermissionMode`(Manual/AutoSafe/FullAuto), `MaxIterations`(기본 25), `MaxTokens`, `Hotkey`.
+
+---
+
+## 프로젝트 구조
+
+```
+OhMyAgent.AiAgent.Client/
+├── App.xaml(.cs)         컴포지션 루트 · 트레이 · 핫키
+├── MainWindow.xaml(.cs)  메인 셸
+├── Models/               AppSettings · Agent DTO(AgentMessage/ToolCall/Usage …)
+├── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry · 권한/워크스페이스/보안
+│   └── Tools/            19개 ITool 구현
+├── ViewModels/           AgentSessionViewModel · SettingsViewModel · IntegrityViewModel
+├── Views/                ChatOnlyWindow · SettingsWindow · IntegrityWindow
+├── Resources/            Colors · Styles · Converters · TranscriptTemplates
+└── docs/                 아키텍처 계획 · API 계약
+```
+
+---
+
+## 보안 모델
+
+- **경로 샌드박스**: 파일/셸 도구는 워크스페이스 밖 접근 차단(`IWorkspaceContext.ResolvePath`)
+- **권한 게이트**: 위험도(ToolRisk) × 권한 모드로 실행 전 승인 결정
+- **명령 검증**: `SecurityValidator` 가 위험 명령 차단
+- **배포 무결성**: SHA-256 매니페스트 + Authenticode + HMAC 서명 검증
+
+---
+
+## 라이선스 / 배포
+
+사내 배포용 내부 프로젝트입니다. 외부 배포 전 코드 서명 및 무결성 매니페스트 갱신이 필요합니다.
