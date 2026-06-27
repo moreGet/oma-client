@@ -113,6 +113,7 @@ public partial class MainWindow : Window
         if (settings == null || api == null) return;
 
         var settingsVm = new SettingsViewModel(settings, api);
+        settingsVm.LoggedOut += (_, _) => ((App)Application.Current).LogoutToLogin();
         _ = settingsVm.InitializeAsync();
         var settingsWindow = new SettingsWindow(settingsVm) { Owner = this };
         settingsWindow.Show();

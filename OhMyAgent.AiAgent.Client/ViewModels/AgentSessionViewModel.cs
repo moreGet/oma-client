@@ -485,6 +485,29 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanStop))]
     private void Stop() => _cts?.Cancel();
 
+    /// <summary>
+    /// 로그아웃 시 호출 — 실행 중인 에이전트 작업을 취소하고 세션/화면 상태를 모두 초기화한다.
+    /// (App이 모든 창을 닫고 로그인 화면으로 회귀시키기 직전에 사용.) UI 스레드에서 호출된다.
+    /// </summary>
+    public void PrepareForLogout()
+    {
+        try { _cts?.Cancel(); } catch { /* 이미 dispose됨 — 무시 */ }
+
+        Transcript.Clear();
+        _toolCards.Clear();
+        _currentAssistant = null;
+        _session = new AgentSession();
+        Attachments.Clear();
+        _permissions.ClearSessionRules();
+        LastUsageText = string.Empty;
+        PendingApproval = null;
+        IsBusy = false;
+        UpdateNotice = string.Empty;
+        UpdateMandatory = false;
+        QuotaWindows.Clear();
+        HasQuota = false;
+    }
+
     /// <summary>배너의 주 버튼이 누를 동작 — 로그인 필요 시 로그인(설정) 열기, 아니면 재연결.</summary>
     [RelayCommand]
     private async Task ConnectionActionAsync()

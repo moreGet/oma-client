@@ -320,6 +320,7 @@ public partial class App : Application
         if (_settingsService == null || _api == null) return;
 
         var settingsVm     = new SettingsViewModel(_settingsService, _api);
+        settingsVm.LoggedOut += (_, _) => LogoutToLogin();
         _ = settingsVm.InitializeAsync();
         var settingsWindow = new SettingsWindow(settingsVm) { Owner = _mainWindow };
         settingsWindow.Closed += (_, _) =>
@@ -329,6 +330,28 @@ public partial class App : Application
         };
         settingsWindow.Show();
         settingsWindow.Activate();
+    }
+
+    /// 로그아웃: 실행 중인 작업·세션을 강제 종료하고, 보조 창을 모두 닫은 뒤
+    /// 메인은 숨기고 로그인 랜딩으로 회귀한다. 로그인 성공 시 메인 복귀, 그냥 닫으면 앱 종료(시작 게이트와 동일).
+    internal void LogoutToLogin()
+    {
+        if (IsExiting) return;
+
+        // 1) 메인 세션/화면 상태 초기화 + 실행 중 에이전트 취소.
+        _mainVm?.PrepareForLogout();
+
+        // 2) 보조 창(설정·무결성·채팅전용 등)은 닫고, 메인은 숨긴다(재로그인 시 재사용).
+        foreach (var w in Windows.OfType<Window>().ToList())
+        {
+            if (ReferenceEquals(w, _mainWindow))
+                w.Hide();
+            else
+                w.Close();
+        }
+
+        // 3) 로그인 랜딩 재표시.
+        ShowLoginLanding();
     }
 
     /// 모든 종료 신호(메인 X · 트레이 Exit · 미로그인 종료)의 단일 진입점.

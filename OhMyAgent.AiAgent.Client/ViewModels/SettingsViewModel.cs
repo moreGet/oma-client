@@ -237,7 +237,10 @@ public partial class SettingsViewModel : ObservableObject
 
     // ── Logout (status + sign-out; login itself happens at the gate) ───
 
-    /// <summary>로그아웃 — 저장된 토큰을 제거한다. 설정창이 닫히면 메인이 재점검해 "로그인 필요"로 전환된다.</summary>
+    /// <summary>로그아웃 완료 시 발생 — App이 받아 모든 세션/창을 강제 종료하고 로그인 화면으로 회귀시킨다.</summary>
+    public event EventHandler? LoggedOut;
+
+    /// <summary>로그아웃 — 저장된 토큰을 제거하고, 모든 세션 강제 종료 + 로그인 화면 회귀를 요청한다.</summary>
     [RelayCommand]
     private async Task LogoutAsync()
     {
@@ -246,6 +249,9 @@ public partial class SettingsViewModel : ObservableObject
             ServerBaseUrl, "Bearer", string.Empty, ModelId, MaxIterations);
         IsLoggedIn = false;
         LoginStatus = "로그아웃됨";
+
+        // App이 모든 창을 닫고 로그인 랜딩으로 회귀시킨다.
+        LoggedOut?.Invoke(this, EventArgs.Empty);
     }
 
     // ── User profile (#5 — server-fetched, read-only) ──────────────────
