@@ -43,6 +43,9 @@ public interface IAgentApiClient
     /// <summary>POST /api/v1/tools/authorize (Bearer). {tool,arguments} → ToolAuthorization. 200→객체, 오류/오프라인→null.</summary>
     Task<ToolAuthorization?> AuthorizeToolAsync(string tool, JsonElement arguments, CancellationToken ct = default);
 
+    /// <summary>GET /api/v1/security/command-policy (Bearer). 서버 추가 위험명령/경로 패턴. 404/오류/오프라인→null(디폴트만 적용).</summary>
+    Task<CommandSecurityPolicyResponse?> GetCommandSecurityPolicyAsync(CancellationToken ct = default);
+
     // ── 프로젝트 서버 동기화(선택). 미구현 서버(404/501)는 graceful 실패로 다룬다. ──
 
     /// <summary>GET /api/v1/projects — 원격 프로젝트 목록. 미지원/오프라인이면 빈 목록.</summary>

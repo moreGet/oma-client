@@ -21,7 +21,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 - **토큰 쿼터**: 일/주/월 사용량·잔여를 상단바 칩 + 팝업 게이지로 표시(`GET /api/v1/me/quota`), **새로고침 버튼** 제공. 한도 초과(429)는 안내만 하고 로그아웃하지 않음
 - **파일 첨부**: 컴포저에 첨부한 파일을 base64로 인코딩해 메시지에 실어 전송(파일당 ≤10MiB, `messages[].attachments[]`)
 - **서버 세션 동기화**(선택): 대화 세션을 서버에 업서트/병합해 **여러 PC에서 공유**(`/api/v1/agent/sessions`, `updated_at` 최신 우선)
-- **서버 도구 정책**(선택): 도구 실행 허용을 서버 정책으로 통제 — `cached`(로그인 시 목록 캐시) / `realtime`(실행 직전 인가). 정책 없으면 전체 허용(`GET /api/v1/tools/policy`)
+- **서버 제어형 도구/보안**(선택, 2중 안전): 사용 가능 도구를 서버가 통제(`GET /api/v1/tools/policy`, cached/realtime) — 비활성 도구는 모델에 **노출조차 안 됨**. 위험 명령 차단 패턴도 **클라 디폴트 ∪ 서버 추가**(`GET /api/v1/security/command-policy`)로 운영하며, 서버 값이 없으면 클라 내장 디폴트만 적용
 - **버전 관리 / 업데이트 알림**: SemVer + 빌드 git 해시. 서버 버전 점검으로 새/필수 버전 배너 안내(`GET /api/v1/client/version`)
 - **사용자 친화 에러**: 서버 원문(영문/기술 문구) 대신 상태 코드 기준 한국어 안내로 변환. **401에서만 재로그인**, 403/429/404/5xx는 메시지만(로그아웃 없음)
 - **로컬 우선**: 채팅 히스토리·프로젝트·설정은 로컬 영속(`%APPDATA%/OhMyAgent`), 서버는 stateless
@@ -133,8 +133,9 @@ dotnet run --project OhMyAgent.AiAgent.Client
 | `GET`  | `/api/v1/users/me` | 로그인 사용자 프로필(이름/조직/이메일) — 설정창 읽기 전용 표시 |
 | `GET`  | `/api/v1/me/quota` | 본인 토큰 쿼터(일/주/월 한도·사용·잔여) — 상단바 칩/팝업 |
 | `GET`  | `/api/v1/client/version` | 클라 버전 점검(`latest/minimum_supported/...`) — 업데이트 알림 |
-| `GET`  | `/api/v1/tools/policy` | 도구 실행 정책(`mode/enabled/disabled`) — 로그인 시 캐시 |
+| `GET`  | `/api/v1/tools/policy` | 도구 정책(`mode/enabled/disabled`) — **노출+실행** 통제, 로그인 시 캐시 |
 | `POST` | `/api/v1/tools/authorize` | (realtime) 도구 1회 인가(`{tool,arguments}` → `{allowed,reason}`) |
+| `GET`  | `/api/v1/security/command-policy` | 서버 추가 위험명령/경로 차단 패턴 — 클라 디폴트에 **더해짐**(2중 안전) |
 | `GET/PUT/DELETE` | `/api/v1/agent/sessions[/{id}]` | 대화 세션 서버 동기화(목록/단건/업서트/삭제) — *선택* |
 | `GET/POST` | `/api/v1/projects` | 프로젝트 목록 조회 / 업서트(`client_id` 기준) — *선택적 동기화* |
 | `POST/DELETE` | `/api/v1/projects/{id}/conversations[/{cid}]` | 대화 업서트(push) / 삭제 — *선택적 동기화* |
@@ -200,7 +201,8 @@ OhMyAgent.AiAgent.Client/
 │                         WorkspaceFolderViewModel · QuotaWindowViewModel · LoginViewModel · IntegrityViewModel
 ├── Views/                LoginWindow · ChatOnlyWindow · SettingsWindow · IntegrityWindow
 ├── Resources/            Colors · Tokens(디자인 토큰) · Styles · Converters · TranscriptTemplates
-└── docs/                 아키텍처·API 계약 · server-*.md(프로필/쿼터/버전/도구정책 요구) ·
+└── docs/                 아키텍처·API 계약 · tool-system(도구 설계) ·
+                          server-*.md(프로필/쿼터/버전/도구정책/명령보안 요구) ·
                           design-tokens · api-conformance-report · CHANGELOG · 발표자료
 ```
 
@@ -211,7 +213,7 @@ OhMyAgent.AiAgent.Client/
 - **멀티루트 경로 샌드박스**: 파일/셸 도구는 활성 워크스페이스 루트 **밖** 접근 차단(`IWorkspaceContext.ResolvePath` / `IsInsideWorkspace`). 여러 루트 중 하나라도 내부면 통과(OR 검증), 비활성 폴더는 차단
 - **서버 도구 정책 게이트**: 도구 실행을 서버 정책(cached/realtime)으로 1차 통제 — 차단 시 승인·실행을 건너뛰고 사유를 모델에 피드백
 - **권한 게이트**: 위험도(ToolRisk: ReadOnly/Write/Execute/Destructive) × 권한 모드로 실행 전 승인 결정
-- **명령 검증**: `SecurityValidator` 가 위험 명령 차단
+- **명령 검증**: `SecurityValidator` 가 위험 명령 차단 — **클라 내장 디폴트 ∪ 서버 추가 패턴**(2중 안전, 서버는 추가만·디폴트 제거 불가). 서버 정규식은 타임아웃·검증으로 ReDoS 방어
 - **배포 무결성**: SHA-256 매니페스트 + Authenticode + HMAC 서명 검증
 
 ---

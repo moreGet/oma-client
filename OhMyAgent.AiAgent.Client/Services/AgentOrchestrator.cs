@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -176,12 +177,15 @@ public sealed class AgentOrchestrator(
     private AgentRequest BuildRequest(AgentSession session)
     {
         var s = settings.Current;
+        // 서버 정책상 노출(exposed) 도구만 모델에 전달한다(비활성 도구는 모델이 아예 못 봄).
+        // 미로드/realtime이면 IsExposed가 전체 true → 현행과 동일.
+        var exposedTools = tools.ToSchemas().Where(t => policy.IsExposed(t.Name)).ToList();
         return new AgentRequest(
             Model: s.ModelId,
             Stream: true,
             MaxTokens: DefaultMaxTokens,
             Messages: new List<AgentMessage>(session.Messages),
-            Tools: tools.ToSchemas(),
+            Tools: exposedTools,
             Metadata: new RequestMetadata("windows", workspace.Root, ClientVersion));
     }
 

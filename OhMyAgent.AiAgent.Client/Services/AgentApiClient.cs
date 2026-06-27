@@ -25,6 +25,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     private const string QuotaPath    = "/api/v1/me/quota";
     private const string PolicyPath   = "/api/v1/tools/policy";
     private const string AuthorizePath = "/api/v1/tools/authorize";
+    private const string CommandPolicyPath = "/api/v1/security/command-policy";
     private const string AgentSessionsPath = "/api/v1/agent/sessions";
 
     public async IAsyncEnumerable<AgentStreamEvent> SendAsync(
@@ -329,6 +330,31 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         catch
         {
             return null;   // 오프라인/파싱 실패 → graceful (예외 던지지 않음)
+        }
+    }
+
+    public async Task<CommandSecurityPolicyResponse?> GetCommandSecurityPolicyAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, CommandPolicyPath);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return null;   // 404(미구현)/기타 → graceful null (디폴트만 적용)
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            return await JsonSerializer
+                .DeserializeAsync<CommandSecurityPolicyResponse>(stream, AgentJson.Options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;   // 오프라인/파싱 실패 → graceful
         }
     }
 

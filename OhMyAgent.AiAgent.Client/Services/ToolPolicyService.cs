@@ -75,6 +75,23 @@ public sealed class ToolPolicyService(IAgentApiClient api) : IToolPolicyService
         return ToolGateDecision.Allow();
     }
 
+    public bool IsExposed(string toolName)
+    {
+        var state = _state;
+
+        // 미로드(정책 부재) → 전체 노출(fail-open). realtime → 노출은 전체, 실행 직전 인가로 통제.
+        if (!state.Loaded || state.Mode == ToolPolicyMode.Realtime)
+            return true;
+
+        // Cached: 실행 게이트와 동일 규칙 — disabled 우선, enabled 화이트리스트.
+        if (state.Disabled is { } disabled && disabled.Contains(toolName))
+            return false;
+        if (state.Enabled is { } enabled && !enabled.Contains(toolName))
+            return false;
+
+        return true;
+    }
+
     /// <summary>도구명 비교는 OrdinalIgnoreCase. null/빈 목록이면 null(제약 없음).</summary>
     private static IReadOnlySet<string>? ToSet(IReadOnlyList<string>? names)
     {

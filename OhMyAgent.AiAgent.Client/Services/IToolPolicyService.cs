@@ -22,4 +22,10 @@ public interface IToolPolicyService
 
     /// <summary>도구 실행 직전 게이트 평가. 미로드→Allow, cached→로컬 목록, realtime→서버 인가.</summary>
     Task<ToolGateDecision> EvaluateAsync(string toolName, JsonElement args, CancellationToken ct = default);
+
+    /// <summary>
+    /// 이 도구를 모델에게 <b>노출(스키마 전송)</b>할지. 미로드/realtime→노출(전체), cached→enabled/disabled 필터.
+    /// 노출과 실행 게이트를 일관시켜, 비활성 도구는 모델이 아예 보지 못하게 한다.
+    /// </summary>
+    bool IsExposed(string toolName);
 }

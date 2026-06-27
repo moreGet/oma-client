@@ -235,6 +235,10 @@ public sealed partial class AgentSessionViewModel : ObservableObject
             try { await _policy.LoadAsync().ConfigureAwait(true); }
             catch { /* graceful — 정책 로드 실패가 앱 동작을 막지 않는다(정책 부재=전체 허용). */ }
 
+            // 로그인 직후 1회 — 서버 추가 위험명령 패턴 로드(디폴트에 더해짐). 미구현/오류면 디폴트만.
+            try { SecurityValidator.SetServerPatterns(await _api.GetCommandSecurityPolicyAsync().ConfigureAwait(true)); }
+            catch { /* graceful — 클라 내장 디폴트 블랙리스트가 바닥을 방어한다. */ }
+
             // 연결 성공 후 best-effort 버전 점검(서버 미구현이면 조용히 무시).
             _ = CheckVersionAsync();
 
