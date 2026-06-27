@@ -562,6 +562,8 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 PrimaryActionText = "로그인";
                 StatusText = "로그인 필요";
                 ErrorMessage = "서버에는 연결되었지만 로그인이 필요합니다.\n로그인 화면에서 다시 인증하세요.";
+                // 로그인 필요 상황이면 즉시 모든 창을 닫고 로그인 화면만 남긴다(App이 처리).
+                LoginRequested?.Invoke(this, EventArgs.Empty);
                 break;
 
             default: // Disconnected
@@ -932,9 +934,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
             case AgentError err:
                 if (IsAuthError(err.Code, err.Message))
                 {
-                    // 토큰 없음/만료 → "오류"가 아니라 "로그인 필요" 상태로 안내(다시 시도 무한반복 방지).
+                    // 토큰 없음/만료 → "오류"가 아니라 "로그인 필요" 상태로 전환.
+                    // ApplyReadiness가 LoginRequested를 올려 App이 모든 창을 닫고 로그인 화면으로 회귀시킨다.
                     ApplyReadiness(ServerReadiness.Unauthenticated);
-                    Transcript.Add(new SystemNoticeViewModel { Text = "로그인이 필요합니다. 설정에서 로그인하세요." });
                 }
                 else
                 {

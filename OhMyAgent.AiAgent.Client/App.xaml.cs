@@ -31,6 +31,7 @@ public partial class App : Application
     private AgentSessionViewModel?    _mainVm;
     private IAgentApiClient?          _api;
     private IToolPolicyService?       _toolPolicy;
+    private bool                      _loginShowing;
     private IProjectService?          _projectService;
     private IBinaryIntegrityService?  _binaryIntegrity;
     internal ISettingsService SettingsService => _settingsService!;
@@ -127,8 +128,8 @@ public partial class App : Application
         // 10b) 프로젝트 사이드바 VM 조립·주입 (#4). 메인 DataContext에서 Projects.* 로 바인딩.
         _mainVm.Projects = new ProjectsViewModel(_projectService, chatHistory);
 
-        // 10a) 배너의 "로그인" 요청 → 로그인 게이트를 다시 연다(설정창엔 더 이상 로그인이 없음).
-        _mainVm.LoginRequested += (_, _) => ReopenLogin();
+        // 10a) 로그인 필요(세션 만료/401) → 모든 창을 닫고 로그인 화면만 남긴다(통합 경로).
+        _mainVm.LoginRequested += (_, _) => ReturnToLogin();
 
         // 11) Main Window
         _mainWindow = new MainWindow(_mainVm);
@@ -188,18 +189,35 @@ public partial class App : Application
     /// 첫 랜딩 = 로그인 페이지. 로그인 성공 시에만 메인으로 진입, 미로그인 종료 시 앱 종료.
     private void ShowLoginLanding()
     {
+        if (_loginShowing) return;   // 이미 로그인 화면이면 중복 생성 금지.
+        _loginShowing = true;
+
         var loginVm = new LoginViewModel(_api!, _settingsService!);
         var login   = new LoginWindow(loginVm);
         var success = false;
 
-        loginVm.Succeeded += (_, _) =>
+        loginVm.Succeeded += async (_, _) =>
         {
+            // 로그인 POST 성공 → 토큰이 보호 엔드포인트에서도 유효한지(readiness) 확인 후 메인 진입.
+            // 이렇게 해야 "로그인은 되는데 서버가 거부"하는 경우 무한 로그인 루프를 막는다.
+            ServerReadiness readiness;
+            try { readiness = await _api!.CheckReadinessAsync(); }
+            catch { readiness = ServerReadiness.Ready; }
+
+            if (readiness == ServerReadiness.Unauthenticated)
+            {
+                loginVm.HasError = true;
+                loginVm.StatusMessage = "로그인은 됐지만 서버 인증에 실패했습니다. 잠시 후 다시 시도하세요.";
+                return;   // 로그인 창 유지 (루프 방지)
+            }
+
             success = true;
-            ShowMainWindow(initialize: true);   // 창 공백 없이 메인 먼저 띄우고
+            ShowMainWindow(initialize: true);   // 메인 먼저 띄우고
             login.Close();                      // 그다음 로그인 닫기
         };
         login.Closed += (_, _) =>
         {
+            _loginShowing = false;
             if (!success && !IsExiting)
                 ExitApplication();              // 로그인 없이 닫으면 메인 진입 차단 → 종료
         };
@@ -283,44 +301,12 @@ public partial class App : Application
         _mainWindow?.Activate();
     }
 
-    /// 설정창을 연다(트레이 메뉴 + 배너 로그인 공용). 닫히면 연결/인증 상태를 재점검해 배너를 갱신한다.
-    /// 세션 중 401(로그인 필요) 발생 시 로그인 게이트를 모달로 다시 연다.
-    /// 시작 게이트(ShowLoginLanding)와 달리 닫아도 앱을 종료하지 않는다 — 성공 시 연결만 재점검.
-    private void ReopenLogin()
-    {
-        if (_api == null || _settingsService == null) return;
-
-        var loginVm = new LoginViewModel(_api, _settingsService);
-        var login   = new LoginWindow(loginVm) { Owner = _mainWindow };
-
-        loginVm.Succeeded += (_, _) =>
-        {
-            login.Close();
-            if (_mainVm is { } vm)
-            {
-                // 재로그인 경로: 재연결 후 서버 도구 정책(모드+목록)을 다시 로드한다.
-                // (일반 RetryConnection/설정창 닫힘 경로에서는 reload하지 않음 — 세션 중 모드 안정.)
-                _ = ReconnectAndReloadPolicyAsync(vm);
-            }
-        };
-
-        login.ShowDialog();
-    }
-
-    /// 재로그인 성공 시: 재연결을 마친 뒤 서버 도구 정책을 다시 로드(모드/목록 변경 반영).
-    private static async Task ReconnectAndReloadPolicyAsync(AgentSessionViewModel vm)
-    {
-        await vm.RetryConnectionCommand.ExecuteAsync(null);
-        try { await vm.ReloadToolPolicyAsync(); }
-        catch { /* graceful — 정책 reload 실패가 앱 동작을 막지 않는다. */ }
-    }
-
     private void OpenSettingsWindow()
     {
         if (_settingsService == null || _api == null) return;
 
         var settingsVm     = new SettingsViewModel(_settingsService, _api);
-        settingsVm.LoggedOut += (_, _) => LogoutToLogin();
+        settingsVm.LoggedOut += (_, _) => ReturnToLogin();
         _ = settingsVm.InitializeAsync();
         var settingsWindow = new SettingsWindow(settingsVm) { Owner = _mainWindow };
         settingsWindow.Closed += (_, _) =>
@@ -332,11 +318,13 @@ public partial class App : Application
         settingsWindow.Activate();
     }
 
-    /// 로그아웃: 실행 중인 작업·세션을 강제 종료하고, 보조 창을 모두 닫은 뒤
-    /// 메인은 숨기고 로그인 랜딩으로 회귀한다. 로그인 성공 시 메인 복귀, 그냥 닫으면 앱 종료(시작 게이트와 동일).
-    internal void LogoutToLogin()
+    /// 로그인이 필요한 모든 상황(로그아웃 · 세션 만료/401)의 단일 진입점.
+    /// 실행 중 작업·세션을 강제 종료하고, 모든 보조 창을 닫고 메인은 숨긴 뒤 로그인 화면만 남긴다.
+    /// 로그인 성공 시 메인 복귀, 그냥 닫으면 앱 종료(시작 게이트와 동일).
+    internal void ReturnToLogin()
     {
         if (IsExiting) return;
+        if (_loginShowing) return;   // 이미 로그인 화면이면 무시(중복/루프 방지).
 
         // 1) 메인 세션/화면 상태 초기화 + 실행 중 에이전트 취소.
         _mainVm?.PrepareForLogout();
@@ -344,13 +332,14 @@ public partial class App : Application
         // 2) 보조 창(설정·무결성·채팅전용 등)은 닫고, 메인은 숨긴다(재로그인 시 재사용).
         foreach (var w in Windows.OfType<Window>().ToList())
         {
+            if (w is LoginWindow) continue;
             if (ReferenceEquals(w, _mainWindow))
                 w.Hide();
             else
                 w.Close();
         }
 
-        // 3) 로그인 랜딩 재표시.
+        // 3) 로그인 화면만 남긴다.
         ShowLoginLanding();
     }
 
