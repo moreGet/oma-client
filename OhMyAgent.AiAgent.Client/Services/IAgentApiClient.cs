@@ -53,4 +53,10 @@ public interface IAgentApiClient
 
     /// <summary>POST /api/v1/projects/{remoteProjectId}/conversations — 대화 push. 실패 시 AgentException.</summary>
     Task UpsertRemoteConversationAsync(string remoteProjectId, RemoteConversation body, CancellationToken ct = default);
+
+    /// <summary>DELETE /api/v1/projects/{remoteProjectId} — 원격 프로젝트 삭제. 미지원/오프라인/404는 graceful no-op.</summary>
+    Task DeleteRemoteProjectAsync(string remoteProjectId, CancellationToken ct = default);
+
+    /// <summary>DELETE /api/v1/projects/{remoteProjectId}/conversations/{remoteConversationId} — 원격 대화 삭제. 미지원/오프라인/404는 graceful no-op.</summary>
+    Task DeleteRemoteConversationAsync(string remoteProjectId, string remoteConversationId, CancellationToken ct = default);
 }

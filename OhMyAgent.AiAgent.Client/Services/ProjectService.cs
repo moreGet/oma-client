@@ -126,6 +126,11 @@ public sealed class ProjectService(IChatHistoryService history, IAgentApiClient 
         if (string.IsNullOrWhiteSpace(id))
             return;
 
+        // 원격 동기화된 프로젝트면 서버측도 삭제(graceful — 미지원/오프라인이면 no-op).
+        var project = await LoadAsync(id, ct).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(project?.RemoteId))
+            await api.DeleteRemoteProjectAsync(project!.RemoteId!, ct).ConfigureAwait(false);
+
         // 귀속 세션 처리: 삭제 또는 미분류로 해제.
         var sessions = await history.ListAsync(ct).ConfigureAwait(false);
         foreach (var s in sessions.Where(s => string.Equals(s.ProjectId, id, StringComparison.Ordinal)))
@@ -177,9 +182,10 @@ public sealed class ProjectService(IChatHistoryService history, IAgentApiClient 
 
         try
         {
-            // 1) 프로젝트 upsert(RemoteId 보유 시 갱신).
+            // 1) 프로젝트 upsert. 서버는 client_id(클라 GUID)↔id 로 멱등 매핑하므로
+            //    안정 키인 로컬 ProjectRecord.Id 를 client_id 로 전송한다.
             var remote = await api.UpsertRemoteProjectAsync(
-                new RemoteProjectUpsert(project.RemoteId, project.Name), ct).ConfigureAwait(false);
+                new RemoteProjectUpsert(project.Id, project.Name), ct).ConfigureAwait(false);
 
             // 2) 귀속 대화 push.
             var sessions = await history.ListAsync(ct).ConfigureAwait(false);
@@ -197,7 +203,7 @@ public sealed class ProjectService(IChatHistoryService history, IAgentApiClient 
 
                 await api.UpsertRemoteConversationAsync(
                     remote.Id,
-                    new RemoteConversation(full.Id, full.Title, full.Messages),
+                    new RemoteConversation(full.Id, full.Title, full.CreatedUtc, full.UpdatedUtc, full.Messages),
                     ct).ConfigureAwait(false);
                 pushed++;
             }

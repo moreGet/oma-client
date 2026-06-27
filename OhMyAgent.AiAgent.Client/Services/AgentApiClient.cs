@@ -469,6 +469,52 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         }
     }
 
+    public async Task DeleteRemoteProjectAsync(string remoteProjectId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(remoteProjectId))
+            return;   // 원격 미동기화(remote_id 없음) → no-op
+
+        try
+        {
+            var path = $"{ProjectsPath}/{Uri.EscapeDataString(remoteProjectId)}";
+            using var req = new HttpRequestMessage(HttpMethod.Delete, path);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            // 204/200/404(이미 없음) 모두 성공으로 간주 — 삭제는 멱등. 그 외 상태도 graceful no-op.
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // 오프라인/미지원 → graceful no-op(로컬 삭제는 호출자가 이미 수행).
+        }
+    }
+
+    public async Task DeleteRemoteConversationAsync(string remoteProjectId, string remoteConversationId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(remoteProjectId) || string.IsNullOrWhiteSpace(remoteConversationId))
+            return;   // 원격 미동기화 → no-op
+
+        try
+        {
+            var path = $"{ProjectsPath}/{Uri.EscapeDataString(remoteProjectId)}/conversations/{Uri.EscapeDataString(remoteConversationId)}";
+            using var req = new HttpRequestMessage(HttpMethod.Delete, path);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            // 멱등 삭제 — 404 포함 graceful.
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // 오프라인/미지원 → graceful no-op.
+        }
+    }
+
     private void ApplyAuth(HttpRequestMessage req)
     {
         var token = settings.Current.AuthToken;

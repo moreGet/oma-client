@@ -932,20 +932,51 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 break;
 
             case AgentError err:
-                if (IsAuthError(err.Code, err.Message))
+                // API-SPEC §클라이언트 처리 가이드: HTTP 상태(코드)로 분기. 401에서만 재로그인,
+                // 403/429/404/5xx는 메시지만 표시하고 로그아웃하지 않는다.
+                switch (ClassifyAgentError(err.Code))
                 {
-                    // 토큰 없음/만료 → "오류"가 아니라 "로그인 필요" 상태로 전환.
-                    // ApplyReadiness가 LoginRequested를 올려 App이 모든 창을 닫고 로그인 화면으로 회귀시킨다.
-                    ApplyReadiness(ServerReadiness.Unauthenticated);
-                }
-                else
-                {
-                    HasError = true;
-                    ErrorTitle = "오류";
-                    PrimaryActionText = "다시 시도";
-                    ErrorMessage = err.Message;
-                    StatusText = "오류";
-                    Transcript.Add(new SystemNoticeViewModel { Text = $"오류 [{err.Code}]: {err.Message}" });
+                    case AgentErrorKind.Cancelled:
+                        StatusText = "중지됨";
+                        break;
+
+                    case AgentErrorKind.Unauthorized:
+                        // 401 만 재로그인(세션 폐기). ApplyReadiness가 LoginRequested→로그인 화면 회귀.
+                        ApplyReadiness(ServerReadiness.Unauthenticated);
+                        break;
+
+                    case AgentErrorKind.RateLimited:
+                        // 429 토큰 쿼터/세션 캡 초과 — message 그대로 표시(어느 한도·리셋시각 포함), 로그아웃 금지.
+                        StatusText = "사용 한도 초과";
+                        Transcript.Add(new SystemNoticeViewModel
+                        {
+                            Text = string.IsNullOrWhiteSpace(err.Message)
+                                ? "사용 한도를 초과했습니다. 잠시 후 다시 시도하세요."
+                                : $"⚠ 사용 한도 초과 — {err.Message}"
+                        });
+                        _ = RefreshQuotaAsync();   // 잔여량 즉시 갱신
+                        break;
+
+                    case AgentErrorKind.Forbidden:
+                        // 403 권한 부족 — 안내만, 로그아웃 금지.
+                        StatusText = "권한 없음";
+                        Transcript.Add(new SystemNoticeViewModel
+                        {
+                            Text = string.IsNullOrWhiteSpace(err.Message)
+                                ? "권한이 없습니다."
+                                : $"권한이 없습니다: {err.Message}"
+                        });
+                        break;
+
+                    default:
+                        // 400/404/500/502/기타 — 오류 메시지 표시, 로그아웃 금지.
+                        HasError = true;
+                        ErrorTitle = "오류";
+                        PrimaryActionText = "다시 시도";
+                        ErrorMessage = err.Message;
+                        StatusText = "오류";
+                        Transcript.Add(new SystemNoticeViewModel { Text = $"오류 [{err.Code}]: {err.Message}" });
+                        break;
                 }
                 break;
         }
@@ -964,17 +995,30 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
     // ── Helpers ────────────────────────────────────────────────────────
 
-    /// <summary>서버의 인증 실패(401/403, missing/invalid bearer token)인지 판별.</summary>
-    private static bool IsAuthError(string? code, string? message)
+    private enum AgentErrorKind { Cancelled, Unauthorized, Forbidden, RateLimited, Other }
+
+    /// <summary>
+    /// 서버 에러를 HTTP 상태/중첩 envelope 코드 기준으로 분류한다(API-SPEC §클라이언트 처리 가이드).
+    /// **메시지 본문으로 판별하지 않는다** — 429 쿼터 메시지의 "token"·"quota" 등을 인증 실패로 오인하면
+    /// 토큰이 유효한데도 로그인 화면으로 튕기는 흔한 버그가 생긴다(스펙 경고).
+    /// 코드 형태: 사전(pre-stream) "http_401"·"http_429", 스트림 중 "unauthorized"·"rate_limited" 등.
+    /// </summary>
+    private static AgentErrorKind ClassifyAgentError(string? code)
     {
         var c = code ?? string.Empty;
-        var m = message ?? string.Empty;
-        return c.Contains("401", StringComparison.OrdinalIgnoreCase)
-            || c.Contains("403", StringComparison.OrdinalIgnoreCase)
-            || c.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)
-            || c.Contains("forbidden", StringComparison.OrdinalIgnoreCase)
-            || m.Contains("bearer", StringComparison.OrdinalIgnoreCase)
-            || m.Contains("token", StringComparison.OrdinalIgnoreCase);
+        if (c.Contains("cancel", StringComparison.OrdinalIgnoreCase))
+            return AgentErrorKind.Cancelled;
+        if (c.Contains("429", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("rate_limited", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("too_many", StringComparison.OrdinalIgnoreCase))
+            return AgentErrorKind.RateLimited;
+        if (c.Contains("401", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("unauthorized", StringComparison.OrdinalIgnoreCase))
+            return AgentErrorKind.Unauthorized;
+        if (c.Contains("403", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("forbidden", StringComparison.OrdinalIgnoreCase))
+            return AgentErrorKind.Forbidden;
+        return AgentErrorKind.Other;
     }
 
     /// <summary>Pretty-prints tool-call JSON arguments for display.</summary>
