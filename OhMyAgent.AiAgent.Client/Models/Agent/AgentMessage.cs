@@ -37,8 +37,8 @@ public sealed record AgentMessage
     public static AgentMessage System(string content) =>
         new() { Role = MessageRole.System, Content = content };
 
-    public static AgentMessage User(string content) =>
-        new() { Role = MessageRole.User, Content = content };
+    public static AgentMessage User(string content, IReadOnlyList<Attachment>? attachments = null) =>
+        new() { Role = MessageRole.User, Content = content, Attachments = attachments };
 
     public static AgentMessage Assistant(string? content, IReadOnlyList<ToolCall>? toolCalls = null) =>
         new() { Role = MessageRole.Assistant, Content = content, ToolCalls = toolCalls };

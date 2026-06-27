@@ -329,9 +329,21 @@
                                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                                         CornerRadius="{StaticResource RadiusLg}" Padding="14,12" MinWidth="260">
                                     <StackPanel>
-                                        <TextBlock Text="남은 사용량" FontWeight="SemiBold"
-                                                   FontSize="{StaticResource FontSizeSmall}"
-                                                   Foreground="{StaticResource TextPrimary}" Margin="0,0,0,8"/>
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="남은 사용량" FontWeight="SemiBold"
+                                                       FontSize="{StaticResource FontSizeSmall}"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{StaticResource TextPrimary}"/>
+                                            <Button Grid.Column="1" Style="{StaticResource ComposerIconButton}"
+                                                    Width="24" Height="24" FontSize="{StaticResource FontSizeBody}"
+                                                    Content="&#xE72C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                    Command="{Binding RefreshQuotaCommand}"
+                                                    ToolTip="남은 사용량 새로고침"/>
+                                        </Grid>
                                         <ItemsControl ItemsSource="{Binding QuotaWindows}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>

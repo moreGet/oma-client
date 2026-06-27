@@ -332,7 +332,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     /// 토큰 쿼터를 best-effort로 새로고침한다. 서버 미응답/null(401/500/오프라인)이면
     /// 조용히 쿼터 UI를 숨긴다(HasQuota=false). 있으면 day→week→month 순으로 목록을
     /// 재구성하고 칩 요약/경고 플래그를 갱신한다. 모든 UI 변경은 디스패처로 마샬링.
+    /// 쿼터 팝업의 새로고침 버튼이 <c>RefreshQuotaCommand</c>로 바인딩한다.
     /// </summary>
+    [RelayCommand]
     private async Task RefreshQuotaAsync()
     {
         QuotaResponse? quota;
@@ -432,21 +434,20 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
         Transcript.Add(new UserTurnViewModel { Text = goal });
 
-        // D — attachments are managed/displayed client-side only. Actual payload
-        // attachment to the outgoing message is deferred until the §8 server
-        // contract is finalized (orchestrator signature is kept unchanged), so we
-        // simply clear the composer chips after dispatching the turn.
-        Attachments.Clear();
-
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
         var token = _cts.Token;
 
         IsBusy = true;
         StatusText = "실행 중...";
+
+        // D — 첨부 파일을 base64(≤10MiB)로 인코딩해 사용자 메시지에 싣는다. 인코딩 후 칩을 비운다.
+        var attachmentPayloads = await BuildAttachmentPayloadsAsync(token).ConfigureAwait(false);
+        await UiInvokeAsync(() => Attachments.Clear()).ConfigureAwait(false);
+
         try
         {
-            await foreach (var evt in _orchestrator.RunAsync(goal, _session, token).ConfigureAwait(false))
+            await foreach (var evt in _orchestrator.RunAsync(goal, _session, attachmentPayloads, token).ConfigureAwait(false))
             {
                 var captured = evt;
                 await UiInvokeAsync(() => Project(captured)).ConfigureAwait(false);
@@ -730,6 +731,42 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         {
             // File missing / unreadable — skip silently.
         }
+    }
+
+    /// <summary>
+    /// D — 컴포저 첨부들을 전송용 페이로드로 변환한다. 각 파일을 base64로 인코딩(≤10MiB)해
+    /// data_base64를 채운 Attachment 복사본을 만든다. 초과/읽기 실패 항목은 안내 후 제외.
+    /// 첨부가 없으면 null(요청 바이트 불변).
+    /// </summary>
+    private async Task<IReadOnlyList<Attachment>?> BuildAttachmentPayloadsAsync(CancellationToken ct)
+    {
+        var sources = Attachments.ToList();
+        if (sources.Count == 0) return null;
+
+        var payloads = new List<Attachment>(sources.Count);
+        foreach (var a in sources)
+        {
+            try
+            {
+                var base64 = await _attachmentService.ReadAsBase64Async(a, ct).ConfigureAwait(false);
+                payloads.Add(a with { DataBase64 = base64 });
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var name = a.FileName;
+                var reason = ex is AgentException ? ex.Message : "읽기 실패";
+                await UiInvokeAsync(() => Transcript.Add(new SystemNoticeViewModel
+                {
+                    Text = $"첨부 '{name}'(을)를 보내지 못했습니다 — {reason}"
+                })).ConfigureAwait(false);
+            }
+        }
+
+        return payloads.Count > 0 ? payloads : null;
     }
 
     /// <summary>C — upsert the current session to disk. No-op when there are no messages.</summary>

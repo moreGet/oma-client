@@ -25,6 +25,7 @@ public sealed class AgentOrchestrator(
     public async IAsyncEnumerable<AgentEvent> RunAsync(
         string userGoal,
         AgentSession session,
+        IReadOnlyList<Attachment>? attachments = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         var mode = settings.Current.PermissionMode;
@@ -34,8 +35,8 @@ public sealed class AgentOrchestrator(
             session.Messages.Add(AgentMessage.System(
                 AgentSession.DefaultSystemPrompt(workspace.Root, mode, workspace.Roots)));
 
-        // 2) 사용자 목표 추가.
-        session.Messages.Add(AgentMessage.User(userGoal));
+        // 2) 사용자 목표 추가(첨부가 있으면 함께 싣는다).
+        session.Messages.Add(AgentMessage.User(userGoal, attachments));
 
         var max = settings.Current.MaxIterations;
         var iteration = 0;

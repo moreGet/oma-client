@@ -39,12 +39,23 @@ public sealed class FileAttachmentService : IFileAttachmentService
         };
     }
 
-    /// <summary>
-    /// [stub] 서버 첨부 전송은 API_CONTRACT §8.2 계약 확정 후 구현한다.
-    /// 현재 전송 경로가 미연결이므로 호출되지 않는다.
-    /// </summary>
-    public Task<string> ReadAsBase64Async(Attachment attachment, CancellationToken ct = default)
-        => throw new NotImplementedException("서버 첨부 전송은 API_CONTRACT §8.2 계약 확정 후 구현");
+    /// <summary>파일 바이트를 읽어 base64로 인코딩(전송 페이로드). ≤10MiB 가드, 없음/초과 시 AgentException.</summary>
+    public async Task<string> ReadAsBase64Async(Attachment attachment, CancellationToken ct = default)
+    {
+        const long maxBytes = 10L * 1024 * 1024;   // 스펙: 파일당 ≤10MiB
+
+        if (attachment is null || string.IsNullOrWhiteSpace(attachment.FilePath))
+            throw new AgentException("첨부 파일 경로가 비어 있습니다.");
+
+        var fi = new FileInfo(attachment.FilePath);
+        if (!fi.Exists)
+            throw new AgentException($"첨부 파일을 찾을 수 없습니다: {attachment.FileName}");
+        if (fi.Length > maxBytes)
+            throw new AgentException($"첨부 파일이 10MB를 초과합니다: {attachment.FileName}");
+
+        var bytes = await File.ReadAllBytesAsync(attachment.FilePath, ct).ConfigureAwait(false);
+        return Convert.ToBase64String(bytes);
+    }
 
     /// <summary>확장자 → MIME 간이 매핑. 미지정 시 null.</summary>
     private static string? GuessContentType(string extension) =>
