@@ -120,9 +120,6 @@ public partial class MainWindow : Window
         settingsWindow.Activate();
     }
 
-    private void MenuItem_Exit_Click(object sender, RoutedEventArgs e)
-        => ((App)Application.Current).ExitApplication();
-
     // ── 프로젝트 사이드바 (Projects ViewModel 경유) ───────────────────────
 
     private ProjectsViewModel? ProjectsVm

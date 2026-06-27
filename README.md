@@ -18,6 +18,12 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 - **권한 게이트**: Manual / Auto-Safe / Full-Auto 3단계. 위험 작업은 실행 전 사용자 승인
 - **시작 로그인 게이트**: 앱 시작 시 전용 로그인 화면(`LoginWindow`)에서 인증. 설정창에는 로그인 입력이 없고 로그아웃·상태만 표시
 - **서버 프로필 표시**: 로그인 사용자의 이름/조직/이메일을 서버에서 조회해 설정창에 **읽기 전용**으로 노출(`GET /api/v1/users/me`)
+- **토큰 쿼터**: 일/주/월 사용량·잔여를 상단바 칩 + 팝업 게이지로 표시(`GET /api/v1/me/quota`), **새로고침 버튼** 제공. 한도 초과(429)는 안내만 하고 로그아웃하지 않음
+- **파일 첨부**: 컴포저에 첨부한 파일을 base64로 인코딩해 메시지에 실어 전송(파일당 ≤10MiB, `messages[].attachments[]`)
+- **서버 세션 동기화**(선택): 대화 세션을 서버에 업서트/병합해 **여러 PC에서 공유**(`/api/v1/agent/sessions`, `updated_at` 최신 우선)
+- **서버 도구 정책**(선택): 도구 실행 허용을 서버 정책으로 통제 — `cached`(로그인 시 목록 캐시) / `realtime`(실행 직전 인가). 정책 없으면 전체 허용(`GET /api/v1/tools/policy`)
+- **버전 관리 / 업데이트 알림**: SemVer + 빌드 git 해시. 서버 버전 점검으로 새/필수 버전 배너 안내(`GET /api/v1/client/version`)
+- **사용자 친화 에러**: 서버 원문(영문/기술 문구) 대신 상태 코드 기준 한국어 안내로 변환. **401에서만 재로그인**, 403/429/404/5xx는 메시지만(로그아웃 없음)
 - **로컬 우선**: 채팅 히스토리·프로젝트·설정은 로컬 영속(`%APPDATA%/OhMyAgent`), 서버는 stateless
 - **데스크톱 통합**: 다크 테마, 시스템 트레이 상주, 전역 핫키(기본 `Ctrl+Space`), 플로팅 채팅창
 - **배포 무결성**: 설치 바이너리 SHA-256 / Authenticode / HMAC 매니페스트 검증 (트레이 → 무결성 검사)
@@ -34,9 +40,11 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 │    IAgentOrchestrator   에이전트 루프 (질의→도구→실행→반환)         │
 │    IAgentApiClient      서버 HTTP/SSE 통신(로그인·모델·chat·프로필·동기화)│
 │    IToolRegistry        ITool[] 도구 모음 + 서버용 스키마 생성       │
-│    IPermissionService   승인/권한 게이트                           │
+│    IPermissionService   승인/권한 게이트(로컬)                     │
+│    IToolPolicyService   서버 도구 정책 게이트(cached/realtime)      │
 │    IWorkspaceContext    멀티루트 샌드박스(활성 루트 OR 검증·경로 탈출 차단)│
 │    IChatHistoryService  채팅 세션 로컬 영속                        │
+│    ISessionSyncService  대화 세션 서버 동기화(여러 PC 공유, 선택)   │
 │    IProjectService      프로젝트(대화 묶음) 로컬 + 선택적 서버 동기화 │
 └───────────────────────────────┬──────────────────────────────────┘
                                  │ HTTP + SSE (text/event-stream)
@@ -66,6 +74,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 | `http_fetch` | Execute | 사내망 HTTP 요청(폐쇄망 내부 자원 접근) |
 | `screenshot` | ReadOnly | 화면 캡처 → PNG base64(비전 모델 입력용) |
 
+> 도구 실행 결정 순서: **모델 요청 → 서버 도구 정책 게이트 → 로컬 권한 게이트(승인 카드) → 샌드박스(경로 검증) → 실행**.
 > Destructive / Write / Execute 도구는 권한 모드에 따라 **실행 전 승인 카드**를 띄웁니다.
 > 모든 도구는 BCL/WPF/WinForms 내장 기능만 사용하며 추가 NuGet 의존성이 없습니다.
 
@@ -106,7 +115,8 @@ dotnet run --project OhMyAgent.AiAgent.Client
 4. **작업 디렉토리(워크스페이스)** 등록 — 최대 10개까지 추가하고 폴더별 접근 토글로 활성/비활성 제어
 5. **권한 모드** 선택(기본 Manual 권장)
 6. (선택) **프로젝트 생성** 후 사이드바에서 대화를 드래그앤드롭으로 분류, 필요 시 프로젝트별 **서버 동기화**
-7. 채팅창(`Ctrl+Space`)에 목표 입력 → 에이전트 루프 실행
+7. 채팅창(`Ctrl+Space`)에 목표 입력 → 에이전트 루프 실행. **+ 버튼으로 파일 첨부** 가능(전송 시 base64 인코딩, ≤10MiB)
+8. 상단바 **쿼터 칩**에서 남은 사용량(일/주/월) 확인 — 새로고침 버튼으로 갱신
 
 > **최대 토큰(MaxTokens)은 서버가 제어**합니다. 클라이언트 설정에서는 제거되었고, 와이어(`max_tokens`)에는 기본 상수만 전송됩니다.
 
@@ -121,12 +131,17 @@ dotnet run --project OhMyAgent.AiAgent.Client
 | `GET`  | `/api/v1/models` | 활성 Provider 기반 모델 목록 |
 | `POST` | `/api/v1/agent/chat` | **에이전트 루프** — 대화기록+도구 스키마 → SSE 응답 |
 | `GET`  | `/api/v1/users/me` | 로그인 사용자 프로필(이름/조직/이메일) — 설정창 읽기 전용 표시 |
+| `GET`  | `/api/v1/me/quota` | 본인 토큰 쿼터(일/주/월 한도·사용·잔여) — 상단바 칩/팝업 |
+| `GET`  | `/api/v1/client/version` | 클라 버전 점검(`latest/minimum_supported/...`) — 업데이트 알림 |
+| `GET`  | `/api/v1/tools/policy` | 도구 실행 정책(`mode/enabled/disabled`) — 로그인 시 캐시 |
+| `POST` | `/api/v1/tools/authorize` | (realtime) 도구 1회 인가(`{tool,arguments}` → `{allowed,reason}`) |
+| `GET/PUT/DELETE` | `/api/v1/agent/sessions[/{id}]` | 대화 세션 서버 동기화(목록/단건/업서트/삭제) — *선택* |
 | `GET/POST` | `/api/v1/projects` | 프로젝트 목록 조회 / 업서트(`client_id` 기준) — *선택적 동기화* |
-| `POST` | `/api/v1/projects/{id}/conversations` | 대화 1건 업서트(push) — *선택적 동기화* |
+| `POST/DELETE` | `/api/v1/projects/{id}/conversations[/{cid}]` | 대화 업서트(push) / 삭제 — *선택적 동기화* |
 
-> 프로필(`/users/me`)과 프로젝트 동기화 엔드포인트는 **graceful fallback** 으로 다룹니다.
-> 미구현(404/501)·오프라인이면 프로필은 OS 사용자명으로 폴백, 동기화 버튼은 "미지원"으로 안내하고
-> 앱은 로컬 전용으로 정상 동작합니다. 상세 스펙은 서버 팀용 요구 명세 참조.
+> 프로필·쿼터·버전·도구정책·세션/프로젝트 동기화 엔드포인트는 모두 **graceful fallback** 으로 다룹니다.
+> 미구현(404/501)·오프라인이면 해당 UI만 비활성(프로필은 OS 사용자명 폴백, 쿼터 칩 숨김, 정책 없음=전체 허용,
+> 버전 알림 생략)되고 앱은 로컬 전용으로 정상 동작합니다. 상세는 `docs/server-*.md` 요구 명세 참조.
 
 **SSE 이벤트**: `message_start` · `content_delta{delta}` · `tool_call{id,name,arguments}` · `message_stop{stop_reason,usage}` · `error`.
 `stop_reason == tool_use` 면 클라이언트가 도구를 실행해 `tool` 메시지로 재요청(루프 지속), `end_turn` 이면 종료.
@@ -144,10 +159,11 @@ dotnet run --project OhMyAgent.AiAgent.Client
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
-| 배너에 **"로그인 필요"** + `missing bearer token` | 로그인 전이거나 JWT 만료 | 배너의 **[로그인]** → 시작 로그인 화면에서 ID/비밀번호로 재로그인 |
+| **로그인 화면으로 자동 회귀**(모든 창 닫힘) | 로그인 전이거나 세션 중 **401**(토큰 만료/무효) 또는 로그아웃 | 로그인 화면에서 재로그인하면 메인 복귀 (401에서만 발생) |
 | 배너에 **"서버 연결 실패"** | 서버 미실행 / 주소 오류 | 서버 기동 확인, 설정의 **API 서버 주소** 확인 후 **[다시 시도]** |
 | 모델 칩이 비어 있음 | 미로그인(`/models` 401) 또는 활성 Provider 없음 | 로그인 후 새로고침 / 서버에 활성 LLM Provider 등록 |
-| 채팅이 즉시 실패 | 토큰 만료(세션 중 401) | 자동으로 "로그인 필요" 안내 전환 → 재로그인 |
+| **"사용 한도를 초과했습니다"** | 토큰 쿼터(일/주/월) 소진 — **429**, 로그아웃 아님 | 한도 리셋 대기(일=자정 UTC) 또는 관리자에게 한도 상향 요청. 쿼터 칩에서 잔여 확인 |
+| **"로그인은 됐지만 서버 인증에 실패"** | 로그인은 성공했으나 보호 엔드포인트가 토큰 거부 | 잠시 후 재시도(루프 방지로 메인 진입 보류). 서버/계정 권한 확인 |
 
 ---
 
@@ -171,18 +187,21 @@ dotnet run --project OhMyAgent.AiAgent.Client
 
 ```
 OhMyAgent.AiAgent.Client/
-├── App.xaml(.cs)         컴포지션 루트 · 트레이 · 핫키 · 로그인 게이트
-├── MainWindow.xaml(.cs)  메인 셸 · 프로젝트 사이드바(드래그앤드롭 분류)
-├── Models/               AppSettings · WorkspaceFolder · ProjectRecord/Summary ·
-│                         UserProfile · ChatSessionRecord · Agent DTO(AgentMessage/ToolCall/Usage …)
-├── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry ·
-│   │                     ProjectService · ChatHistoryService · 권한/워크스페이스/보안
+├── App.xaml(.cs)         컴포지션 루트 · 트레이 · 핫키 · 통합 로그인 게이트(ReturnToLogin)
+├── MainWindow.xaml(.cs)  메인 셸 · 프로젝트 사이드바(드래그앤드롭 분류) · 쿼터 칩 · 업데이트 배너
+├── Models/               AppSettings · WorkspaceFolder · ProjectRecord/Summary · UserProfile ·
+│                         QuotaInfo · ClientVersionInfo · ChatSessionRecord ·
+│                         Agent DTO(AgentMessage/ToolCall/Usage/RemoteProject/RemoteSession/ToolPolicy/Attachment …)
+├── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry · PermissionService ·
+│   │                     ToolPolicyService · ProjectService · ChatHistoryService · SessionSyncService ·
+│   │                     AppVersion · UserErrorMessages · FileAttachmentService · 워크스페이스/보안
 │   └── Tools/            20개 ITool 구현
 ├── ViewModels/           AgentSessionViewModel · SettingsViewModel · ProjectsViewModel ·
-│                         WorkspaceFolderViewModel · LoginViewModel · IntegrityViewModel
+│                         WorkspaceFolderViewModel · QuotaWindowViewModel · LoginViewModel · IntegrityViewModel
 ├── Views/                LoginWindow · ChatOnlyWindow · SettingsWindow · IntegrityWindow
-├── Resources/            Colors · Styles · Converters · TranscriptTemplates
-└── docs/                 아키텍처 계획 · API 계약 · 발표자료
+├── Resources/            Colors · Tokens(디자인 토큰) · Styles · Converters · TranscriptTemplates
+└── docs/                 아키텍처·API 계약 · server-*.md(프로필/쿼터/버전/도구정책 요구) ·
+                          design-tokens · api-conformance-report · CHANGELOG · 발표자료
 ```
 
 ---
@@ -190,6 +209,7 @@ OhMyAgent.AiAgent.Client/
 ## 보안 모델
 
 - **멀티루트 경로 샌드박스**: 파일/셸 도구는 활성 워크스페이스 루트 **밖** 접근 차단(`IWorkspaceContext.ResolvePath` / `IsInsideWorkspace`). 여러 루트 중 하나라도 내부면 통과(OR 검증), 비활성 폴더는 차단
+- **서버 도구 정책 게이트**: 도구 실행을 서버 정책(cached/realtime)으로 1차 통제 — 차단 시 승인·실행을 건너뛰고 사유를 모델에 피드백
 - **권한 게이트**: 위험도(ToolRisk: ReadOnly/Write/Execute/Destructive) × 권한 모드로 실행 전 승인 결정
 - **명령 검증**: `SecurityValidator` 가 위험 명령 차단
 - **배포 무결성**: SHA-256 매니페스트 + Authenticode + HMAC 서명 검증

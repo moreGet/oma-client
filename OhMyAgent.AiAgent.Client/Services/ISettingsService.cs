@@ -26,5 +26,4 @@ public interface ISettingsService
 
     // Phase D
     Task UpdateUserDisplayNameAsync(string name);                                    // F
-    Task UpdateRecentWorkspacesAsync(IReadOnlyList<WorkspaceHistoryEntry> entries);  // B
 }

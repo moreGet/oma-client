@@ -27,7 +27,6 @@ public sealed class QuotaWindowViewModel
             : $"{window.Remaining:N0} / {window.Limit:N0} 남음";
 
         IsConstrained = !window.Unlimited && window.PercentRemaining <= 10;
-        IsExhausted = !window.Unlimited && window.Remaining <= 0;
     }
 
     /// <summary>윈도우 한글 라벨: day="일", week="주", month="월".</summary>
@@ -49,7 +48,4 @@ public sealed class QuotaWindowViewModel
 
     /// <summary>거의 소진(비무제한 &amp;&amp; 잔여 ≤ 10%) → 경고 표시.</summary>
     public bool IsConstrained { get; }
-
-    /// <summary>소진(비무제한 &amp;&amp; remaining ≤ 0) → 다음 채팅 차단 상태.</summary>
-    public bool IsExhausted { get; }
 }

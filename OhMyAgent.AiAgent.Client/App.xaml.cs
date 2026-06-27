@@ -4,7 +4,6 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
-using FontStyle = System.Drawing.FontStyle;
 using System.Windows.Forms;
 using OhMyAgent.AiAgent.Client.Models;
 using OhMyAgent.AiAgent.Client.Services;
@@ -12,7 +11,6 @@ using OhMyAgent.AiAgent.Client.Services.Tools;
 using OhMyAgent.AiAgent.Client.ViewModels;
 using OhMyAgent.AiAgent.Client.Views;
 using Application = System.Windows.Application;
-using MessageBox  = System.Windows.MessageBox;
 
 namespace OhMyAgent.AiAgent.Client;
 
@@ -102,9 +100,6 @@ public partial class App : Application
         // 8a) 서버 도구 정책 게이트(싱글톤 1개) — 오케스트레이터·VM가 동일 인스턴스를 공유한다.
         _toolPolicy = new ToolPolicyService(_api);
 
-        // 8b) 워크스페이스 히스토리 (settings 기반, Phase D — B)
-        var workspaceHistory = new WorkspaceHistoryService(_settingsService);
-
         // 9) 오케스트레이터 (에이전트 루프) — 정책 게이트를 가장 앞단에 끼운다.
         var orchestrator = new AgentOrchestrator(_api, registry, permissions, workspace, _settingsService, _toolPolicy);
 
@@ -126,7 +121,7 @@ public partial class App : Application
         // 10) 루트 ViewModel
         _mainVm = new AgentSessionViewModel(
             orchestrator, _api, permissions, workspace, _settingsService,
-            workspaceHistory, chatHistory, attachments, suggestions, _toolPolicy, sessionSync);
+            chatHistory, attachments, suggestions, _toolPolicy, sessionSync);
 
         // 10b) 프로젝트 사이드바 VM 조립·주입 (#4). 메인 DataContext에서 Projects.* 로 바인딩.
         _mainVm.Projects = new ProjectsViewModel(_projectService, chatHistory);
@@ -165,9 +160,6 @@ public partial class App : Application
                 workspace.SetRoots(activeRoots);
             else
                 workspace.SetRoot(s.WorkspaceRoot);
-            if (!string.IsNullOrWhiteSpace(s.WorkspaceRoot))
-                // AddAsync는 RaiseSettingsChanged를 호출하지 않으므로 이 핸들러로 재진입하지 않는다.
-                _ = workspaceHistory.AddAsync(s.WorkspaceRoot);
             _globalHotkey!.Unregister();
             _globalHotkey.Register(s.Hotkey);
         };

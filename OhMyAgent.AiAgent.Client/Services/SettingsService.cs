@@ -80,10 +80,9 @@ public class SettingsService : ISettingsService
                         migrated = true;
                     }
 
-                    // v3 -> v4: Phase D 필드 기본값 시드(RecentWorkspaces, UserDisplayName).
+                    // v3 -> v4: Phase D 필드 기본값 시드(UserDisplayName).
                     if (Current.SchemaVersion < 4)
                     {
-                        Current.RecentWorkspaces ??= [];
                         Current.UserDisplayName ??= "";   // 빈 값 유지 → VM에서 Environment.UserName 폴백
                         Current.SchemaVersion = 4;
                         migrated = true;
@@ -189,13 +188,6 @@ public class SettingsService : ISettingsService
     public async Task UpdateUserDisplayNameAsync(string name)
     {
         Current.UserDisplayName = name ?? "";
-        await SaveAsync().ConfigureAwait(false);
-        RaiseSettingsChanged();
-    }
-
-    public async Task UpdateRecentWorkspacesAsync(IReadOnlyList<WorkspaceHistoryEntry> entries)
-    {
-        Current.RecentWorkspaces = entries is null ? [] : entries.ToList();
         await SaveAsync().ConfigureAwait(false);
         RaiseSettingsChanged();
     }

@@ -28,5 +28,4 @@ public class AppSettings
 
     // 신규 (Phase D)
     public string UserDisplayName { get; set; } = "";                       // empty => Environment.UserName fallback (F)
-    public List<WorkspaceHistoryEntry> RecentWorkspaces { get; set; } = []; // 최근순, 상한 10 (B)
 }

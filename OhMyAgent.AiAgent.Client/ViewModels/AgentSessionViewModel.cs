@@ -26,7 +26,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     private readonly IPermissionService _permissions;
     private readonly IWorkspaceContext _workspace;
     private readonly ISettingsService _settings;
-    private readonly IWorkspaceHistoryService _workspaceHistory;
     private readonly IChatHistoryService _chatHistory;
     private readonly IFileAttachmentService _attachmentService;
     private readonly ISuggestionService _suggestions;
@@ -54,7 +53,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]
     [NotifyCanExecuteChangedFor(nameof(StopCommand))]
-    [NotifyCanExecuteChangedFor(nameof(OpenWorkspaceCommand))]
     [NotifyCanExecuteChangedFor(nameof(LoadChatSessionCommand))]
     [NotifyCanExecuteChangedFor(nameof(AttachFileCommand))]
     private bool _isBusy;
@@ -109,9 +107,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
     public ObservableCollection<ITranscriptItem> Transcript { get; } = [];
 
-    /// <summary>B — recent workspace history shown in the sidebar "프로젝트" list.</summary>
-    public ObservableCollection<WorkspaceHistoryEntry> RecentWorkspaces { get; } = [];
-
     /// <summary>C — saved chat session summaries shown in the sidebar "채팅" list.</summary>
     public ObservableCollection<ChatSessionSummary> ChatSessions { get; } = [];
 
@@ -142,7 +137,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         IPermissionService permissions,
         IWorkspaceContext workspace,
         ISettingsService settings,
-        IWorkspaceHistoryService workspaceHistory,
         IChatHistoryService chatHistory,
         IFileAttachmentService attachments,
         ISuggestionService suggestions,
@@ -154,7 +148,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         _permissions = permissions;
         _workspace = workspace;
         _settings = settings;
-        _workspaceHistory = workspaceHistory;
         _chatHistory = chatHistory;
         _attachmentService = attachments;
         _suggestions = suggestions;
@@ -164,9 +157,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         // Surface Manual-mode approvals through the inline approval card.
         _permissions.SetApprovalHandler(RequestApprovalAsync);
 
-        // B — keep the sidebar workspace list in sync with persisted history.
-        _workspaceHistory.HistoryChanged += OnWorkspaceHistoryChanged;
-
         // #3 — 설정(작업 디렉토리 추가/토글/제거)이 바뀌면 메인 칩·인사말을 즉시 갱신.
         //       SettingsService가 UI 디스패처로 발화하므로 핸들러는 UI 스레드에서 실행된다.
         _settings.SettingsChanged += OnSettingsChanged;
@@ -175,7 +165,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         Attachments.CollectionChanged += (_, _) => HasAttachments = Attachments.Count > 0;
 
         SeedFromSettings();
-        RefreshWorkspaceList();
     }
 
     // ── Property change reactions ──────────────────────────────────────
@@ -234,7 +223,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     public async Task InitializeAsync()
     {
         SeedFromSettings();
-        RefreshWorkspaceList();
         await RetryConnectionAsync();
         if (IsConnected && !NeedsLogin)
         {
@@ -264,12 +252,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         // G — fetch action hints (currently a stubbed empty list).
         _ = LoadSuggestionsAsync();
     }
-
-    /// <summary>
-    /// 재로그인 시 서버 도구 정책(모드+목록)을 다시 로드한다. App.xaml.cs의 ReopenLogin 성공 핸들러가
-    /// 재연결 완료 후 호출한다. 일반 RetryConnection(단순 재연결)에서는 호출하지 않는다 — 세션 중 모드 안정.
-    /// </summary>
-    public Task ReloadToolPolicyAsync() => _policy.LoadAsync();
 
     /// <summary>
     /// 서버 버전 정책을 best-effort로 점검해 업데이트 알림을 노출한다.
@@ -385,17 +367,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         }).ConfigureAwait(false);
     }
 
-    /// <summary>B — refresh <see cref="RecentWorkspaces"/> from the history service snapshot.</summary>
-    private void RefreshWorkspaceList()
-    {
-        var recent = _workspaceHistory.GetRecent();
-        RecentWorkspaces.Clear();
-        foreach (var w in recent)
-            RecentWorkspaces.Add(w);
-    }
-
-    private void OnWorkspaceHistoryChanged(object? sender, EventArgs e)
-        => _ = UiInvokeAsync(RefreshWorkspaceList);
 
     /// <summary>G — load action hints for the current workspace (stub: empty list).</summary>
     private async Task LoadSuggestionsAsync()
@@ -608,36 +579,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     }
 
     // ── Phase D commands ───────────────────────────────────────────────
-
-    private bool CanOpenWorkspace(WorkspaceHistoryEntry? e) => e is not null && !IsBusy;
-
-    /// <summary>B — switch the active workspace to a history entry.</summary>
-    [RelayCommand(CanExecute = nameof(CanOpenWorkspace))]
-    private async Task OpenWorkspaceAsync(WorkspaceHistoryEntry? entry)
-    {
-        if (entry is null) return;
-        _workspace.SetRoot(entry.Path);
-        await _settings.UpdateWorkspaceRootAsync(entry.Path).ConfigureAwait(false);
-        await _workspaceHistory.TouchAsync(entry.Path).ConfigureAwait(false);
-        await UiInvokeAsync(() =>
-        {
-            WorkspaceRoot = entry.Path;
-            var rawName = string.IsNullOrWhiteSpace(_settings.Current.UserDisplayName)
-                ? Environment.UserName
-                : _settings.Current.UserDisplayName;
-            GreetingText = $"{rawName}님 안녕하세요, 어떤 업무를 시작할까요?";
-        }).ConfigureAwait(false);
-    }
-
-    private bool CanRemoveWorkspace(WorkspaceHistoryEntry? e) => e is not null;
-
-    /// <summary>B — drop a workspace from history.</summary>
-    [RelayCommand(CanExecute = nameof(CanRemoveWorkspace))]
-    private async Task RemoveWorkspaceAsync(WorkspaceHistoryEntry? entry)
-    {
-        if (entry is null) return;
-        await _workspaceHistory.RemoveAsync(entry.Path).ConfigureAwait(false);
-    }
 
     private bool CanLoadChatSession(ChatSessionSummary? s) => s is not null && !IsBusy;
 

@@ -35,20 +35,6 @@ public sealed partial class FileIntegrityItemViewModel : ObservableObject
         _ => Status.ToString(),
     };
 
-    /// <summary>
-    /// 상태에 매핑되는 테마 리소스 키(브러시). XAML에서
-    /// <c>{DynamicResource {Binding StatusBrushKey}}</c> 대신 컨버터로 사용하거나
-    /// DataTrigger 분기에 활용. 컨버터 최소화를 위해 키 문자열을 직접 노출한다.
-    /// </summary>
-    public string StatusBrushKey => Status switch
-    {
-        IntegrityStatus.Ok         => "IntegrityOkBrush",
-        IntegrityStatus.Modified   => "IntegrityModifiedBrush",
-        IntegrityStatus.Corrupted  => "IntegrityCorruptedBrush",
-        IntegrityStatus.Missing    => "IntegrityMissingBrush",
-        IntegrityStatus.Unexpected => "IntegrityUnexpectedBrush",
-        _ => "TextSecondary",
-    };
 
     /// <summary>매니페스트 기대 해시 앞 12자(없으면 빈 문자열).</summary>
     public string ExpectedSha256Short => Shorten(Model.ExpectedSha256);

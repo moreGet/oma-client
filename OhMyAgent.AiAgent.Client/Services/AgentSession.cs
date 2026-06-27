@@ -30,9 +30,6 @@ public sealed class AgentSession
         Messages.AddRange(messages);
     }
 
-    public static string DefaultSystemPrompt(string workspaceRoot, PermissionMode mode) =>
-        DefaultSystemPrompt(workspaceRoot, mode, null);
-
     public static string DefaultSystemPrompt(string workspaceRoot, PermissionMode mode, IReadOnlyList<string>? roots)
     {
         // 활성 루트가 여러 개면 전체 허용 루트를 줄바꿈 목록으로 고지한다(주 루트 = 첫 항목 = 셸 cwd).
