@@ -93,6 +93,17 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     /// <summary>필수 업데이트 여부. true면 배너를 경고색으로 표시.</summary>
     [ObservableProperty] private bool _updateMandatory;
 
+    // ── Token quota ────────────────────────────────────────────────────
+
+    /// <summary>쿼터 목록이 있을 때만 칩/팝업을 표시(서버 미응답 → false → 전부 숨김).</summary>
+    [ObservableProperty] private bool _hasQuota;
+
+    /// <summary>상단바 칩 요약 — 가장 빡빡한(비무제한 중 잔여율 최소) 윈도우 기준 "{라벨} {잔여율}%", 전부 무제한이면 "무제한".</summary>
+    [ObservableProperty] private string _quotaSummary = string.Empty;
+
+    /// <summary>가장 빡빡한 윈도우가 거의 소진(IsConstrained)이면 true → 칩 경고색.</summary>
+    [ObservableProperty] private bool _quotaConstrained;
+
     // ── Collections ────────────────────────────────────────────────────
 
     public ObservableCollection<ITranscriptItem> Transcript { get; } = [];
@@ -108,6 +119,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
     /// <summary>G — welcome-screen action hints (empty until the suggestion service is wired).</summary>
     public ObservableCollection<Suggestion> Suggestions { get; } = [];
+
+    /// <summary>토큰 쿼터 윈도우(일/주/월 순, 항상 3개). 쿼터 팝업이 게이지로 바인딩한다.</summary>
+    public ObservableCollection<QuotaWindowViewModel> QuotaWindows { get; } = [];
 
     /// <summary>Selectable permission modes for the header selector.</summary>
     public IReadOnlyList<PermissionMode> PermissionModes { get; } =
@@ -232,6 +246,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
             // 연결 성공 후 best-effort 버전 점검(서버 미구현이면 조용히 무시).
             _ = CheckVersionAsync();
+
+            // 연결+인증 직후 best-effort 쿼터 로드(서버 미응답이면 조용히 숨김).
+            _ = RefreshQuotaAsync();
         }
 
         // C — populate the sidebar chat list + project groups from local history.
@@ -303,6 +320,61 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     /// <summary>SemVer 문자열을 <see cref="Version"/>으로 파싱. 실패 시 null(비교 생략).</summary>
     private static Version? ParseVersion(string? value)
         => Version.TryParse(value, out var v) ? v : null;
+
+    /// <summary>
+    /// 토큰 쿼터를 best-effort로 새로고침한다. 서버 미응답/null(401/500/오프라인)이면
+    /// 조용히 쿼터 UI를 숨긴다(HasQuota=false). 있으면 day→week→month 순으로 목록을
+    /// 재구성하고 칩 요약/경고 플래그를 갱신한다. 모든 UI 변경은 디스패처로 마샬링.
+    /// </summary>
+    private async Task RefreshQuotaAsync()
+    {
+        QuotaResponse? quota;
+        try
+        {
+            quota = await _api.GetQuotaAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            quota = null;   // graceful — 쿼터 조회 실패가 앱 동작을 막지 않는다.
+        }
+
+        if (quota?.Windows is not { Count: > 0 } windows)
+        {
+            await UiInvokeAsync(() =>
+            {
+                HasQuota = false;
+                QuotaWindows.Clear();
+                QuotaSummary = string.Empty;
+                QuotaConstrained = false;
+            }).ConfigureAwait(false);
+            return;
+        }
+
+        // 서버 순서(day→week→month) 유지하며 항목 VM 구성.
+        var items = windows.Select(w => new QuotaWindowViewModel(w)).ToList();
+
+        // 가장 빡빡한 윈도우 = 비무제한 중 잔여율 최소. 전부 무제한이면 null.
+        var tightest = items
+            .Where(i => !i.IsUnlimited)
+            .OrderBy(i => i.PercentRemaining)
+            .FirstOrDefault();
+
+        var summary = tightest is null
+            ? "무제한"
+            : $"{tightest.Label} {tightest.PercentRemaining:0}%";
+        var constrained = tightest is { IsConstrained: true };
+
+        await UiInvokeAsync(() =>
+        {
+            QuotaWindows.Clear();
+            foreach (var item in items)
+                QuotaWindows.Add(item);
+
+            QuotaSummary = summary;
+            QuotaConstrained = constrained;
+            HasQuota = true;
+        }).ConfigureAwait(false);
+    }
 
     /// <summary>B — refresh <see cref="RecentWorkspaces"/> from the history service snapshot.</summary>
     private void RefreshWorkspaceList()
@@ -402,6 +474,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
             // C — persist the (now-appended) session and refresh the sidebar list.
             await SaveCurrentSessionAsync().ConfigureAwait(false);
             await RefreshChatSessionsAsync().ConfigureAwait(false);
+
+            // 턴 완료로 사용량이 변동 — best-effort 쿼터 재조회(턴당 1회).
+            _ = RefreshQuotaAsync();
         }
     }
 

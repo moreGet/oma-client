@@ -22,6 +22,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     private const string ProfilePath  = "/api/v1/users/me";
     private const string ProjectsPath = "/api/v1/projects";
     private const string VersionPath  = "/api/v1/client/version";
+    private const string QuotaPath    = "/api/v1/me/quota";
     private const string PolicyPath   = "/api/v1/tools/policy";
     private const string AuthorizePath = "/api/v1/tools/authorize";
 
@@ -268,6 +269,31 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
             await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             return await JsonSerializer
                 .DeserializeAsync<ClientVersionInfo>(stream, AgentJson.Options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;   // 오프라인/파싱 실패 → graceful (예외 던지지 않음)
+        }
+    }
+
+    public async Task<QuotaResponse?> GetQuotaAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, QuotaPath);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return null;   // 401/500/기타 → graceful null
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            return await JsonSerializer
+                .DeserializeAsync<QuotaResponse>(stream, AgentJson.Options, ct)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

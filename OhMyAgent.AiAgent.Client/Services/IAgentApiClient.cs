@@ -32,6 +32,9 @@ public interface IAgentApiClient
     /// <summary>GET /api/v1/client/version (Bearer). 200→ClientVersionInfo, 그 외/404/오프라인→null(graceful, 예외 없음).</summary>
     Task<ClientVersionInfo?> GetClientVersionAsync(CancellationToken ct = default);
 
+    /// <summary>GET /api/v1/me/quota (Bearer). 200→QuotaResponse, 401/500/오프라인/파싱실패→null(graceful, 예외 없음).</summary>
+    Task<QuotaResponse?> GetQuotaAsync(CancellationToken ct = default);
+
     // ── 서버 도구 정책 게이트. 미구현 서버(404/501)/오프라인은 graceful null. ──
 
     /// <summary>GET /api/v1/tools/policy (Bearer). 200→ToolPolicy, 404/오류/오프라인→null(graceful).</summary>

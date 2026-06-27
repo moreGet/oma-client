@@ -275,6 +275,131 @@
                                    FontSize="{StaticResource FontSizeXSmall}" VerticalAlignment="Center" Margin="12,0,0,0"
                                    ToolTip="마지막 응답의 토큰 사용량 (입력/출력)"
                                    Visibility="{Binding LastUsageText, Converter={StaticResource StringToVisibility}}"/>
+
+                        <!-- ── 토큰 쿼터 칩 + 팝업 (HasQuota 일 때만) ── -->
+                        <Grid Margin="12,0,0,0" VerticalAlignment="Center"
+                              Visibility="{Binding HasQuota, Converter={StaticResource BoolToVisibility}}">
+                            <ToggleButton x:Name="QuotaChip" Cursor="Hand"
+                                          ToolTip="남은 사용량 — 클릭하여 일/주/월 상세 보기"
+                                          Background="{StaticResource Surface2Bg}"
+                                          BorderThickness="1">
+                                <ToggleButton.Style>
+                                    <Style TargetType="ToggleButton">
+                                        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ToggleButton">
+                                                    <Border Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                            CornerRadius="{StaticResource RadiusMd}"
+                                                            Padding="8,3">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock x:Name="QIcon" Text="&#xE9D9;"
+                                                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                                       FontSize="{StaticResource FontSizeXSmall}"
+                                                                       Foreground="{StaticResource TextSecondary}"
+                                                                       VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                            <TextBlock x:Name="QText" Text="{Binding QuotaSummary}"
+                                                                       FontSize="{StaticResource FontSizeXSmall}"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="{StaticResource TextSecondary}"
+                                                                       VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <DataTrigger Binding="{Binding QuotaConstrained}" Value="True">
+                                                            <Setter Property="BorderBrush" Value="{StaticResource WarningBrush}"/>
+                                                            <Setter TargetName="QText" Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                                            <Setter TargetName="QIcon" Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                                        </DataTrigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ToggleButton.Style>
+                            </ToggleButton>
+
+                            <Popup IsOpen="{Binding IsChecked, ElementName=QuotaChip}"
+                                   PlacementTarget="{Binding ElementName=QuotaChip}" Placement="Bottom"
+                                   StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade"
+                                   HorizontalOffset="0" VerticalOffset="6">
+                                <Border Background="{StaticResource Surface2Bg}"
+                                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                        CornerRadius="{StaticResource RadiusLg}" Padding="14,12" MinWidth="260">
+                                    <StackPanel>
+                                        <TextBlock Text="남은 사용량" FontWeight="SemiBold"
+                                                   FontSize="{StaticResource FontSizeSmall}"
+                                                   Foreground="{StaticResource TextPrimary}" Margin="0,0,0,8"/>
+                                        <ItemsControl ItemsSource="{Binding QuotaWindows}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,5">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="22"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- 라벨 (일/주/월) -->
+                                                        <TextBlock Grid.Column="0" Text="{Binding Label}"
+                                                                   FontWeight="SemiBold" VerticalAlignment="Center"
+                                                                   FontSize="{StaticResource FontSizeXSmall}"
+                                                                   Foreground="{StaticResource TextSecondary}"/>
+
+                                                        <StackPanel Grid.Column="1">
+                                                            <!-- 게이지 (비무제한) -->
+                                                            <ProgressBar Height="6" Maximum="100"
+                                                                         Value="{Binding PercentUsed, Mode=OneWay}"
+                                                                         Background="{StaticResource Surface3Bg}"
+                                                                         BorderThickness="0"
+                                                                         Visibility="{Binding IsUnlimited, Converter={StaticResource InverseBoolToVisibility}}">
+                                                                <ProgressBar.Style>
+                                                                    <Style TargetType="ProgressBar">
+                                                                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsConstrained}" Value="True">
+                                                                                <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </ProgressBar.Style>
+                                                            </ProgressBar>
+
+                                                            <!-- 무제한 표기 (막대 대신) -->
+                                                            <TextBlock Text="&#x221E; 무제한" Margin="0,1,0,0"
+                                                                       FontSize="{StaticResource FontSizeXSmall}"
+                                                                       Foreground="{StaticResource AccentBrush}"
+                                                                       Visibility="{Binding IsUnlimited, Converter={StaticResource BoolToVisibility}}"/>
+
+                                                            <Grid Margin="0,3,0,0"
+                                                                  Visibility="{Binding IsUnlimited, Converter={StaticResource InverseBoolToVisibility}}">
+                                                                <TextBlock Text="{Binding AmountText}" HorizontalAlignment="Left"
+                                                                           FontSize="{StaticResource FontSizeXSmall}">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock">
+                                                                            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsConstrained}" Value="True">
+                                                                                    <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                                <TextBlock Text="{Binding PeriodText}" HorizontalAlignment="Right"
+                                                                           FontSize="{StaticResource FontSizeMicro}"
+                                                                           Foreground="{StaticResource TextMuted}"/>
+                                                            </Grid>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
+                        </Grid>
                     </StackPanel>
 
                     <!-- 캡션 버튼 (우) -->
