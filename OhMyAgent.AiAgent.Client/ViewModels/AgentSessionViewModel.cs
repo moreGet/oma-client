@@ -30,6 +30,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     private readonly IChatHistoryService _chatHistory;
     private readonly IFileAttachmentService _attachmentService;
     private readonly ISuggestionService _suggestions;
+    private readonly IToolPolicyService _policy;
 
     private AgentSession _session = new();
     private CancellationTokenSource? _cts;
@@ -129,7 +130,8 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         IWorkspaceHistoryService workspaceHistory,
         IChatHistoryService chatHistory,
         IFileAttachmentService attachments,
-        ISuggestionService suggestions)
+        ISuggestionService suggestions,
+        IToolPolicyService policy)
     {
         _orchestrator = orchestrator;
         _api = api;
@@ -140,6 +142,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         _chatHistory = chatHistory;
         _attachmentService = attachments;
         _suggestions = suggestions;
+        _policy = policy;
 
         // Surface Manual-mode approvals through the inline approval card.
         _permissions.SetApprovalHandler(RequestApprovalAsync);
@@ -223,6 +226,10 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 Text = "에이전트 서버에 연결되었습니다. 무엇을 도와드릴까요?",
             });
 
+            // 로그인 직후 1회 — 서버 도구 정책(모드+목록) 로드. best-effort(서버 미구현이면 fail-open).
+            try { await _policy.LoadAsync().ConfigureAwait(true); }
+            catch { /* graceful — 정책 로드 실패가 앱 동작을 막지 않는다(정책 부재=전체 허용). */ }
+
             // 연결 성공 후 best-effort 버전 점검(서버 미구현이면 조용히 무시).
             _ = CheckVersionAsync();
         }
@@ -233,6 +240,12 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         // G — fetch action hints (currently a stubbed empty list).
         _ = LoadSuggestionsAsync();
     }
+
+    /// <summary>
+    /// 재로그인 시 서버 도구 정책(모드+목록)을 다시 로드한다. App.xaml.cs의 ReopenLogin 성공 핸들러가
+    /// 재연결 완료 후 호출한다. 일반 RetryConnection(단순 재연결)에서는 호출하지 않는다 — 세션 중 모드 안정.
+    /// </summary>
+    public Task ReloadToolPolicyAsync() => _policy.LoadAsync();
 
     /// <summary>
     /// 서버 버전 정책을 best-effort로 점검해 업데이트 알림을 노출한다.

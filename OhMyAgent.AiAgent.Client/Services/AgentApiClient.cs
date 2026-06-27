@@ -22,6 +22,8 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     private const string ProfilePath  = "/api/v1/users/me";
     private const string ProjectsPath = "/api/v1/projects";
     private const string VersionPath  = "/api/v1/client/version";
+    private const string PolicyPath   = "/api/v1/tools/policy";
+    private const string AuthorizePath = "/api/v1/tools/authorize";
 
     public async IAsyncEnumerable<AgentStreamEvent> SendAsync(
         AgentRequest request,
@@ -278,6 +280,63 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         }
     }
 
+    public async Task<ToolPolicy?> GetToolPolicyAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, PolicyPath);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return null;   // 404(미구현)/기타 → graceful null
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            return await JsonSerializer
+                .DeserializeAsync<ToolPolicy>(stream, AgentJson.Options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;   // 오프라인/파싱 실패 → graceful (예외 던지지 않음)
+        }
+    }
+
+    public async Task<ToolAuthorization?> AuthorizeToolAsync(string tool, JsonElement arguments, CancellationToken ct = default)
+    {
+        try
+        {
+            var payload = JsonSerializer.Serialize(
+                new AuthorizeRequestDto(tool, arguments), AgentJson.Options);
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, AuthorizePath)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            };
+            ApplyAuth(req);
+
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return null;   // 오류 → graceful null(호출자가 fail-closed 처리)
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            return await JsonSerializer
+                .DeserializeAsync<ToolAuthorization>(stream, AgentJson.Options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;   // 오프라인/파싱 실패 → graceful null
+        }
+    }
+
     public async Task<IReadOnlyList<RemoteProject>> ListRemoteProjectsAsync(CancellationToken ct = default)
     {
         try
@@ -524,4 +583,8 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
 
     private sealed record LoginResponseDto(
         [property: System.Text.Json.Serialization.JsonPropertyName("token")] string? Token);
+
+    private sealed record AuthorizeRequestDto(
+        [property: System.Text.Json.Serialization.JsonPropertyName("tool")]      string Tool,
+        [property: System.Text.Json.Serialization.JsonPropertyName("arguments")] JsonElement Arguments);
 }

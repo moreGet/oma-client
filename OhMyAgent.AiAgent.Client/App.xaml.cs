@@ -30,6 +30,7 @@ public partial class App : Application
     private IChatWindowCoordinator?   _windowCoordinator;
     private AgentSessionViewModel?    _mainVm;
     private IAgentApiClient?          _api;
+    private IToolPolicyService?       _toolPolicy;
     private IProjectService?          _projectService;
     private IBinaryIntegrityService?  _binaryIntegrity;
     internal ISettingsService SettingsService => _settingsService!;
@@ -97,11 +98,14 @@ public partial class App : Application
         // 8) API 클라이언트
         _api = new AgentApiClient(_httpClient, _settingsService);
 
+        // 8a) 서버 도구 정책 게이트(싱글톤 1개) — 오케스트레이터·VM가 동일 인스턴스를 공유한다.
+        _toolPolicy = new ToolPolicyService(_api);
+
         // 8b) 워크스페이스 히스토리 (settings 기반, Phase D — B)
         var workspaceHistory = new WorkspaceHistoryService(_settingsService);
 
-        // 9) 오케스트레이터 (에이전트 루프)
-        var orchestrator = new AgentOrchestrator(_api, registry, permissions, workspace, _settingsService);
+        // 9) 오케스트레이터 (에이전트 루프) — 정책 게이트를 가장 앞단에 끼운다.
+        var orchestrator = new AgentOrchestrator(_api, registry, permissions, workspace, _settingsService, _toolPolicy);
 
         // 9a) 바이너리 무결성 검사 서비스 (설치 디렉토리 SHA256 검증, Windows 전용)
         _binaryIntegrity = new BinaryIntegrityService(new AuthenticodeVerifier());
@@ -118,7 +122,7 @@ public partial class App : Application
         // 10) 루트 ViewModel
         _mainVm = new AgentSessionViewModel(
             orchestrator, _api, permissions, workspace, _settingsService,
-            workspaceHistory, chatHistory, attachments, suggestions);
+            workspaceHistory, chatHistory, attachments, suggestions, _toolPolicy);
 
         // 10b) 프로젝트 사이드바 VM 조립·주입 (#4). 메인 DataContext에서 Projects.* 로 바인딩.
         _mainVm.Projects = new ProjectsViewModel(_projectService, chatHistory);
@@ -293,10 +297,22 @@ public partial class App : Application
         {
             login.Close();
             if (_mainVm is { } vm)
-                _ = vm.RetryConnectionCommand.ExecuteAsync(null);
+            {
+                // 재로그인 경로: 재연결 후 서버 도구 정책(모드+목록)을 다시 로드한다.
+                // (일반 RetryConnection/설정창 닫힘 경로에서는 reload하지 않음 — 세션 중 모드 안정.)
+                _ = ReconnectAndReloadPolicyAsync(vm);
+            }
         };
 
         login.ShowDialog();
+    }
+
+    /// 재로그인 성공 시: 재연결을 마친 뒤 서버 도구 정책을 다시 로드(모드/목록 변경 반영).
+    private static async Task ReconnectAndReloadPolicyAsync(AgentSessionViewModel vm)
+    {
+        await vm.RetryConnectionCommand.ExecuteAsync(null);
+        try { await vm.ReloadToolPolicyAsync(); }
+        catch { /* graceful — 정책 reload 실패가 앱 동작을 막지 않는다. */ }
     }
 
     private void OpenSettingsWindow()

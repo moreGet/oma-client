@@ -13,7 +13,8 @@ public sealed class AgentOrchestrator(
     IToolRegistry tools,
     IPermissionService permissions,
     IWorkspaceContext workspace,
-    ISettingsService settings) : IAgentOrchestrator
+    ISettingsService settings,
+    IToolPolicyService policy) : IAgentOrchestrator
 {
     // 서버엔 깔끔한 SemVer 를 전송한다(빌드 메타·해시 제외).
     private static readonly string ClientVersion = AppVersion.Semantic;
@@ -124,6 +125,16 @@ public sealed class AgentOrchestrator(
                     session.Messages.Add(AgentMessage.ToolResultMsg(call.Id, msg, isError: true));
                     yield return new AgentToolCallResult(call.Id, call.Name, ToolResult.Fail(msg));
                     continue;
+                }
+
+                // 서버 도구 정책 게이트(로컬 권한 게이트·샌드박스보다 앞단).
+                var gate = await policy.EvaluateAsync(call.Name, call.Arguments, ct).ConfigureAwait(false);
+                if (!gate.Allowed)
+                {
+                    var msg = $"서버 도구 정책에 의해 차단됨: {gate.Reason ?? call.Name}";
+                    session.Messages.Add(AgentMessage.ToolResultMsg(call.Id, msg, isError: true));
+                    yield return new AgentToolCallResult(call.Id, call.Name, ToolResult.Fail(msg));
+                    continue;  // 승인 카드·실행 건너뜀, 모델엔 차단 사유 피드백
                 }
 
                 var risk = tool.Risk;
