@@ -25,6 +25,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     private const string QuotaPath    = "/api/v1/me/quota";
     private const string PolicyPath   = "/api/v1/tools/policy";
     private const string AuthorizePath = "/api/v1/tools/authorize";
+    private const string AgentSessionsPath = "/api/v1/agent/sessions";
 
     public async IAsyncEnumerable<AgentStreamEvent> SendAsync(
         AgentRequest request,
@@ -515,6 +516,112 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         }
     }
 
+    public async Task<IReadOnlyList<RemoteSessionSummary>?> ListRemoteSessionsAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, AgentSessionsPath);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return null;   // 404/501/오류 → graceful null
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            var dto = await JsonSerializer
+                .DeserializeAsync<RemoteSessionList>(stream, AgentJson.Options, ct)
+                .ConfigureAwait(false);
+            return dto?.Sessions;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;   // 오프라인/파싱 실패 → graceful
+        }
+    }
+
+    public async Task<RemoteSession?> GetRemoteSessionAsync(string id, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return null;
+
+        try
+        {
+            var path = $"{AgentSessionsPath}/{Uri.EscapeDataString(id)}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, path);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return null;   // 404/오류 → graceful null
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            return await JsonSerializer
+                .DeserializeAsync<RemoteSession>(stream, AgentJson.Options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;   // 오프라인/파싱 실패 → graceful
+        }
+    }
+
+    public async Task<bool> PutRemoteSessionAsync(string id, string title, JsonElement data, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return false;
+
+        try
+        {
+            var path    = $"{AgentSessionsPath}/{Uri.EscapeDataString(id)}";
+            var payload = JsonSerializer.Serialize(new SessionUpsertDto(title, data), AgentJson.Options);
+            using var req = new HttpRequestMessage(HttpMethod.Put, path)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            };
+            ApplyAuth(req);
+
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            return resp.IsSuccessStatusCode;   // 403/오류 → false(예외 없음)
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return false;   // 오프라인/오류 → graceful false
+        }
+    }
+
+    public async Task DeleteRemoteSessionAsync(string id, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return;   // no-op
+
+        try
+        {
+            var path = $"{AgentSessionsPath}/{Uri.EscapeDataString(id)}";
+            using var req = new HttpRequestMessage(HttpMethod.Delete, path);
+            ApplyAuth(req);
+            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            // 204/200/404(이미 없음) 모두 성공으로 간주 — 삭제는 멱등. 그 외도 graceful no-op.
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // 오프라인/미지원 → graceful no-op.
+        }
+    }
+
     private void ApplyAuth(HttpRequestMessage req)
     {
         var token = settings.Current.AuthToken;
@@ -659,4 +766,8 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     private sealed record AuthorizeRequestDto(
         [property: System.Text.Json.Serialization.JsonPropertyName("tool")]      string Tool,
         [property: System.Text.Json.Serialization.JsonPropertyName("arguments")] JsonElement Arguments);
+
+    private sealed record SessionUpsertDto(
+        [property: System.Text.Json.Serialization.JsonPropertyName("title")] string Title,
+        [property: System.Text.Json.Serialization.JsonPropertyName("data")]  JsonElement Data);
 }

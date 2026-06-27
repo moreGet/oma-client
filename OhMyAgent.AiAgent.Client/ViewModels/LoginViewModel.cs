@@ -69,9 +69,8 @@ public sealed partial class LoginViewModel : ObservableObject
             if (!result.Success || string.IsNullOrWhiteSpace(result.Token))
             {
                 HasError = true;
-                StatusMessage = string.IsNullOrWhiteSpace(result.ErrorMessage)
-                    ? "로그인에 실패했습니다. 아이디와 비밀번호를 확인하세요."
-                    : result.ErrorMessage!;
+                // 서버 원문 대신 사용자 친화 문구로 안내.
+                StatusMessage = UserErrorMessages.ForLogin(null, result.ErrorMessage);
                 return;
             }
 
@@ -85,10 +84,10 @@ public sealed partial class LoginViewModel : ObservableObject
             StatusMessage = "로그인 성공";
             Succeeded?.Invoke(this, EventArgs.Empty);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             HasError = true;
-            StatusMessage = $"연결 오류: {ex.Message}";
+            StatusMessage = "서버에 연결할 수 없습니다. 네트워크와 서버 주소를 확인해 주세요.";
         }
         finally
         {

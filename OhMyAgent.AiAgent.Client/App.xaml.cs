@@ -120,10 +120,13 @@ public partial class App : Application
         //     ProjectsViewModel 조립은 ViewModel 에이전트가 추가한다.
         _projectService = new ProjectService(chatHistory, _api);
 
+        // 9d) 대화 세션 서버 동기화(여러 PC 공유) — 싱글톤 1개. 로컬(chatHistory)↔원격(_api) 브릿지.
+        var sessionSync = new SessionSyncService(_api, chatHistory);
+
         // 10) 루트 ViewModel
         _mainVm = new AgentSessionViewModel(
             orchestrator, _api, permissions, workspace, _settingsService,
-            workspaceHistory, chatHistory, attachments, suggestions, _toolPolicy);
+            workspaceHistory, chatHistory, attachments, suggestions, _toolPolicy, sessionSync);
 
         // 10b) 프로젝트 사이드바 VM 조립·주입 (#4). 메인 DataContext에서 Projects.* 로 바인딩.
         _mainVm.Projects = new ProjectsViewModel(_projectService, chatHistory);

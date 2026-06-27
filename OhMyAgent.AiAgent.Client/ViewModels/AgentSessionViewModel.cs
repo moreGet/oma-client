@@ -31,6 +31,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     private readonly IFileAttachmentService _attachmentService;
     private readonly ISuggestionService _suggestions;
     private readonly IToolPolicyService _policy;
+    private readonly ISessionSyncService _sessionSync;
 
     private AgentSession _session = new();
     private CancellationTokenSource? _cts;
@@ -145,7 +146,8 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         IChatHistoryService chatHistory,
         IFileAttachmentService attachments,
         ISuggestionService suggestions,
-        IToolPolicyService policy)
+        IToolPolicyService policy,
+        ISessionSyncService sessionSync)
     {
         _orchestrator = orchestrator;
         _api = api;
@@ -157,6 +159,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         _attachmentService = attachments;
         _suggestions = suggestions;
         _policy = policy;
+        _sessionSync = sessionSync;
 
         // Surface Manual-mode approvals through the inline approval card.
         _permissions.SetApprovalHandler(RequestApprovalAsync);
@@ -249,6 +252,10 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
             // 연결+인증 직후 best-effort 쿼터 로드(서버 미응답이면 조용히 숨김).
             _ = RefreshQuotaAsync();
+
+            // 연결+인증 직후 best-effort 세션 동기화 — 다른 PC에서 만든/수정한 대화를 로컬로 끌어온다.
+            // RefreshChatSessionsAsync 앞에 배치해 병합분이 사이드바에 즉시 보이도록 한다.
+            try { await _sessionSync.PullMergeAsync().ConfigureAwait(true); } catch { /* graceful */ }
         }
 
         // C — populate the sidebar chat list + project groups from local history.
@@ -658,6 +665,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
         await _chatHistory.DeleteAsync(summary.Id).ConfigureAwait(false);
 
+        // 서버에서도 삭제(fire-and-forget) — 다른 PC에서 다시 동기화되지 않도록. 실패는 무시(graceful).
+        _ = _sessionSync.DeleteAsync(summary.Id);
+
         if (wasActive)
         {
             await UiInvokeAsync(() =>
@@ -748,6 +758,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         try
         {
             await _chatHistory.SaveAsync(record).ConfigureAwait(false);
+
+            // 서버 동기화로 push(fire-and-forget) — 여러 PC에서 대화를 공유한다. 실패는 무시(graceful).
+            _ = _sessionSync.PushAsync(record);
         }
         catch
         {
@@ -946,36 +959,33 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                         break;
 
                     case AgentErrorKind.RateLimited:
-                        // 429 토큰 쿼터/세션 캡 초과 — message 그대로 표시(어느 한도·리셋시각 포함), 로그아웃 금지.
+                        // 429 토큰 쿼터/세션 캡 초과 — 친화 문구로 안내(서버 원문 비노출), 로그아웃 금지.
                         StatusText = "사용 한도 초과";
                         Transcript.Add(new SystemNoticeViewModel
                         {
-                            Text = string.IsNullOrWhiteSpace(err.Message)
-                                ? "사용 한도를 초과했습니다. 잠시 후 다시 시도하세요."
-                                : $"⚠ 사용 한도 초과 — {err.Message}"
+                            Text = "⚠ " + UserErrorMessages.ForAgentError(err.Code, err.Message)
                         });
                         _ = RefreshQuotaAsync();   // 잔여량 즉시 갱신
                         break;
 
                     case AgentErrorKind.Forbidden:
-                        // 403 권한 부족 — 안내만, 로그아웃 금지.
+                        // 403 권한 부족 — 친화 문구 안내, 로그아웃 금지.
                         StatusText = "권한 없음";
                         Transcript.Add(new SystemNoticeViewModel
                         {
-                            Text = string.IsNullOrWhiteSpace(err.Message)
-                                ? "권한이 없습니다."
-                                : $"권한이 없습니다: {err.Message}"
+                            Text = UserErrorMessages.ForAgentError(err.Code, err.Message)
                         });
                         break;
 
                     default:
-                        // 400/404/500/502/기타 — 오류 메시지 표시, 로그아웃 금지.
+                        // 400/404/500/502/기타 — 친화 문구만 표시(서버 원문 비노출), 로그아웃 금지.
+                        var friendly = UserErrorMessages.ForAgentError(err.Code, err.Message);
                         HasError = true;
                         ErrorTitle = "오류";
                         PrimaryActionText = "다시 시도";
-                        ErrorMessage = err.Message;
+                        ErrorMessage = friendly;
                         StatusText = "오류";
-                        Transcript.Add(new SystemNoticeViewModel { Text = $"오류 [{err.Code}]: {err.Message}" });
+                        Transcript.Add(new SystemNoticeViewModel { Text = friendly });
                         break;
                 }
                 break;

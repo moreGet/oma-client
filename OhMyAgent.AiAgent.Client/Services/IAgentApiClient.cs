@@ -59,4 +59,18 @@ public interface IAgentApiClient
 
     /// <summary>DELETE /api/v1/projects/{remoteProjectId}/conversations/{remoteConversationId} — 원격 대화 삭제. 미지원/오프라인/404는 graceful no-op.</summary>
     Task DeleteRemoteConversationAsync(string remoteProjectId, string remoteConversationId, CancellationToken ct = default);
+
+    // ── 대화 세션 서버 동기화(여러 PC 공유). 미구현 서버(404/501)/오프라인/403은 전부 graceful. ──
+
+    /// <summary>GET /api/v1/agent/sessions — 세션 요약 목록. 200→Sessions, 오류/오프라인→null(graceful).</summary>
+    Task<IReadOnlyList<RemoteSessionSummary>?> ListRemoteSessionsAsync(CancellationToken ct = default);
+
+    /// <summary>GET /api/v1/agent/sessions/{id} — 세션 전체. 200→객체, 404/오류/오프라인→null(graceful).</summary>
+    Task<RemoteSession?> GetRemoteSessionAsync(string id, CancellationToken ct = default);
+
+    /// <summary>PUT /api/v1/agent/sessions/{id} — upsert. body {title,data}. 2xx→true, 403/오류/오프라인→false(예외 없음).</summary>
+    Task<bool> PutRemoteSessionAsync(string id, string title, JsonElement data, CancellationToken ct = default);
+
+    /// <summary>DELETE /api/v1/agent/sessions/{id} — 삭제(204). 미지원/오프라인/404는 graceful no-op.</summary>
+    Task DeleteRemoteSessionAsync(string id, CancellationToken ct = default);
 }
