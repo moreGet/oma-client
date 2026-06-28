@@ -1,4 +1,5 @@
 <Window x:Class="OhMyAgent.AiAgent.Client.MainWindow"
+        x:Name="Root"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -45,8 +46,13 @@
     </Window.Resources>
 
     <Grid>
+        <!-- 전체 UI 배율(접근성): 루트 LayoutTransform 으로 폰트·아이콘·여백 균일 확대 -->
+        <Grid.LayoutTransform>
+            <ScaleTransform ScaleX="{Binding UiScale}" ScaleY="{Binding UiScale}"/>
+        </Grid.LayoutTransform>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260"/>  <!-- 사이드바 -->
+            <!-- 사이드바: 접힘 시 폭 0 (BoolToGridLength, 펼침 폭 260) -->
+            <ColumnDefinition Width="{Binding IsSidebarCollapsed, Converter={StaticResource BoolToGridLength}, ConverterParameter=260}"/>
             <ColumnDefinition Width="*"/>    <!-- 메인 영역 -->
         </Grid.ColumnDefinitions>
 
@@ -226,15 +232,39 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- 하단 설정 -->
-                <Button Grid.Row="2" Style="{StaticResource SidebarItemButton}"
-                        Click="MenuItem_HotkeySettings_Click" ToolTip="설정">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                   FontSize="{StaticResource FontSizeSubtitle}" Width="24" VerticalAlignment="Center"/>
-                        <TextBlock Text="설정" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
+                <!-- 하단 메신저 + 설정 -->
+                <StackPanel Grid.Row="2">
+                    <!-- 메신저 진입(안읽음 배지). 토글은 code-behind → App.ToggleMessenger(). -->
+                    <Button Style="{StaticResource SidebarItemButton}" ToolTip="메신저"
+                            Click="MenuItem_Messenger_Click">
+                        <Grid>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE8BD;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           FontSize="{StaticResource FontSizeSubtitle}" Width="24" VerticalAlignment="Center"/>
+                                <TextBlock Text="메신저" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <!-- 안읽음 Pill 배지 (MainWindow code-behind 가 메신저 VM.TotalUnread 를 중계) -->
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    CornerRadius="{StaticResource RadiusPill}" Background="{StaticResource AccentBrush}"
+                                    MinWidth="18" Height="18" Padding="5,0"
+                                    Visibility="{Binding MessengerUnread, ElementName=Root,
+                                                 Converter={StaticResource UnreadCountToBadgeVisibility}}">
+                                <TextBlock Text="{Binding MessengerUnread, ElementName=Root}" Foreground="White"
+                                           FontSize="{StaticResource FontSizeMicro}" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </Button>
+
+                    <Button Style="{StaticResource SidebarItemButton}"
+                            Click="MenuItem_HotkeySettings_Click" ToolTip="설정">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       FontSize="{StaticResource FontSizeSubtitle}" Width="24" VerticalAlignment="Center"/>
+                            <TextBlock Text="설정" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -255,6 +285,11 @@
                 <Grid Margin="16,0">
                     <!-- 상태 표시 (좌): 연결 상태 점 + 상태문 + 승인 대기 배지 + 토큰 사용량 -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
+                        <!-- 사이드바 접기/펼치기 토글 (접혀도 항상 보이는 위치) -->
+                        <Button Command="{Binding ToggleSidebarCommand}" Style="{StaticResource CaptionButton}"
+                                Width="30" Height="28" Margin="0,0,8,0"
+                                Content="&#xE700;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                FontSize="{StaticResource FontSizeXSmall}" ToolTip="좌측 메뉴 접기/펼치기"/>
                         <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,8,0"
                                  Fill="{Binding IsConnected, Converter={StaticResource BoolToStatusBrush}}"
                                  ToolTip="{Binding StatusText}"/>
@@ -271,10 +306,20 @@
                                        FontSize="{StaticResource FontSizeXSmall}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </Border>
 
-                        <TextBlock Text="{Binding LastUsageText}" Foreground="{StaticResource TextMuted}"
-                                   FontSize="{StaticResource FontSizeXSmall}" VerticalAlignment="Center" Margin="12,0,0,0"
-                                   ToolTip="마지막 응답의 토큰 사용량 (입력/출력)"
-                                   Visibility="{Binding LastUsageText, Converter={StaticResource StringToVisibility}}"/>
+                        <!-- 토큰 사용량: 클릭 시 마지막 응답 ↔ 세션 누적 토큰 전환. Visibility 는 계속 LastUsageText 기준 -->
+                        <Button Command="{Binding ToggleUsageViewCommand}"
+                                Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
+                                VerticalAlignment="Center" Margin="12,0,0,0"
+                                ToolTip="클릭하여 마지막 응답 ↔ 세션 누적 토큰 전환"
+                                Visibility="{Binding LastUsageText, Converter={StaticResource StringToVisibility}}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <ContentPresenter/>
+                                </ControlTemplate>
+                            </Button.Template>
+                            <TextBlock Text="{Binding UsageDisplayText}" Foreground="{StaticResource TextMuted}"
+                                       FontSize="{StaticResource FontSizeXSmall}" VerticalAlignment="Center"/>
+                        </Button>
 
                         <!-- ── 토큰 쿼터 칩 + 팝업 (HasQuota 일 때만) ── -->
                         <Grid Margin="12,0,0,0" VerticalAlignment="Center"
@@ -332,13 +377,38 @@
                                         <Grid Margin="0,0,0,8">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/> <!-- 칩 표시 기준 선택 -->
+                                                <ColumnDefinition Width="Auto"/> <!-- 새로고침 -->
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0" Text="남은 사용량" FontWeight="SemiBold"
                                                        FontSize="{StaticResource FontSizeSmall}"
                                                        VerticalAlignment="Center"
                                                        Foreground="{StaticResource TextPrimary}"/>
-                                            <Button Grid.Column="1" Style="{StaticResource ComposerIconButton}"
+                                            <!-- 상단 칩에 표시할 기준 (자동/일/주/월) -->
+                                            <ComboBox Grid.Column="1" Margin="0,0,6,0"
+                                                      ItemsSource="{Binding QuotaChipWindowOptions}"
+                                                      SelectedItem="{Binding QuotaChipWindow, Mode=TwoWay}"
+                                                      MinWidth="74" VerticalAlignment="Center"
+                                                      ToolTip="상단 칩에 표시할 기준">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock VerticalAlignment="Center">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Text" Value="{Binding}"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding}" Value="auto"><Setter Property="Text" Value="자동"/></DataTrigger>
+                                                                        <DataTrigger Binding="{Binding}" Value="day"><Setter Property="Text" Value="일"/></DataTrigger>
+                                                                        <DataTrigger Binding="{Binding}" Value="week"><Setter Property="Text" Value="주"/></DataTrigger>
+                                                                        <DataTrigger Binding="{Binding}" Value="month"><Setter Property="Text" Value="월"/></DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                            <Button Grid.Column="2" Style="{StaticResource ComposerIconButton}"
                                                     Width="24" Height="24" FontSize="{StaticResource FontSizeBody}"
                                                     Content="&#xE72C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                     Command="{Binding RefreshQuotaCommand}"
@@ -362,7 +432,7 @@
                                                         <StackPanel Grid.Column="1">
                                                             <!-- 게이지 (비무제한) -->
                                                             <ProgressBar Height="6" Maximum="100"
-                                                                         Value="{Binding PercentUsed, Mode=OneWay}"
+                                                                         Value="{Binding PercentRemaining, Mode=OneWay}"
                                                                          Background="{StaticResource Surface3Bg}"
                                                                          BorderThickness="0"
                                                                          Visibility="{Binding IsUnlimited, Converter={StaticResource InverseBoolToVisibility}}">
@@ -417,6 +487,8 @@
                     <!-- 캡션 버튼 (우) -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <!-- 투명도 슬라이더 -->
+                        <TextBlock Text="투명도" VerticalAlignment="Center" Margin="0,0,6,0"
+                                   FontSize="{StaticResource FontSizeXSmall}" Foreground="{StaticResource TextMuted}"/>
                         <Slider Minimum="0.3" Maximum="1.0" Value="{Binding WindowOpacity, Mode=TwoWay}"
                                 Width="80" Height="20" VerticalAlignment="Center" Margin="0,0,12,0"
                                 SmallChange="0.05" LargeChange="0.1" ToolTip="창 투명도"/>
@@ -695,6 +767,29 @@
                                       ItemTemplate="{StaticResource PermissionModeItemTemplate}"
                                       IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}"
                                       ToolTip="도구 실행 권한 모드: 수동 승인 / 안전 작업 자동 / 전체 자동"/>
+
+                            <!-- 권한 모드 힌트 (현재 모드 설명). Column 2 는 기존 * 스페이서 자리 — 좌측 정렬로 스페이서 역할 겸함 -->
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="8,0,0,0"
+                                       HorizontalAlignment="Left"
+                                       FontSize="{StaticResource FontSizeXSmall}" Foreground="{StaticResource TextMuted}"
+                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="모든 도구 실행을 직접 승인"/>
+                                        <Setter Property="ToolTip" Value="모든 도구 실행을 직접 승인"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentPermissionMode}" Value="{x:Static models:PermissionMode.AutoSafe}">
+                                                <Setter Property="Text" Value="읽기 등 안전 작업만 자동, 위험 작업은 승인"/>
+                                                <Setter Property="ToolTip" Value="읽기 등 안전 작업만 자동, 위험 작업은 승인"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding CurrentPermissionMode}" Value="{x:Static models:PermissionMode.FullAuto}">
+                                                <Setter Property="Text" Value="모든 도구 자동 실행(승인 없음)"/>
+                                                <Setter Property="ToolTip" Value="모든 도구 자동 실행(승인 없음)"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
 
                             <!-- 모델 칩 (정적 표시) -->
                             <Border Grid.Column="3" Style="{StaticResource Chip}"

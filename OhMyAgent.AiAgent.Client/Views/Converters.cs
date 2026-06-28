@@ -3,8 +3,10 @@ using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
 using OhMyAgent.AiAgent.Client.Models;
+using OhMyAgent.AiAgent.Client.Models.Chat;
 using OhMyAgent.AiAgent.Client.ViewModels.Transcript;
 using Color = System.Windows.Media.Color;
+using HorizontalAlignment = System.Windows.HorizontalAlignment;
 
 namespace OhMyAgent.AiAgent.Client.Views;
 
@@ -176,6 +178,25 @@ public sealed class ToolRiskToTextConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>bool(접힘) =&gt; GridLength. true=0(접힘), false=ExpandedWidth(ConverterParameter 폭, 기본 260).</summary>
+public sealed class BoolToGridLengthConverter : IValueConverter
+{
+    public double ExpandedWidth { get; set; } = 260;
+
+    public object Convert(object value, Type t, object parameter, CultureInfo c)
+    {
+        bool collapsed = value is true;
+        if (collapsed) return new GridLength(0);
+        double w = ExpandedWidth;
+        if (parameter is string ps && double.TryParse(ps, NumberStyles.Any, CultureInfo.InvariantCulture, out var pv))
+            w = pv;
+        return new GridLength(w);
+    }
+
+    public object ConvertBack(object value, Type t, object parameter, CultureInfo c)
+        => System.Windows.Data.Binding.DoNothing;
+}
+
 /// <summary>double × parameter(fraction). 컨테이너 ActualWidth 에 곱해 반응형 MaxWidth 산출.</summary>
 public sealed class MultiplyConverter : IValueConverter
 {
@@ -186,6 +207,87 @@ public sealed class MultiplyConverter : IValueConverter
             return d * f;
         return double.PositiveInfinity; // 컨테이너 폭 미확정 시 제한 없음(잘림 방지).
     }
+
+    public object ConvertBack(object value, Type t, object p, CultureInfo c)
+        => throw new NotSupportedException();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Chat (사람↔사람 메신저) 전용 컨버터 — 설계서 §1
+//  기존 디자인 토큰 색상값과 동일한 RGB 만 사용(신규 색 정의 금지).
+// ══════════════════════════════════════════════════════════════════
+
+/// <summary>long(unix epoch 초) =&gt; 로컬 시각 표시 문자열. 오늘=시각만, 어제="어제", 그 외=날짜.</summary>
+[ValueConversion(typeof(long), typeof(string))]
+public sealed class UnixSecondsToLocalTimeConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object p, CultureInfo c)
+    {
+        if (value is not long secs || secs <= 0) return string.Empty;
+        var local = DateTimeOffset.FromUnixTimeSeconds(secs).ToLocalTime().DateTime;
+        var today = DateTime.Today;
+        if (local.Date == today)
+            return local.ToString("tt h:mm", c);        // 예: "오후 3:21"
+        if (local.Date == today.AddDays(-1))
+            return "어제";
+        if (local.Year == today.Year)
+            return local.ToString("M월 d일", c);         // 예: "6월 27일"
+        return local.ToString("yyyy.M.d", c);
+    }
+
+    public object ConvertBack(object value, Type t, object p, CultureInfo c)
+        => throw new NotSupportedException();
+}
+
+/// <summary>int(안읽음 수) &gt; 0 =&gt; Visible. (기존 CountToVisibility 와 동치 — 의미 명료화용 별칭.)</summary>
+[ValueConversion(typeof(int), typeof(Visibility))]
+public sealed class UnreadCountToBadgeVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object p, CultureInfo c)
+        => value is int n && n > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type t, object p, CultureInfo c)
+        => throw new NotSupportedException();
+}
+
+/// <summary><see cref="ChatConnectionState"/> =&gt; 상태 점 Brush(연결=green / 재연결·연결중=amber / 끊김=red).</summary>
+[ValueConversion(typeof(ChatConnectionState), typeof(SolidColorBrush))]
+public sealed class ChatConnectionStateToBrushConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object p, CultureInfo c)
+        => new SolidColorBrush(value is ChatConnectionState s
+            ? s switch
+            {
+                ChatConnectionState.Connected    => Color.FromRgb(0x34, 0xD3, 0x99), // ConnectedDot
+                ChatConnectionState.Connecting   => Color.FromRgb(0xFB, 0xBF, 0x24), // WarningBrush
+                ChatConnectionState.Reconnecting => Color.FromRgb(0xFB, 0xBF, 0x24), // WarningBrush
+                _                                => Color.FromRgb(0xFB, 0x71, 0x85), // ErrorDot
+            }
+            : Color.FromRgb(0xFB, 0x71, 0x85));
+
+    public object ConvertBack(object value, Type t, object p, CultureInfo c)
+        => throw new NotSupportedException();
+}
+
+/// <summary>bool(내 메시지) =&gt; HorizontalAlignment(true=Right / false=Left).</summary>
+[ValueConversion(typeof(bool), typeof(HorizontalAlignment))]
+public sealed class IsMineToAlignmentConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object p, CultureInfo c)
+        => value is true ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+
+    public object ConvertBack(object value, Type t, object p, CultureInfo c)
+        => throw new NotSupportedException();
+}
+
+/// <summary>bool(내 메시지) =&gt; 버블 Brush(true=UserBubble violet / false=AgentBubble surface).</summary>
+[ValueConversion(typeof(bool), typeof(SolidColorBrush))]
+public sealed class IsMineToBubbleBrushConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object p, CultureInfo c)
+        => new SolidColorBrush(value is true
+            ? Color.FromRgb(0x7C, 0x5C, 0xFF)  // UserBubble
+            : Color.FromRgb(0x1B, 0x1F, 0x2A)); // AgentBubble
 
     public object ConvertBack(object value, Type t, object p, CultureInfo c)
         => throw new NotSupportedException();

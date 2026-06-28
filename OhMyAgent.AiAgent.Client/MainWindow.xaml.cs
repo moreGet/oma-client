@@ -98,11 +98,45 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
-    // HWND 확보 후 글로벌 핫키 등록
+    // HWND 확보 후 글로벌 핫키 등록 + 메신저 안읽음 배지 중계 연결
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        ((App)Application.Current).RegisterMainWindowHwnd(this);
+        var app = (App)Application.Current;
+        app.RegisterMainWindowHwnd(this);
+        HookMessengerUnread(app);
+    }
+
+    // ── 실시간 메신저 진입점 + 안읽음 배지 중계 ──────────────────────────
+
+    /// <summary>사이드바 "메신저" 버튼 → App.ToggleMessenger()(최초 표시 시 Start 가드 포함).</summary>
+    private void MenuItem_Messenger_Click(object sender, RoutedEventArgs e)
+        => ((App)Application.Current).ToggleMessenger();
+
+    /// <summary>사이드바 안읽음 Pill 배지(메신저 VM.TotalUnread 중계). best-effort.</summary>
+    public static readonly DependencyProperty MessengerUnreadProperty =
+        DependencyProperty.Register(nameof(MessengerUnread), typeof(int), typeof(MainWindow),
+            new PropertyMetadata(0));
+
+    public int MessengerUnread
+    {
+        get => (int)GetValue(MessengerUnreadProperty);
+        set => SetValue(MessengerUnreadProperty, value);
+    }
+
+    /// <summary>메신저 VM 의 TotalUnread 변화를 MainWindow 의 MessengerUnread 로 중계(있을 때만).</summary>
+    private void HookMessengerUnread(App app)
+    {
+        var vm = app.ChatMessengerVm;
+        if (vm is null) return;
+
+        void Relay() => MessengerUnread = vm.TotalUnread;
+        vm.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(ViewModels.Chat.ChatMessengerViewModel.TotalUnread))
+                Dispatcher.BeginInvoke(new Action(Relay));
+        };
+        Relay();   // 초기값 동기화
     }
 
     private void MenuItem_HotkeySettings_Click(object sender, RoutedEventArgs e)

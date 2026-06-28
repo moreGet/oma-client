@@ -233,20 +233,23 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         }
     }
 
-    public async Task<UserProfile?> GetProfileAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Bearer GET → <typeparamref name="T"/> 역직렬화 공용 헬퍼. 비2xx(404 미구현/401/5xx)·오프라인·파싱 실패는
+    /// graceful null, 취소는 전파. 단순 GET 엔드포인트(프로필/버전/쿼터/도구정책/명령정책)가 공유한다.
+    /// 응답 envelope 처리가 다른 엔드포인트(models/projects 등)는 사용하지 않는다.
+    /// </summary>
+    private async Task<T?> GetGracefulAsync<T>(string path, CancellationToken ct) where T : class
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, ProfilePath);
+            using var req = new HttpRequestMessage(HttpMethod.Get, path);
             ApplyAuth(req);
             using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
-                return null;   // 401/404/기타 → graceful null
+                return null;
 
             await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            return await JsonSerializer
-                .DeserializeAsync<UserProfile>(stream, AgentJson.Options, ct)
-                .ConfigureAwait(false);
+            return await JsonSerializer.DeserializeAsync<T>(stream, AgentJson.Options, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -254,109 +257,24 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         }
         catch
         {
-            return null;   // 오프라인/파싱 실패 → graceful
+            return null;
         }
     }
 
-    public async Task<ClientVersionInfo?> GetClientVersionAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, VersionPath);
-            ApplyAuth(req);
-            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode)
-                return null;   // 404(미구현)/기타 → graceful null
+    public Task<UserProfile?> GetProfileAsync(CancellationToken ct = default)
+        => GetGracefulAsync<UserProfile>(ProfilePath, ct);
 
-            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            return await JsonSerializer
-                .DeserializeAsync<ClientVersionInfo>(stream, AgentJson.Options, ct)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            return null;   // 오프라인/파싱 실패 → graceful (예외 던지지 않음)
-        }
-    }
+    public Task<ClientVersionInfo?> GetClientVersionAsync(CancellationToken ct = default)
+        => GetGracefulAsync<ClientVersionInfo>(VersionPath, ct);
 
-    public async Task<QuotaResponse?> GetQuotaAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, QuotaPath);
-            ApplyAuth(req);
-            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode)
-                return null;   // 401/500/기타 → graceful null
+    public Task<QuotaResponse?> GetQuotaAsync(CancellationToken ct = default)
+        => GetGracefulAsync<QuotaResponse>(QuotaPath, ct);
 
-            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            return await JsonSerializer
-                .DeserializeAsync<QuotaResponse>(stream, AgentJson.Options, ct)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            return null;   // 오프라인/파싱 실패 → graceful (예외 던지지 않음)
-        }
-    }
+    public Task<ToolPolicy?> GetToolPolicyAsync(CancellationToken ct = default)
+        => GetGracefulAsync<ToolPolicy>(PolicyPath, ct);
 
-    public async Task<ToolPolicy?> GetToolPolicyAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, PolicyPath);
-            ApplyAuth(req);
-            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode)
-                return null;   // 404(미구현)/기타 → graceful null
-
-            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            return await JsonSerializer
-                .DeserializeAsync<ToolPolicy>(stream, AgentJson.Options, ct)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            return null;   // 오프라인/파싱 실패 → graceful (예외 던지지 않음)
-        }
-    }
-
-    public async Task<CommandSecurityPolicyResponse?> GetCommandSecurityPolicyAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, CommandPolicyPath);
-            ApplyAuth(req);
-            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode)
-                return null;   // 404(미구현)/기타 → graceful null (디폴트만 적용)
-
-            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            return await JsonSerializer
-                .DeserializeAsync<CommandSecurityPolicyResponse>(stream, AgentJson.Options, ct)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            return null;   // 오프라인/파싱 실패 → graceful
-        }
-    }
+    public Task<CommandSecurityPolicyResponse?> GetCommandSecurityPolicyAsync(CancellationToken ct = default)
+        => GetGracefulAsync<CommandSecurityPolicyResponse>(CommandPolicyPath, ct);
 
     public async Task<ToolAuthorization?> AuthorizeToolAsync(string tool, JsonElement arguments, CancellationToken ct = default)
     {

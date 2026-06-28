@@ -71,7 +71,27 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     [ObservableProperty] private PermissionMode _currentPermissionMode = PermissionMode.Manual;
     [ObservableProperty] private double _windowOpacity = 1.0;
     [ObservableProperty] private ApprovalRequestViewModel? _pendingApproval;
-    [ObservableProperty] private string _lastUsageText = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UsageDisplayText))]
+    private string _lastUsageText = string.Empty;
+
+    // ── Token usage display toggle (Feature 7) ─────────────────────────
+
+    /// <summary>세션 누적 총 토큰량(in+out). ObservableProperty 아님 — 표시 갱신은 UsageDisplayText로 발화.</summary>
+    private long _totalTokens;
+
+    /// <summary>true면 상단 토큰 표시를 세션 누적 총량으로, false면 마지막 응답 in/out으로.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UsageDisplayText))]
+    private bool _showTotalUsage;
+
+    /// <summary>상단 토큰 표시 — 기본은 마지막 응답 in/out, 클릭(ShowTotalUsage) 시 세션 누적 총량(천 단위).</summary>
+    public string UsageDisplayText => ShowTotalUsage ? $"총 {_totalTokens:N0} 토큰" : LastUsageText;
+
+    /// <summary>상단 토큰 표시를 in/out ↔ 세션 누적 총량으로 토글(텍스트 클릭이 바인딩).</summary>
+    [RelayCommand]
+    private void ToggleUsageView() => ShowTotalUsage = !ShowTotalUsage;
 
     // ── Phase D observable state ───────────────────────────────────────
 
@@ -102,6 +122,22 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
     /// <summary>가장 빡빡한 윈도우가 거의 소진(IsConstrained)이면 true → 칩 경고색.</summary>
     [ObservableProperty] private bool _quotaConstrained;
+
+    /// <summary>상단 쿼터 칩이 표시할 윈도우 선택. "auto"(가장 빡빡)|"day"|"week"|"month". 설정에 영속.</summary>
+    [ObservableProperty] private string _quotaChipWindow = "auto";
+
+    /// <summary>쿼터 칩 표시 기준 선택지(View 콤보 바인딩). 한글 라벨 매핑은 XAML이 담당.</summary>
+    public IReadOnlyList<string> QuotaChipWindowOptions { get; } = ["auto", "day", "week", "month"];
+
+    // ── Sidebar ────────────────────────────────────────────────────────
+
+    /// <summary>좌측 사이드바 접힘 상태. ToggleSidebarCommand로 토글, 설정에 영속(세션 간 유지).</summary>
+    [ObservableProperty] private bool _isSidebarCollapsed;
+
+    // ── UI scale (accessibility) ───────────────────────────────────────
+
+    /// <summary>UI 전체 배율(접근성). 메인창 루트 ScaleTransform이 바인딩. 변경은 설정창에서만 → SettingsChanged로 반영.</summary>
+    [ObservableProperty] private double _uiScale = 1.0;
 
     // ── Collections ────────────────────────────────────────────────────
 
@@ -181,6 +217,24 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         _ = _settings.UpdatePermissionModeAsync(value);
     }
 
+    partial void OnQuotaChipWindowChanged(string value)
+    {
+        if (_suppressPersist) return;
+        _ = _settings.UpdateQuotaChipWindowAsync(value);
+        // 목록 재조회 없이 이미 채워진 QuotaWindows 기준으로 칩만 갱신.
+        UpdateQuotaSummary();
+    }
+
+    partial void OnIsSidebarCollapsedChanged(bool value)
+    {
+        if (_suppressPersist) return;
+        _ = _settings.UpdateSidebarCollapsedAsync(value);
+    }
+
+    /// <summary>좌측 사이드바를 접거나 편다(상단바 햄버거 버튼이 바인딩).</summary>
+    [RelayCommand]
+    private void ToggleSidebar() => IsSidebarCollapsed = !IsSidebarCollapsed;
+
     // ── Initialization ─────────────────────────────────────────────────
 
     private void OnSettingsChanged(object? sender, AppSettings e) => SeedFromSettings();
@@ -208,6 +262,11 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
             CurrentPermissionMode = s.PermissionMode;
             WindowOpacity = s.Opacity;
+
+            // 상단바/사이드바/접근성 — 설정에서 복원(역기록 가드 구간).
+            QuotaChipWindow = s.QuotaChipWindow;
+            IsSidebarCollapsed = s.SidebarCollapsed;
+            UiScale = s.UiScale;
 
             // F — greeting from settings display name, falling back to the OS user name.
             var rawName = string.IsNullOrWhiteSpace(s.UserDisplayName) ? Environment.UserName : s.UserDisplayName;
@@ -348,27 +407,66 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         // 서버 순서(day→week→month) 유지하며 항목 VM 구성.
         var items = windows.Select(w => new QuotaWindowViewModel(w)).ToList();
 
-        // 가장 빡빡한 윈도우 = 비무제한 중 잔여율 최소. 전부 무제한이면 null.
-        var tightest = items
-            .Where(i => !i.IsUnlimited)
-            .OrderBy(i => i.PercentRemaining)
-            .FirstOrDefault();
-
-        var summary = tightest is null
-            ? "무제한"
-            : $"{tightest.Label} {tightest.PercentRemaining:0}%";
-        var constrained = tightest is { IsConstrained: true };
-
         await UiInvokeAsync(() =>
         {
             QuotaWindows.Clear();
             foreach (var item in items)
                 QuotaWindows.Add(item);
 
-            QuotaSummary = summary;
-            QuotaConstrained = constrained;
+            // 칩 요약/경고는 선택된 표시 기준(QuotaChipWindow)으로 산출.
+            UpdateQuotaSummary();
             HasQuota = true;
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 현재 <see cref="QuotaWindows"/>(이미 채워진 항목 VM)와 <see cref="QuotaChipWindow"/> 선택을
+    /// 근거로 상단 칩의 <see cref="QuotaSummary"/>·<see cref="QuotaConstrained"/>를 산출한다.
+    /// 네트워크 호출 없음 — UI 스레드(디스패처 또는 UI 컨텍스트)에서 호출돼야 한다.
+    /// - "auto": 비무제한 중 잔여율 최소(가장 빡빡)를 기준. 전부 무제한이면 "무제한".
+    /// - day/week/month: <see cref="QuotaWindowViewModel.Key"/>가 일치하는 윈도우를 기준.
+    ///   없으면 auto로 폴백. 무제한이면 "{라벨} 무제한", 아니면 "{라벨} {잔여율}%".
+    /// </summary>
+    private void UpdateQuotaSummary()
+    {
+        if (QuotaWindows.Count == 0)
+        {
+            QuotaSummary = string.Empty;
+            QuotaConstrained = false;
+            return;
+        }
+
+        var explicitWindow = !string.IsNullOrEmpty(QuotaChipWindow)
+            && !string.Equals(QuotaChipWindow, "auto", StringComparison.OrdinalIgnoreCase);
+
+        QuotaWindowViewModel? selected;
+        if (explicitWindow
+            && QuotaWindows.FirstOrDefault(w => string.Equals(w.Key, QuotaChipWindow, StringComparison.OrdinalIgnoreCase)) is { } picked)
+        {
+            // 명시 선택(day/week/month) — 해당 윈도우가 무제한이어도 그 라벨을 보여준다.
+            selected = picked;
+        }
+        else
+        {
+            // auto(또는 선택값 부재로 폴백) — 비무제한 중 잔여율 최소 = 가장 빡빡한 윈도우.
+            selected = QuotaWindows
+                .Where(w => !w.IsUnlimited)
+                .OrderBy(w => w.PercentRemaining)
+                .FirstOrDefault();
+        }
+
+        if (selected is null)
+        {
+            // 전부 무제한.
+            QuotaSummary = "무제한";
+            QuotaConstrained = false;
+            return;
+        }
+
+        QuotaSummary = selected.IsUnlimited
+            ? $"{selected.Label} 무제한"
+            : $"{selected.Label} {selected.PercentRemaining:0}%";
+        QuotaConstrained = selected.IsConstrained;
     }
 
 
@@ -483,6 +581,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         Attachments.Clear();
         _permissions.ClearSessionRules();
         LastUsageText = string.Empty;
+        ResetUsageAccumulation();
         PendingApproval = null;
         IsBusy = false;
         UpdateNotice = string.Empty;
@@ -576,6 +675,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
             HasError = false;
             ErrorMessage = string.Empty;
             LastUsageText = string.Empty;
+            ResetUsageAccumulation();
             StatusText = IsConnected ? "Connected" : "Disconnected";
         }).ConfigureAwait(false);
 
@@ -625,6 +725,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 Attachments.Clear();
                 _permissions.ClearSessionRules();
                 LastUsageText = string.Empty;
+                ResetUsageAccumulation();
             }).ConfigureAwait(false);
         }
 
@@ -787,6 +888,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         HasError = false;
         ErrorMessage = string.Empty;
         LastUsageText = string.Empty;
+        ResetUsageAccumulation();
         StatusText = IsConnected ? "Connected" : "Disconnected";
 
         // Map persisted messages back onto transcript cards. Tool messages pair
@@ -923,7 +1025,12 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 }
                 StatusText = "완료";
                 if (done.LastUsage is { } usage)
+                {
                     LastUsageText = $"in:{usage.PromptTokens} out:{usage.CompletionTokens}";
+                    // Feature 7 — 세션 누적 총 토큰량 갱신(클릭 토글 표시용).
+                    _totalTokens += usage.PromptTokens + usage.CompletionTokens;
+                    OnPropertyChanged(nameof(UsageDisplayText));
+                }
                 break;
 
             case AgentError err:
@@ -972,6 +1079,17 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 }
                 break;
         }
+    }
+
+    /// <summary>
+    /// Feature 7 — 세션 초기화(새 채팅·로그아웃·세션 복원/삭제) 시 토큰 표시 상태를 리셋한다.
+    /// 누적 총량을 0으로 되돌리고 in/out 표시 모드로 복귀시킨다. UI 스레드에서 호출.
+    /// </summary>
+    private void ResetUsageAccumulation()
+    {
+        _totalTokens = 0;
+        ShowTotalUsage = false;          // NotifyPropertyChangedFor가 UsageDisplayText 발화
+        OnPropertyChanged(nameof(UsageDisplayText));
     }
 
     private AssistantTurnViewModel EnsureAssistant()
@@ -1028,19 +1146,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Marshals an action onto the WPF UI thread. The orchestrator stream runs
-    /// off the UI thread, so every Transcript / property mutation flows through here.
-    /// </summary>
-    private static Task UiInvokeAsync(Action action)
-    {
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess())
-        {
-            action();
-            return Task.CompletedTask;
-        }
-
-        return dispatcher.InvokeAsync(action).Task;
-    }
+    /// <summary>UI 스레드 마샬링(공용 <see cref="UiDispatch"/> 위임). 오케스트레이터 스트림이 UI 밖에서 돌므로 Transcript/속성 변경이 이곳을 거친다.</summary>
+    private static Task UiInvokeAsync(Action action) => UiDispatch.InvokeAsync(action);
 }

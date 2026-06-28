@@ -65,6 +65,11 @@ public partial class SettingsViewModel : ObservableObject
     // ── Iteration budget ───────────────────────────────────────────────
     [ObservableProperty] private int _maxIterations = 25;
 
+    // ── UI scale (accessibility) ───────────────────────────────────────
+
+    /// <summary>UI 전체 배율(0.9~1.6). 슬라이더 바인딩 → 변경 시 즉시 영속. 설정창 미리보기도 이 값에 바인딩.</summary>
+    [ObservableProperty] private double _uiScale = 1.0;
+
     // ── Server config ──────────────────────────────────────────────────
     [ObservableProperty] private string _serverBaseUrl = "http://localhost:8080";
     [ObservableProperty] private string _authToken = string.Empty;
@@ -100,6 +105,7 @@ public partial class SettingsViewModel : ObservableObject
         ServerBaseUrl = c.ServerBaseUrl;
         AuthToken = c.AuthToken;
         ModelId = c.ModelId;
+        UiScale = c.UiScale;
 
         // 다중 루트 워크스페이스 초기화 (설정에서 복원).
         LoadWorkspaces(c.Workspaces);
@@ -209,6 +215,10 @@ public partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowFullAutoWarning));
         _ = _settings.UpdatePermissionModeAsync(value);
     }
+
+    // 즉시 영속(다른 필드와 동일 패턴 — 별도 Seed 역기록 가드 없음). 서비스가 0.9~1.6로 클램프한다.
+    partial void OnUiScaleChanged(double value)
+        => _ = _settings.UpdateUiScaleAsync(value);
 
     // ── Server config ──────────────────────────────────────────────────
 
@@ -367,15 +377,5 @@ public partial class SettingsViewModel : ObservableObject
 
     // ── Helpers ────────────────────────────────────────────────────────
 
-    private static Task UiInvokeAsync(Action action)
-    {
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess())
-        {
-            action();
-            return Task.CompletedTask;
-        }
-
-        return dispatcher.InvokeAsync(action).Task;
-    }
+    private static Task UiInvokeAsync(Action action) => UiDispatch.InvokeAsync(action);
 }

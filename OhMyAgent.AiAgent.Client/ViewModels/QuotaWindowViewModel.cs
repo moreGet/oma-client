@@ -10,6 +10,7 @@ public sealed class QuotaWindowViewModel
 {
     public QuotaWindowViewModel(QuotaWindow window)
     {
+        Key = window.Window;
         Label = window.Window switch
         {
             "day"   => "일",
@@ -28,6 +29,9 @@ public sealed class QuotaWindowViewModel
 
         IsConstrained = !window.Unlimited && window.PercentRemaining <= 10;
     }
+
+    /// <summary>원본 window 키: "day"|"week"|"month" (칩 선택이 윈도우를 식별하는 데 사용).</summary>
+    public string Key { get; }
 
     /// <summary>윈도우 한글 라벨: day="일", week="주", month="월".</summary>
     public string Label { get; }

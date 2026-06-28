@@ -16,7 +16,7 @@
          해시를 못 구해도(폐쇄망/비-git) ContinueOnError 로 빌드 비파괴. -->
     <Target Name="SetGitHash" BeforeTargets="GetAssemblyVersion;CoreCompile" Condition="'$(SourceRevisionId)' == ''">
         <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" ContinueOnError="true" StandardOutputImportance="low">
-            <Output TaskParameter="ConsoleOutput" PropertyName="_GitHash"/>
+            <Output TaskParameter="ConsoleOutput" PropertyName="_GitHash" />
         </Exec>
         <PropertyGroup>
             <SourceRevisionId Condition="'$(_GitHash)' != ''">$(_GitHash)</SourceRevisionId>
@@ -25,7 +25,9 @@
 
     <ItemGroup>
         <!-- MVVM 소스 생성기 -->
+        <PackageReference Include="ClosedXML" Version="0.105.0" />
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+        <PackageReference Include="PdfPig" Version="0.1.15" />
         <!-- JSON 직렬화는 BCL System.Text.Json 사용 (별도 패키지 불필요) -->
         <!-- System.Drawing 은 UseWindowsForms=true 가 제공하므로 패키지 참조 제거(NU1510) -->
     </ItemGroup>

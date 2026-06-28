@@ -17,5 +17,13 @@
     <views:ToolCallStatusToBrushConverter   x:Key="ToolCallStatusToBrush"/>
     <views:ToolCallStatusToTextConverter    x:Key="ToolCallStatusToText"/>
     <views:MultiplyConverter                x:Key="Multiply"/>
+    <views:BoolToGridLengthConverter        x:Key="BoolToGridLength"/>
+
+    <!-- ── Chat (사람↔사람 메신저) · 설계서 §1 ─────────────────────── -->
+    <views:UnixSecondsToLocalTimeConverter     x:Key="UnixSecondsToLocalTime"/>
+    <views:UnreadCountToBadgeVisibilityConverter x:Key="UnreadCountToBadgeVisibility"/>
+    <views:ChatConnectionStateToBrushConverter x:Key="ChatConnectionStateToBrush"/>
+    <views:IsMineToAlignmentConverter          x:Key="IsMineToAlignment"/>
+    <views:IsMineToBubbleBrushConverter        x:Key="IsMineToBubbleBrush"/>
 
 </ResourceDictionary>

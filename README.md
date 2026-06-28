@@ -12,7 +12,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 ## 핵심 특징
 
 - **에이전트 루프**: `질의 → 도구 호출 → 실행 → 결과 반환 → 반복`을 `end_turn` 까지 자동 수행
-- **20개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷까지 (아래 표 참조)
+- **26개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷, 사무직 문서·데이터(CSV·Excel·PDF·Word)까지 (아래 표 참조)
 - **멀티루트 워크스페이스**: 최대 **10개** 작업 디렉토리를 동시 등록, **폴더별 접근 허용/차단 토글**. 모든 파일/셸 작업이 활성 루트 기준으로 resolve되고 경로 탈출은 차단
 - **프로젝트(대화 묶음)**: 여러 대화 세션을 상위 컨테이너로 묶어 관리. **로컬 우선 저장 + 선택적 서버 동기화**, 사이드바에서 대화를 **드래그앤드롭**으로 프로젝트에 분류
 - **권한 게이트**: Manual / Auto-Safe / Full-Auto 3단계. 위험 작업은 실행 전 사용자 승인
@@ -21,6 +21,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 - **토큰 쿼터**: 일/주/월 사용량·잔여를 상단바 칩 + 팝업 게이지로 표시(`GET /api/v1/me/quota`), **새로고침 버튼** 제공. 한도 초과(429)는 안내만 하고 로그아웃하지 않음
 - **파일 첨부**: 컴포저에 첨부한 파일을 base64로 인코딩해 메시지에 실어 전송(파일당 ≤10MiB, `messages[].attachments[]`)
 - **서버 세션 동기화**(선택): 대화 세션을 서버에 업서트/병합해 **여러 PC에서 공유**(`/api/v1/agent/sessions`, `updated_at` 최신 우선)
+- **실시간 채팅(메신저)**: LLM 채팅과 **별개**인 사람↔사람 메신저. 단체/1:1 방, 송수신·수정·삭제, 읽음·안읽음 배지, 타이핑, 온라인 상태(presence), 멘션, 첨부, 멤버 관리를 **WebSocket**(`/api/v1/chat/ws`, 끊기면 지수 backoff 자동 재연결+이력 재동기화)+REST(`/api/v1/chat/*`)로 실시간 반영. 트레이/사이드바에서 별도 메신저 창으로 진입 ([상세](docs/realtime-chat.md))
 - **서버 제어형 도구/보안**(선택, 2중 안전): 사용 가능 도구를 서버가 통제(`GET /api/v1/tools/policy`, cached/realtime) — 비활성 도구는 모델에 **노출조차 안 됨**. 위험 명령 차단 패턴도 **클라 디폴트 ∪ 서버 추가**(`GET /api/v1/security/command-policy`)로 운영하며, 서버 값이 없으면 클라 내장 디폴트만 적용
 - **버전 관리 / 업데이트 알림**: SemVer + 빌드 git 해시. 서버 버전 점검으로 새/필수 버전 배너 안내(`GET /api/v1/client/version`)
 - **사용자 친화 에러**: 서버 원문(영문/기술 문구) 대신 상태 코드 기준 한국어 안내로 변환. **401에서만 재로그인**, 403/429/404/5xx는 메시지만(로그아웃 없음)
@@ -46,8 +47,9 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 │    IChatHistoryService  채팅 세션 로컬 영속                        │
 │    ISessionSyncService  대화 세션 서버 동기화(여러 PC 공유, 선택)   │
 │    IProjectService      프로젝트(대화 묶음) 로컬 + 선택적 서버 동기화 │
+│    IChatRealtimeService 실시간 메신저 파사드(REST+WS, dedup·읽음·재동기화)│
 └───────────────────────────────┬──────────────────────────────────┘
-                                 │ HTTP + SSE (text/event-stream)
+                                 │ HTTP + SSE (text/event-stream) + WebSocket(/chat/ws)
                                  ▼
                   사내 AI API 서버 (OhMyAgent.AiAgent.Server)
                   활성 LLM Provider(OpenAI / Gemini / Claude / Ollama)로 중계
@@ -59,7 +61,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 
 ---
 
-## 내장 도구 (20)
+## 내장 도구 (26)
 
 | 도구 | 위험도 | 설명 |
 |------|--------|------|
@@ -73,10 +75,14 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 | `start_process` / `kill_process` | Execute / Destructive | 프로세스 시작 · 종료 |
 | `http_fetch` | Execute | 사내망 HTTP 요청(폐쇄망 내부 자원 접근) |
 | `screenshot` | ReadOnly | 화면 캡처 → PNG base64(비전 모델 입력용) |
+| `read_csv` / `write_csv` | ReadOnly / Write | CSV 읽기·쓰기(RFC4180 이스케이프, BCL) |
+| `read_excel` / `write_excel` | ReadOnly / Write | .xlsx 읽기 · 생성·추가(ClosedXML) |
+| `read_pdf` | ReadOnly | PDF 페이지별 텍스트 추출(PdfPig) |
+| `read_document` | ReadOnly | Word .docx 본문 추출(BCL) |
 
 > 도구 실행 결정 순서: **모델 요청 → 서버 도구 정책 게이트 → 로컬 권한 게이트(승인 카드) → 샌드박스(경로 검증) → 실행**.
 > Destructive / Write / Execute 도구는 권한 모드에 따라 **실행 전 승인 카드**를 띄웁니다.
-> 모든 도구는 BCL/WPF/WinForms 내장 기능만 사용하며 추가 NuGet 의존성이 없습니다.
+> 코어 도구는 BCL/WPF/WinForms 내장 기능만 사용하며, 문서·데이터 도구만 ClosedXML(Excel)·PdfPig(PDF) — 둘 다 순수 관리코드로 폐쇄망 적합 — 를 추가로 사용합니다.
 
 ---
 
@@ -139,6 +145,8 @@ dotnet run --project OhMyAgent.AiAgent.Client
 | `GET/PUT/DELETE` | `/api/v1/agent/sessions[/{id}]` | 대화 세션 서버 동기화(목록/단건/업서트/삭제) — *선택* |
 | `GET/POST` | `/api/v1/projects` | 프로젝트 목록 조회 / 업서트(`client_id` 기준) — *선택적 동기화* |
 | `POST/DELETE` | `/api/v1/projects/{id}/conversations[/{cid}]` | 대화 업서트(push) / 삭제 — *선택적 동기화* |
+| `GET/POST/PATCH/DELETE` | `/api/v1/chat/rooms[…]`, `/chat/unread`, `/chat/mentions`, `/chat/attachments[…]` | **실시간 메신저** REST — 방/메시지/읽음/멤버/presence/멘션/첨부 |
+| `GET` (WS) | `/api/v1/chat/ws` | **메신저 WebSocket** — message/typing/read/presence/member 이벤트(자동 재연결) |
 
 > 프로필·쿼터·버전·도구정책·세션/프로젝트 동기화 엔드포인트는 모두 **graceful fallback** 으로 다룹니다.
 > 미구현(404/501)·오프라인이면 해당 UI만 비활성(프로필은 OS 사용자명 폴백, 쿼터 칩 숨김, 정책 없음=전체 허용,
@@ -191,17 +199,22 @@ OhMyAgent.AiAgent.Client/
 ├── App.xaml(.cs)         컴포지션 루트 · 트레이 · 핫키 · 통합 로그인 게이트(ReturnToLogin)
 ├── MainWindow.xaml(.cs)  메인 셸 · 프로젝트 사이드바(드래그앤드롭 분류) · 쿼터 칩 · 업데이트 배너
 ├── Models/               AppSettings · WorkspaceFolder · ProjectRecord/Summary · UserProfile ·
-│                         QuotaInfo · ClientVersionInfo · ChatSessionRecord ·
-│                         Agent DTO(AgentMessage/ToolCall/Usage/RemoteProject/RemoteSession/ToolPolicy/Attachment …)
+│   │                     QuotaInfo · ClientVersionInfo · ChatSessionRecord ·
+│   │                     Agent DTO(AgentMessage/ToolCall/Usage/RemoteProject/RemoteSession/ToolPolicy/Attachment …)
+│   └── Chat/             메신저 DTO(ChatDtos) · WS envelope(+ChatJson) · ChatEnums
 ├── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry · PermissionService ·
 │   │                     ToolPolicyService · ProjectService · ChatHistoryService · SessionSyncService ·
 │   │                     AppVersion · UserErrorMessages · FileAttachmentService · 워크스페이스/보안
-│   └── Tools/            20개 ITool 구현
+│   ├── Tools/            26개 ITool 구현
+│   └── Chat/             IChatApiClient(REST) · IChatSocketClient(WS) · IChatRealtimeService(파사드) ·
+│                         ChatMessengerCoordinator · JwtIdentity(식별자) · ChatApiException
 ├── ViewModels/           AgentSessionViewModel · SettingsViewModel · ProjectsViewModel ·
-│                         WorkspaceFolderViewModel · QuotaWindowViewModel · LoginViewModel · IntegrityViewModel
+│   │                     WorkspaceFolderViewModel · QuotaWindowViewModel · LoginViewModel · IntegrityViewModel
+│   └── Chat/             ChatMessengerViewModel(셸) · ChatRooms/ChatRoom/ChatMessage · 멤버/멘션 VM
 ├── Views/                LoginWindow · ChatOnlyWindow · SettingsWindow · IntegrityWindow
+│   └── Chat/             ChatMessengerWindow · ChatRooms/ChatRoomView · RoomMembers/MentionFeed · Controls(말풍선/멘션)
 ├── Resources/            Colors · Tokens(디자인 토큰) · Styles · Converters · TranscriptTemplates
-└── docs/                 아키텍처·API 계약 · tool-system(도구 설계) ·
+└── docs/                 아키텍처·API 계약 · tool-system(도구 설계) · realtime-chat(메신저) ·
                           server-*.md(프로필/쿼터/버전/도구정책/명령보안 요구) ·
                           design-tokens · api-conformance-report · CHANGELOG · 발표자료
 ```

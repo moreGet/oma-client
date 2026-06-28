@@ -192,6 +192,32 @@ public class SettingsService : ISettingsService
         RaiseSettingsChanged();
     }
 
+    public async Task UpdateQuotaChipWindowAsync(string window)
+    {
+        var normalized = (window ?? "").Trim().ToLowerInvariant();
+        Current.QuotaChipWindow = normalized switch
+        {
+            "auto" or "day" or "week" or "month" => normalized,
+            _                                    => "auto",
+        };
+        await SaveAsync().ConfigureAwait(false);
+        RaiseSettingsChanged();
+    }
+
+    public async Task UpdateSidebarCollapsedAsync(bool collapsed)
+    {
+        Current.SidebarCollapsed = collapsed;
+        await SaveAsync().ConfigureAwait(false);
+        RaiseSettingsChanged();
+    }
+
+    public async Task UpdateUiScaleAsync(double scale)
+    {
+        Current.UiScale = Math.Clamp(scale, 0.9, 1.6);
+        await SaveAsync().ConfigureAwait(false);
+        RaiseSettingsChanged();
+    }
+
     private void RaiseSettingsChanged()
     {
         var handler = SettingsChanged;

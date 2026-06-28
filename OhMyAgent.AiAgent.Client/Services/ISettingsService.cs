@@ -26,4 +26,9 @@ public interface ISettingsService
 
     // Phase D
     Task UpdateUserDisplayNameAsync(string name);                                    // F
+
+    // UX 6종 — 상단바/사이드바/접근성
+    Task UpdateQuotaChipWindowAsync(string window);   // 소문자화 후 {auto,day,week,month} 외면 "auto"로 보정
+    Task UpdateSidebarCollapsedAsync(bool collapsed);
+    Task UpdateUiScaleAsync(double scale);            // Math.Clamp(scale, 0.9, 1.6)
 }

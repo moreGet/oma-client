@@ -25,6 +25,9 @@
 | `GET`  | `/api/v1/health` | 연결/헬스 체크 | ✅ |
 | `GET`  | `/api/v1/models` | 사용 가능한 모델 목록 | 선택 |
 | `POST` | `/api/v1/agent/chat` | **에이전트 대화/도구호출 (핵심)** | ✅ |
+| `*` | `/api/v1/chat/*`, `/api/v1/chat/ws` | **실시간 메신저(사람↔사람)** — 본 문서 범위 밖, [`realtime-chat.md`](realtime-chat.md) 참조 | 선택 |
+
+> 이 문서는 **LLM 에이전트** 계약(`/agent/chat`)을 다룬다. `/agent/chat` 과 무관한 **사람↔사람 실시간 채팅(메신저)** 의 REST/WebSocket 계약·클라 구조·엣지케이스는 [`docs/realtime-chat.md`](realtime-chat.md) 에 별도 정리되어 있다(라이브 서버 전수 검증 완료).
 
 ---
 

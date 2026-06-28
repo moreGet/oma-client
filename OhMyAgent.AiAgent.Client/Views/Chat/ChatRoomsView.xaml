@@ -1,0 +1,167 @@
+<UserControl x:Class="OhMyAgent.AiAgent.Client.Views.Chat.ChatRoomsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:OhMyAgent.AiAgent.Client.ViewModels.Chat"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:ChatRoomsViewModel, IsDesignTimeCreatable=False}"
+             d:DesignWidth="280" d:DesignHeight="560"
+             Background="{StaticResource SurfaceBg}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- 헤더 -->
+            <RowDefinition Height="*"/>     <!-- 방 목록 -->
+        </Grid.RowDefinitions>
+
+        <!-- ── 헤더: 제목 + 새 대화 ──────────────────────────────────── -->
+        <Grid Grid.Row="0" Margin="14,14,14,8">
+            <TextBlock Text="대화"
+                       Foreground="{StaticResource TextPrimary}"
+                       FontFamily="{StaticResource AppFont}"
+                       FontSize="{StaticResource FontSizeTitle}"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+
+            <!-- + 새 대화: 1:1 / group 선택 -->
+            <Button HorizontalAlignment="Right"
+                    Style="{StaticResource ComposerIconButton}"
+                    ToolTip="새 대화">
+                <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                           FontSize="{StaticResource FontSizeBodyLarge}"/>
+                <Button.ContextMenu>
+                    <ContextMenu>
+                        <!-- 입력 다이얼로그(member UUID/방이름)는 code-behind 가 띄운 뒤
+                             CreateDirectCommand(userId) / CreateGroupCommand((name,members)) 를 실행. -->
+                        <MenuItem Header="1:1 대화" Click="NewDirect_Click"/>
+                        <MenuItem Header="그룹 대화" Click="NewGroup_Click"/>
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
+        </Grid>
+
+        <!-- ── 방 목록 ──────────────────────────────────────────────── -->
+        <Grid Grid.Row="1">
+            <ListBox ItemsSource="{Binding Rooms}"
+                     SelectedItem="{Binding SelectedRoom, Mode=TwoWay}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     HorizontalContentAlignment="Stretch">
+                <ListBox.Resources>
+                    <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/>
+                </ListBox.Resources>
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Margin" Value="6,1"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="Root"
+                                            Background="Transparent"
+                                            CornerRadius="{StaticResource RadiusLg}"
+                                            Padding="8,7">
+                                        <ContentPresenter/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface2Bg}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface2Bg}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:ChatRoomListItemViewModel}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>  <!-- 아바타 -->
+                                <ColumnDefinition Width="*"/>     <!-- 이름/미리보기 -->
+                                <ColumnDefinition Width="Auto"/>  <!-- 시각/배지 -->
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 이니셜 아바타 -->
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="20"
+                                    Background="{StaticResource AccentSoftBrush}"
+                                    Margin="0,0,10,0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding DisplayName}"
+                                           Foreground="White"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="{StaticResource FontSizeBodyLarge}"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <!-- 첫 글자만 보이도록 폭 제한 -->
+                                    <TextBlock.Resources>
+                                        <Style TargetType="TextBlock"/>
+                                    </TextBlock.Resources>
+                                </TextBlock>
+                            </Border>
+
+                            <!-- 이름 + 미리보기 -->
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding DisplayName}"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="{StaticResource FontSizeBody}"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding LastPreview}"
+                                           Foreground="{StaticResource TextMuted}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="{StaticResource FontSizeSmall}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+
+                            <!-- 시각 + 안읽음 배지 -->
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center"
+                                        HorizontalAlignment="Right" Margin="8,0,0,0">
+                                <TextBlock Text="{Binding LastActivityAt, Converter={StaticResource UnixSecondsToLocalTime}}"
+                                           Foreground="{StaticResource TextMuted}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="{StaticResource FontSizeMicro}"
+                                           HorizontalAlignment="Right"/>
+                                <Border CornerRadius="{StaticResource RadiusPill}"
+                                        Background="{StaticResource AccentBrush}"
+                                        MinWidth="20" Height="20" Padding="6,0"
+                                        Margin="0,4,0,0"
+                                        HorizontalAlignment="Right"
+                                        Visibility="{Binding UnreadCount, Converter={StaticResource UnreadCountToBadgeVisibility}}">
+                                    <TextBlock Text="{Binding UnreadCount}"
+                                               Foreground="White"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="{StaticResource FontSizeMicro}"
+                                               FontWeight="SemiBold"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- 로딩 -->
+            <ProgressBar IsIndeterminate="True" Height="3" VerticalAlignment="Top"
+                         Background="Transparent" BorderThickness="0"
+                         Foreground="{StaticResource AccentBrush}"
+                         Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}"/>
+
+            <!-- 빈 상태 -->
+            <TextBlock Text="아직 대화가 없습니다"
+                       Foreground="{StaticResource TextMuted}"
+                       FontFamily="{StaticResource AppFont}"
+                       FontSize="{StaticResource FontSizeSmall}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Visibility="{Binding Rooms.Count, Converter={StaticResource EmptyCountToVisibility}}"/>
+        </Grid>
+    </Grid>
+</UserControl>

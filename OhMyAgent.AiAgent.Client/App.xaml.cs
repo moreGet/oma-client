@@ -7,9 +7,12 @@ using System.Windows.Interop;
 using System.Windows.Forms;
 using OhMyAgent.AiAgent.Client.Models;
 using OhMyAgent.AiAgent.Client.Services;
+using OhMyAgent.AiAgent.Client.Services.Chat;
 using OhMyAgent.AiAgent.Client.Services.Tools;
 using OhMyAgent.AiAgent.Client.ViewModels;
+using OhMyAgent.AiAgent.Client.ViewModels.Chat;
 using OhMyAgent.AiAgent.Client.Views;
+using OhMyAgent.AiAgent.Client.Views.Chat;
 using Application = System.Windows.Application;
 
 namespace OhMyAgent.AiAgent.Client;
@@ -32,8 +35,17 @@ public partial class App : Application
     private bool                      _loginShowing;
     private IProjectService?          _projectService;
     private IBinaryIntegrityService?  _binaryIntegrity;
+
+    // ── 실시간 메신저(사람↔사람) — LLM 채팅과 별개 모듈 ──
+    private IChatRealtimeService?      _chatRealtime;
+    private ChatMessengerViewModel?   _chatMessengerVm;
+    private IChatMessengerCoordinator? _chatCoordinator;
+    private bool                      _chatStarted;   // 최초 표시 시 1회 StartCommand 가드
+
     internal ISettingsService SettingsService => _settingsService!;
     internal IAgentApiClient? Api => _api;
+    /// <summary>MainWindow 사이드바 배지 중계용 — 메신저 VM 노출(없으면 null).</summary>
+    internal ChatMessengerViewModel? ChatMessengerVm => _chatMessengerVm;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -86,6 +98,13 @@ public partial class App : Application
             new KillProcessTool(),
             new HttpFetchTool(_toolHttpClient),
             new ScreenshotTool(),
+            // ── 사무직 문서·데이터 도구 묶음 (CSV: BCL / Excel: ClosedXML / PDF: PdfPig / Word: BCL) ──
+            new ReadCsvTool(),
+            new WriteCsvTool(),
+            new ReadExcelTool(),
+            new WriteExcelTool(),
+            new ReadPdfTool(),
+            new ReadDocumentTool(),
         };
 
         // 6) 도구 레지스트리
@@ -143,12 +162,28 @@ public partial class App : Application
             () => _mainVm!,
             _trayNotification);
 
+        // 13b) 실시간 메신저(사람↔사람) 조립 — LLM 채팅(ChatWindowCoordinator)과 완전 별개 모듈(설계서 §6).
+        //      currentUserId = JWT(sub) = member UUID. /users/me 엔 id 없음 → 토큰 디코드가 유일 소스.
+        var chatApi   = new ChatApiClient(_httpClient!, _settingsService!);
+        var chatSocket = new ChatSocketClient(_settingsService!);
+        _chatRealtime = new ChatRealtimeService(chatApi, chatSocket, _settingsService!);
+
+        var currentUserId = JwtIdentity.MemberId(_settingsService!.Current.AuthToken);
+        _chatMessengerVm = new ChatMessengerViewModel(_chatRealtime, currentUserId);
+        _chatMessengerVm.LoginRequested += (_, _) => ReturnToLogin();
+
+        // 창은 1회 생성·재사용(coordinator 내부 lazy 캐시). 팩토리는 1회만 호출되도록 보정 캐시.
+        ChatMessengerWindow? chatWindow = null;
+        _chatCoordinator = new ChatMessengerCoordinator(
+            () => chatWindow ??= new ChatMessengerWindow(_chatMessengerVm!),
+            _trayNotification!);
+
         // 14) Global Hotkey 서비스 생성 (HWND는 SourceInitialized 후 획득)
         _globalHotkey = new GlobalHotkeyService();
         _globalHotkey.HotkeyPressed += (_, _) =>
             Dispatcher.Invoke(_windowCoordinator.ToggleChatOnly);
 
-        // 15) 설정 변경 시 workspace 동기화 + 워크스페이스 히스토리 자동 기록 + 핫키 재등록
+        // 15) 설정 변경 시 workspace(다중 루트) 동기화 + 핫키 재등록
         _settingsService.SettingsChanged += (_, s) =>
         {
             // v5: 다중 루트 동기화 — 활성(Enabled) 폴더 전체를 워크스페이스에 반영. 비면 주 루트 폴백.
@@ -264,6 +299,9 @@ public partial class App : Application
         var showItem = new ToolStripMenuItem("Show");
         showItem.Click += (_, _) => ShowMainWindow();
 
+        var messengerItem = new ToolStripMenuItem("메신저");
+        messengerItem.Click += (_, _) => ToggleMessenger();
+
         var settingsItem = new ToolStripMenuItem("Settings");
         settingsItem.Click += (_, _) => OpenSettingsWindow();
 
@@ -282,6 +320,7 @@ public partial class App : Application
         exitItem.Click += (_, _) => ExitApplication();
 
         menu.Items.Add(showItem);
+        menu.Items.Add(messengerItem);
         menu.Items.Add(settingsItem);
         menu.Items.Add(integrityItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -313,6 +352,22 @@ public partial class App : Application
         settingsWindow.Activate();
     }
 
+    /// 메신저 창 토글(트레이/사이드바 버튼 진입점). 최초 표시 시 1회 StartCommand 로 WS connect + unread 로드.
+    internal void ToggleMessenger()
+    {
+        if (_chatCoordinator is null) return;
+        StartMessengerIfNeeded();
+        _chatCoordinator.Toggle();
+    }
+
+    /// 메신저 최초 표시 시 1회만 StartCommand 실행(WS connect + unread + 방목록). 재로그인 시 가드 리셋됨.
+    private void StartMessengerIfNeeded()
+    {
+        if (_chatStarted || _chatMessengerVm is null) return;
+        _chatStarted = true;
+        _ = _chatMessengerVm.StartCommand.ExecuteAsync(null);
+    }
+
     /// 로그인이 필요한 모든 상황(로그아웃 · 세션 만료/401)의 단일 진입점.
     /// 실행 중 작업·세션을 강제 종료하고, 모든 보조 창을 닫고 메인은 숨긴 뒤 로그인 화면만 남긴다.
     /// 로그인 성공 시 메인 복귀, 그냥 닫으면 앱 종료(시작 게이트와 동일).
@@ -323,6 +378,13 @@ public partial class App : Application
 
         // 1) 메인 세션/화면 상태 초기화 + 실행 중 에이전트 취소.
         _mainVm?.PrepareForLogout();
+
+        // 1b) 메신저 WS 정리 — 재로그인 시 토큰이 바뀌므로 stale 연결을 끊고 Start 가드를 리셋한다.
+        //     다음 로그인 후 메신저 재오픈 시 새 토큰 기준으로 StartCommand 가 다시 돈다(currentUserId 갱신은
+        //     VM 재생성이 필요하나, 안읽음/메시지의 IsMine 판정은 서버 sender_id 기준이라 실무 영향 최소).
+        _chatStarted = false;
+        if (_chatRealtime is { } realtime)
+            _ = realtime.StopAsync();
 
         // 2) 보조 창(설정·무결성·채팅전용 등)은 닫고, 메인은 숨긴다(재로그인 시 재사용).
         foreach (var w in Windows.OfType<Window>().ToList())
@@ -351,6 +413,11 @@ public partial class App : Application
     /// 모든 백그라운드 자원/후크/트레이 아이콘 정리. 여러 번 호출돼도 안전.
     private void DisposeAll()
     {
+        // 메신저 정리(WS stop + VM 구독해제 + 비동기 dispose). fire-and-forget 안전(종료 경로).
+        try { _ = _chatRealtime?.StopAsync(); }   catch { /* ignore */ }
+        try { _chatMessengerVm?.Dispose(); }      catch { /* ignore */ }
+        try { _ = _chatRealtime?.DisposeAsync(); } catch { /* ignore */ }
+
         try { _globalHotkey?.Dispose(); } catch { /* ignore */ }
         try
         {

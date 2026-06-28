@@ -1,0 +1,186 @@
+<UserControl x:Class="OhMyAgent.AiAgent.Client.Views.Chat.Controls.ChatMessageBubble"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:OhMyAgent.AiAgent.Client.ViewModels.Chat"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:ChatMessageViewModel, IsDesignTimeCreatable=False}"
+             d:DesignWidth="420">
+
+    <!-- 한 메시지 행. 정렬은 IsMine 으로 좌/우. -->
+    <Grid Margin="14,3"
+          HorizontalAlignment="{Binding IsMine, Converter={StaticResource IsMineToAlignment}}">
+
+        <Border MaxWidth="320"
+                Background="{Binding IsMine, Converter={StaticResource IsMineToBubbleBrush}}"
+                CornerRadius="{StaticResource RadiusLg}"
+                Padding="12,8"
+                Effect="{StaticResource SoftShadow}"
+                Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+            <StackPanel>
+
+                <!-- 삭제된 메시지 -->
+                <TextBlock Text="삭제된 메시지"
+                           FontStyle="Italic"
+                           Foreground="{StaticResource TextMuted}"
+                           FontFamily="{StaticResource AppFont}"
+                           FontSize="{StaticResource FontSizeSmall}"
+                           Visibility="{Binding IsDeleted, Converter={StaticResource BoolToVisibility}}"/>
+
+                <!-- 본문(멘션 세그먼트 하이라이트). 삭제 시 숨김 -->
+                <TextBlock TextWrapping="Wrap"
+                           Foreground="{StaticResource TextPrimary}"
+                           FontFamily="{StaticResource AppFont}"
+                           FontSize="{StaticResource FontSizeBody}"
+                           LineHeight="19"
+                           Visibility="{Binding IsDeleted, Converter={StaticResource InverseBoolToVisibility}}">
+                    <ItemsControl ItemsSource="{Binding Segments}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <!-- 인라인 Run 흐름 대용: WrapPanel 로 토큰 흐름 -->
+                                <WrapPanel/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Text}"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="{StaticResource FontSizeBody}"
+                                           TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsMention}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </TextBlock>
+
+                <!-- 첨부 칩 목록(WS 수신분만 채워짐; 클릭=다운로드) -->
+                <ItemsControl ItemsSource="{Binding Attachments}"
+                              Margin="0,6,0,0"
+                              Visibility="{Binding Attachments.Count, Converter={StaticResource CountToVisibility}}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource Chip}"
+                                    Background="{StaticResource Surface3Bg}"
+                                    Margin="0,2"
+                                    Cursor="Hand"
+                                    ToolTip="클릭하여 다운로드"
+                                    MouseLeftButtonUp="Attachment_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE8A5;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                               Foreground="{StaticResource TextSecondary}"
+                                               FontSize="{StaticResource FontSizeSmall}"
+                                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock Text="{Binding FileName}"
+                                               Foreground="{StaticResource TextPrimary}"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="{StaticResource FontSizeSmall}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- 메타 행: 시각 · 수정됨 · 전송상태 · 읽음 -->
+                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                    <TextBlock Text="{Binding CreatedAt, Converter={StaticResource UnixSecondsToLocalTime}}"
+                               Foreground="{StaticResource TextMuted}"
+                               FontFamily="{StaticResource AppFont}"
+                               FontSize="{StaticResource FontSizeMicro}"
+                               VerticalAlignment="Center"/>
+
+                    <TextBlock Text="· 수정됨" Margin="6,0,0,0"
+                               Foreground="{StaticResource TextMuted}"
+                               FontFamily="{StaticResource AppFont}"
+                               FontSize="{StaticResource FontSizeMicro}"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding IsEdited, Converter={StaticResource BoolToVisibility}}"/>
+
+                    <!-- 전송 실패 점(재시도) -->
+                    <Ellipse Width="6" Height="6" Margin="6,0,0,0" VerticalAlignment="Center"
+                             Fill="{StaticResource ErrorDot}" ToolTip="전송 실패 — 클릭하여 재시도">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SendStatus}" Value="Failed">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+
+                    <!-- 읽음 N (내 메시지에만) -->
+                    <TextBlock Margin="6,0,0,0"
+                               Foreground="{StaticResource TextMuted}"
+                               FontFamily="{StaticResource AppFont}"
+                               FontSize="{StaticResource FontSizeMicro}"
+                               VerticalAlignment="Center">
+                        <Run Text="읽음"/><Run Text="{Binding ReadByCount, Mode=OneWay}"/>
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsMine}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- 본인 메시지 우클릭: 수정/삭제.
+                 Tag = 부모(ChatRoomView)에서 ChatRoomViewModel(=Edit/Delete 커맨드 소유)을 주입.
+                 ContextMenu 는 비주얼 트리 밖이라 PlacementTarget(=Border).Tag 경유로 룸 VM 에 도달. -->
+            <Border.ContextMenu>
+                <ContextMenu>
+                    <ContextMenu.Style>
+                        <Style TargetType="ContextMenu">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsMine}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ContextMenu.Style>
+                    <!-- 수정: 인라인 편집은 code-behind 가 입력 모달을 띄운 뒤 EditCommand((id,content)) 실행. -->
+                    <MenuItem Header="수정" Click="Edit_Click"/>
+                    <MenuItem Header="삭제"
+                              Command="{Binding PlacementTarget.Tag.DeleteCommand,
+                                        RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              CommandParameter="{Binding Id}"/>
+                </ContextMenu>
+            </Border.ContextMenu>
+
+            <!-- Pending(낙관 전송 중) 흐림 -->
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding SendStatus}" Value="Pending">
+                            <Setter Property="Opacity" Value="0.6"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+        </Border>
+    </Grid>
+</UserControl>

@@ -69,6 +69,10 @@
 
     <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource RadiusTiny}">
         <Grid>
+            <!-- 전체 UI 배율(접근성) 즉시 미리보기: 루트 LayoutTransform -->
+            <Grid.LayoutTransform>
+                <ScaleTransform ScaleX="{Binding UiScale}" ScaleY="{Binding UiScale}"/>
+            </Grid.LayoutTransform>
             <Grid.RowDefinitions>
                 <RowDefinition Height="40"/>
                 <RowDefinition Height="*"/>
@@ -406,6 +410,36 @@
                                TextWrapping="Wrap"
                                Margin="0,6,0,0"/>
                 </StackPanel>
+
+                <!-- ════ 글씨 크기 (접근성) ════════════════════════════ -->
+                <TextBlock Text="글씨 크기 (접근성)"
+                           Foreground="{StaticResource TextPrimary}"
+                           FontSize="{StaticResource FontSizeBodyLarge}"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,8"/>
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Slider Grid.Column="0"
+                            Minimum="0.9" Maximum="1.6" Value="{Binding UiScale, Mode=TwoWay}"
+                            SmallChange="0.05" LargeChange="0.1" TickFrequency="0.1"
+                            IsSnapToTickEnabled="False"
+                            VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding UiScale, StringFormat={}{0:P0}}"
+                               Foreground="{StaticResource TextSecondary}"
+                               FontSize="{StaticResource FontSizeSmall}"
+                               VerticalAlignment="Center"
+                               MinWidth="44" TextAlignment="Right"
+                               Margin="10,0,0,0"/>
+                </Grid>
+                <TextBlock Text="전체 UI(글씨·아이콘·여백)를 균일하게 확대/축소합니다 (90%~160%)."
+                           Foreground="{StaticResource TextMuted}"
+                           FontSize="{StaticResource FontSizeXSmall}"
+                           TextWrapping="Wrap"
+                           Margin="0,6,0,0"/>
                 </StackPanel>
               </Border>
 

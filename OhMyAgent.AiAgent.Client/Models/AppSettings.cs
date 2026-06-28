@@ -28,4 +28,9 @@ public class AppSettings
 
     // 신규 (Phase D)
     public string UserDisplayName { get; set; } = "";                       // empty => Environment.UserName fallback (F)
+
+    // 신규 (UX 6종) — 모두 기본값 보유 → 스키마 호환(SchemaVersion bump 불필요)
+    public string QuotaChipWindow { get; set; } = "auto";   // "auto"|"day"|"week"|"month" — 상단 쿼터 칩 표시 기준
+    public bool SidebarCollapsed { get; set; } = false;     // 좌측 사이드바 접힘 상태(세션 간 유지)
+    public double UiScale { get; set; } = 1.0;              // 0.9~1.6 — UI 전체 배율(접근성)
 }

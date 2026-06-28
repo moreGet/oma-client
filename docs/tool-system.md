@@ -26,7 +26,7 @@ Services/
 ├── SecurityValidator.cs     ← 위험 명령 차단
 ├── ToolCallJsonConverter.cs ← 도구 호출 인자(arguments) JSON 직렬화 변환
 │
-└── Tools/                   ← ★ 도구 구현체 20개
+└── Tools/                   ← ★ 도구 구현체 26개
     ├── ReadFileTool.cs  WriteFileTool.cs  EditFileTool.cs
     ├── ListDirectoryTool.cs  GlobTool.cs  GrepTool.cs
     ├── CreateDirectoryTool.cs  MoveTool.cs  CopyTool.cs  DeleteTool.cs
@@ -72,7 +72,7 @@ public interface ITool
 
 ```
 App.xaml.cs 에서 도구 배열 생성
-   var tools = new ITool[] { new ReadFileTool(), new WriteFileTool(), ... };  // 20개
+   var tools = new ITool[] { new ReadFileTool(), new WriteFileTool(), ... };  // 26개
         ↓
    ToolRegistry(tools)            ← 이름으로 조회(TryGet) + 스키마 목록 생성(ToSchemas)
         ↓
@@ -118,7 +118,7 @@ App.xaml.cs 에서 도구 배열 생성
 
 ---
 
-## 5. 내장 도구 20개
+## 5. 내장 도구 26개
 
 | 그룹 | 도구 | 위험도 |
 |------|------|--------|
@@ -129,8 +129,9 @@ App.xaml.cs 에서 도구 배열 생성
 | 시스템 | `get_environment` · `clipboard_read` · `clipboard_write` | ReadOnly / Write |
 | 프로세스 | `list_processes` · `list_processes_memory_kb` · `start_process` · `kill_process` | ReadOnly / Execute / Destructive |
 | 네트워크·비전 | `http_fetch` · `screenshot` | Execute / ReadOnly |
+| 문서·데이터(사무직) | `read_csv` · `write_csv` · `read_excel` · `write_excel` · `read_pdf` · `read_document` | ReadOnly / Write |
 
-> 전부 BCL/WPF/WinForms 내장 기능만 사용 — 추가 NuGet 의존성 0.
+> 파일·셸·시스템 20종은 BCL/WPF/WinForms 내장 기능만 사용. 문서·데이터 6종 중 Excel은 **ClosedXML**, PDF는 **PdfPig**(둘 다 순수 관리코드·오프라인/보안망 적합)를 쓰고, CSV·Word(.docx)는 BCL만 사용한다.
 
 ---
 
@@ -197,7 +198,7 @@ var tools = new ITool[]
 - **관심사 분리**: "무엇을 할지"=모델 / "어떻게 실행"=클라 도구 / "해도 되나"=3중 게이트.
 - **중앙 집중 오류 처리**: 도구는 정상 경로만, 예외는 오케스트레이터가 `ToolResult.Fail`로 변환.
 - **데이터 vs 코드 분리**: 도구 *선언(스키마)*은 서버로, *실행 코드*는 클라에(OS 접근 때문).
-- **최소 의존성**: BCL/WPF/WinForms 내장 기능만, 추가 NuGet 0.
+- **최소 의존성**: 코어(파일·셸·시스템)는 BCL/WPF/WinForms 내장 기능만. 문서·데이터 도구만 Excel=ClosedXML, PDF=PdfPig(순수 관리코드) 사용.
 
 > 관련 문서: 서버 도구 정책은 [`server-tool-policy-api.md`](server-tool-policy-api.md),
 > 전체 아키텍처는 [`../README.md`](../README.md) 참조.
