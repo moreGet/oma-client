@@ -55,6 +55,15 @@ public sealed record ChatReadsResponse(
 public sealed record ChatMembersResponse(
     [property: JsonPropertyName("members")] IReadOnlyList<string> Members);
 
+/// <summary>GET /api/v1/chat/rooms/{id}/members?detail=1 의 멤버 항목(이름 포함).</summary>
+public sealed record ChatMemberDetail(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("username")] string Username,
+    [property: JsonPropertyName("display_name")] string? DisplayName);
+
+public sealed record ChatMembersDetailResponse(
+    [property: JsonPropertyName("members")] IReadOnlyList<ChatMemberDetail> Members);
+
 public sealed record ChatPresenceResponse(
     [property: JsonPropertyName("online")] IReadOnlyList<string> Online);
 

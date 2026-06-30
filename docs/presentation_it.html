@@ -323,6 +323,13 @@
         <tr><td><span class="m get">GET</span></td><td><code>/api/v1/security/command-policy</code></td><td>서버 추가 위험명령/경로 패턴(2중 안전)</td></tr>
         <tr><td><span class="m get">GET</span>/<span class="m post">POST</span>/<span class="m del">DEL</span></td><td><code>/api/v1/agent/sessions[/{id}]</code> <span class="opt">(선택)</span></td><td>대화 세션 동기화(여러 PC)</td></tr>
         <tr><td><span class="m get">GET</span>/<span class="m post">POST</span></td><td><code>/api/v1/projects</code> · <code>/{id}/conversations</code> <span class="opt">(선택)</span></td><td>프로젝트/대화 업서트(<code>client_id</code> 키)</td></tr>
+        <tr><td colspan="3" style="padding-top:.7rem;border-bottom:none;color:var(--accent2);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase">실시간 메신저 (사람↔사람, LLM과 별개)</td></tr>
+        <tr><td><span class="m get">GET</span>/<span class="m post">POST</span>/<span class="m del">DEL</span></td><td><code>/api/v1/chat/rooms[/{id}…]</code></td><td>방 목록/생성·1:1·메시지·읽음·멤버·presence</td></tr>
+        <tr><td><span class="m get">GET</span></td><td><code>/api/v1/chat/unread</code></td><td>총/방별 안읽음 배지(start·reconnect 1회 조회)</td></tr>
+        <tr><td><span class="m get">GET</span></td><td><code>/api/v1/chat/mentions</code></td><td>나를 멘션한 메시지 피드</td></tr>
+        <tr><td><span class="m get">GET</span>/<span class="m post">POST</span></td><td><code>/api/v1/chat/attachments[/{id}]</code></td><td>첨부 업로드(multipart, ≤10MiB)/다운로드</td></tr>
+        <tr><td><span class="m get">GET</span></td><td><code>/api/v1/chat/rooms/{id}/members?detail=1</code></td><td>방 멤버 이름(UUID→username/display_name) — 방 멤버 누구나</td></tr>
+        <tr><td><span class="m get">GET</span> <span class="opt">(WS)</span></td><td><code>/api/v1/chat/ws</code></td><td>메신저 WebSocket — message/edit/delete·read·typing·presence·member 이벤트</td></tr>
       </tbody>
     </table>
     <p class="dim rise" style="margin-top:.7rem">모든 엔드포인트 <code>Authorization: Bearer &lt;JWT&gt;</code>. 미구현(404/501)·오프라인은 graceful(프로필→OS명, 쿼터칩 숨김, 정책없음=전체허용, 버전알림 생략).</p>
@@ -347,7 +354,86 @@
     </ul>
   </section>
 
-  <!-- 11 · Integrity & deployment security -->
+  <!-- 11 · Realtime chat (messenger) — overview -->
+  <section class="slide">
+    <span class="kicker rise">실시간 채팅 ① · 사람↔사람 메신저</span>
+    <h2 class="rise">LLM과 별개인 <span class="grad">실시간 메신저</span></h2>
+    <p class="lead rise"><code>/agent/chat</code>(LLM)과 <b>완전히 별개</b>인 사람↔사람 메신저. 단체(group)·1:1(direct) 방, 송수신·수정·삭제, 읽음·안읽음, 타이핑, presence(온라인), 멘션, 첨부, 멤버 관리를 실시간 반영.</p>
+    <div class="cards c4">
+      <div class="card rise"><span class="ic">💬</span><h3>방 &amp; 메시지</h3><p>단체/1:1 방, 좌·우 말풍선, 무한 스크롤 이력, 본인 메시지 수정·소프트 삭제("삭제된 메시지" 자리표시).</p></div>
+      <div class="card rise"><span class="ic">✅</span><h3>읽음 &amp; 안읽음</h3><p>멤버별 읽음 위치(단조 증가), 트레이·사이드바·타이틀바에 전역 안읽음 배지 실시간 동기화.</p></div>
+      <div class="card rise"><span class="ic">🟢</span><h3>타이핑 &amp; presence</h3><p>타이핑 인디케이터, 온라인 상태 점(허브 메모리 전용·비영속). 연결점 녹/주황/적.</p></div>
+      <div class="card rise"><span class="ic">@</span><h3>멘션 · 첨부 · 멤버</h3><p>멘션 하이라이트·자동완성·피드, 첨부(≤10MiB), 단체방 멤버 추가/강퇴(생성자)/나가기.</p></div>
+    </div>
+    <p class="dim rise" style="margin-top:1.2rem">진입: 트레이·사이드바 "메신저"(안읽음 Pill) → 별도 <code>ChatMessengerWindow</code>(좌 방목록 / 우 대화방). 메신저 최초 표시 시 1회 <code>StartAsync</code>(WS connect + unread), <code>ReturnToLogin</code>/종료 시 <code>StopAsync</code>.</p>
+  </section>
+
+  <!-- 12 · Realtime chat — architecture & identity -->
+  <section class="slide">
+    <span class="kicker rise">실시간 채팅 ② · 3계층 + 식별자</span>
+    <h2 class="rise">REST + WS <span class="grad">파사드 단일 의존</span></h2>
+    <div class="split">
+      <div class="rise">
+        <div class="arch" style="margin-top:0">
+          <div class="layer vm">
+            <div class="lt">ViewModel</div>
+            <div class="row"><span class="chip"><code>IChatRealtimeService</code> 단일 의존</span></div>
+          </div>
+          <div class="down">▼ 파사드(상태·dedup·집계·재동기화)</div>
+          <div class="layer svc">
+            <div class="lt">Service / Realtime</div>
+            <div class="row">
+              <span class="chip"><code>IChatApiClient</code> · REST 전부</span>
+              <span class="chip"><code>IChatSocketClient</code> · BCL <code>ClientWebSocket</code></span>
+            </div>
+          </div>
+        </div>
+        <ul class="checks" style="margin-top:1rem">
+          <li><span class="ck">›</span> <code>IChatSocketClient</code>: <code>Bearer</code> 핸드셰이크, 수신 펌프(멀티프레임→<code>type</code> 디스패치→C# <code>event</code>), <b>지수 backoff 재연결</b>(1→2→4…최대 30s+지터), ping/pong</li>
+          <li><span class="ck">›</span> <code>IChatRealtimeService</code>: <b>에코 dedup</b>(msg id) · <b>읽음 단조성</b>(전진만) · 안읽음 집계 · <b>재연결 재동기화</b>(이력+unread+reads 병합)</li>
+          <li><span class="ck">›</span> WS 이벤트: <code>message/edited/deleted</code> · <code>read</code> · <code>typing</code> · <code>presence</code> · <code>member_joined/left</code> · <code>error</code>(그 연결로만)</li>
+        </ul>
+      </div>
+      <div class="rise">
+        <div class="card">
+          <span class="ic">🪪</span><h3>식별자 = JWT <code>sub</code></h3>
+          <p style="line-height:1.55">현재 사용자 = JWT <code>sub</code> 클레임(member UUID). <code>sender_id</code>/<code>member_id</code>/direct <code>user_id</code> 모두 이 UUID(username 아님). <code>JwtIdentity.MemberId(token)</code> 단일 소스.</p>
+        </div>
+        <div class="card" style="margin-top:1rem">
+          <span class="ic">📇</span><h3>이름 디렉터리</h3>
+          <p style="line-height:1.55"><code>GET /chat/rooms/{id}/members?detail=1</code>(방 멤버 누구나) + <code>/users/me</code> 로 UUID→이름 해석. 캐시 + <code>DirectoryUpdated</code> 일괄 재해석. 미해석 시 <b>UUID 앞 8자리 폴백</b>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 · Realtime chat — network/UI optimization -->
+  <section class="slide">
+    <span class="kicker rise">실시간 채팅 ③ · 네트워크·UI 최적화</span>
+    <h2 class="rise">호출 절감과 <span class="grad">깜빡임 제거</span></h2>
+    <div class="split">
+      <div class="rise">
+        <ul class="checks" style="margin-top:0">
+          <li><span class="ck">✓</span> 안읽음 <b>로컬 카운터</b>로 추적 → 메시지마다 <code>/chat/unread</code> 호출 제거(서버 조회는 start·reconnect 1회)</li>
+          <li><span class="ck">✓</span> 읽음(read) POST <b>디바운스 2.5s</b>(<code>MarkReadDebounceMs=2500</code>) — 스크롤마다 POST 방지</li>
+          <li><span class="ck">✓</span> 방 열 때 멤버/presence <b>1회 조회 공유</b>(멤버패널·멘션·온라인·1:1상대) → 중복 제거(6콜→4콜)</li>
+          <li><span class="ck">✓</span> 1:1 상대 id <b>캐시</b> · <b>active room</b>(보는 방 수신분은 안읽음 제외)</li>
+        </ul>
+      </div>
+      <div class="rise">
+        <div class="card">
+          <span class="ic">⚡</span><h3>UI 렌더링</h3>
+          <p style="line-height:1.6">
+          • 방목록 <b>증분 갱신</b>(Clear 재생성 제거 → 깜빡임 제거)<br>
+          • 안읽음 변동 시 배지만 in-place 갱신, <b>재정렬 안 함</b><br>
+          • 메시지 일괄 로드 후 <b>1회만</b> 오토스크롤</p>
+        </div>
+        <p class="dim" style="margin-top:.9rem;font-size:.85rem">모든 상태 변경은 <code>UiDispatch.InvokeAsync</code> 로 UI 스레드 마샬. 메신저 WS 는 BCL <code>ClientWebSocket</code> — <b>추가 NuGet 0</b> 유지(코어 도구 0, 문서도구만 ClosedXML/PdfPig).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14 · Integrity & deployment security -->
   <section class="slide">
     <span class="kicker rise">배포 무결성</span>
     <h2 class="rise">변조 탐지 <span class="grad">3중 검증</span></h2>
@@ -364,7 +450,7 @@
     <span class="kicker rise">현황 · 확장 · 과제</span>
     <h2 class="rise">검증 상태와 <span class="grad">확장 포인트</span></h2>
     <div class="stat rise">
-      <div><div class="n grad">20</div><div class="l">내장 도구</div></div>
+      <div><div class="n grad">26</div><div class="l">내장 도구</div></div>
       <div><div class="n grad">10</div><div class="l">동시 워크스페이스 루트</div></div>
       <div><div class="n grad">3중</div><div class="l">도구 실행 게이트</div></div>
       <div><div class="n grad">0</div><div class="l">추가 NuGet 의존성</div></div>

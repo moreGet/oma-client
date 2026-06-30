@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>OhMyAgent · 사내 AI 비서, 폐쇄망에서 실제로 일합니다</title>
+<title>OhMyAgent · 폐쇄망에서 일하고, 함께 일하는 사내 AI</title>
 <style>
   :root{
     --bg:#0a0e14; --bg2:#0f1620; --surface:#151c28; --surface2:#1b2433;
@@ -39,6 +39,7 @@
   .slide.active .rise:nth-child(3){animation-delay:.12s}
   .slide.active .rise:nth-child(4){animation-delay:.18s}
   .slide.active .rise:nth-child(5){animation-delay:.24s}
+  .slide.active .rise:nth-child(6){animation-delay:.30s}
   @keyframes rise{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
 
   .kicker{
@@ -47,9 +48,11 @@
     background:rgba(56,139,253,.10);border:1px solid rgba(56,139,253,.28);
     padding:.4rem .8rem;border-radius:999px;width:max-content;margin-bottom:1.6rem;
   }
+  .kicker.v{color:var(--violet);background:rgba(163,113,247,.10);border-color:rgba(163,113,247,.30)}
   h1{font-size:clamp(2.4rem,6vw,4.6rem);line-height:1.04;font-weight:800;letter-spacing:-.02em}
   h2{font-size:clamp(1.9rem,4.4vw,3.1rem);line-height:1.1;font-weight:780;letter-spacing:-.02em;margin-bottom:1.6rem}
   .grad{background:linear-gradient(100deg,var(--accent2),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .gradg{background:linear-gradient(100deg,#56d364,var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
   .lead{font-size:clamp(1.05rem,1.9vw,1.45rem);color:var(--muted);line-height:1.6;max-width:56ch}
   .big{font-size:clamp(1.2rem,2.2vw,1.7rem);color:var(--text);line-height:1.5;font-weight:600;max-width:42ch}
   .muted{color:var(--muted)} .dim{color:var(--dim)}
@@ -65,18 +68,21 @@
   .card .ic{font-size:1.7rem;margin-bottom:.7rem;display:block}
   .card h3{font-size:1.12rem;font-weight:700;margin-bottom:.4rem}
   .card p{font-size:.95rem;color:var(--muted);line-height:1.5}
+  .card.hi{border-color:rgba(163,113,247,.4);background:linear-gradient(180deg,rgba(163,113,247,.10),var(--bg2))}
 
   .split{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center}
   @media(max-width:900px){.split{grid-template-columns:1fr}.c4,.c3{grid-template-columns:repeat(2,1fr)}}
 
   .vs{display:flex;gap:1rem;align-items:stretch}
-  .vs .col{flex:1;border-radius:16px;padding:1.3rem 1.4rem;border:1px solid var(--line)}
+  .vs .col{flex:1;border-radius:16px;padding:1.3rem 1.4rem;border:1px solid var(--line);background:var(--surface)}
   .vs .bad{background:rgba(248,81,73,.06);border-color:rgba(248,81,73,.28)}
+  .vs .mid{background:rgba(110,168,255,.05);border-color:rgba(110,168,255,.20)}
   .vs .good{background:rgba(46,160,67,.07);border-color:rgba(46,160,67,.32)}
-  .vs h4{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;margin-bottom:.8rem}
-  .vs .bad h4{color:var(--red)} .vs .good h4{color:var(--green)}
-  .vs ul{list-style:none;display:flex;flex-direction:column;gap:.6rem}
-  .vs li{font-size:1rem;color:var(--text);display:flex;gap:.6rem;line-height:1.4}
+  .vs .lbl{font-size:.72rem;letter-spacing:.10em;text-transform:uppercase;color:var(--dim);margin-bottom:.3rem;display:block}
+  .vs h4{font-size:1.05rem;font-weight:760;margin-bottom:.9rem;letter-spacing:-.01em}
+  .vs .bad h4{color:#ff7b72} .vs .mid h4{color:var(--accent2)} .vs .good h4{color:#56d364}
+  .vs ul{list-style:none;display:flex;flex-direction:column;gap:.55rem}
+  .vs li{font-size:.98rem;color:var(--text);display:flex;gap:.6rem;line-height:1.4}
   .vs li span{opacity:.85}
 
   .flow{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-top:1rem}
@@ -91,12 +97,37 @@
   .stat .n{font-size:clamp(2.2rem,4vw,3.2rem);font-weight:800;line-height:1}
   .stat .l{color:var(--muted);font-size:.95rem;margin-top:.4rem}
 
+  .statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:2rem}
+  @media(max-width:900px){.statgrid{grid-template-columns:repeat(2,1fr)}}
+  .stat-card{background:linear-gradient(180deg,var(--surface),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:1.5rem 1.6rem}
+  .stat-card .n{font-size:clamp(2rem,4vw,3rem);font-weight:800;line-height:1;background:linear-gradient(100deg,var(--accent2),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .stat-card .l{color:var(--muted);font-size:.95rem;margin-top:.5rem;line-height:1.4}
+
   ul.checks{list-style:none;display:flex;flex-direction:column;gap:.85rem;margin-top:1.6rem}
   ul.checks li{font-size:1.12rem;display:flex;gap:.8rem;align-items:center}
   ul.checks .ck{color:var(--green);font-weight:800}
 
-  .quote{font-size:clamp(1.2rem,2.4vw,1.9rem);line-height:1.5;font-weight:650;max-width:30ch}
+  .chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1.6rem}
+  .chip{background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:.45rem .9rem;font-size:.9rem;color:var(--muted);white-space:nowrap}
+  .chip b{color:var(--text);font-weight:650}
+
+  .quote{font-size:clamp(1.2rem,2.4vw,1.9rem);line-height:1.5;font-weight:650;max-width:32ch}
   .quote .q{color:var(--accent2)}
+
+  /* messenger mock */
+  .mock{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:1.1rem;display:flex;flex-direction:column;gap:.7rem;box-shadow:0 18px 50px rgba(0,0,0,.4)}
+  .mock .hd{display:flex;align-items:center;gap:.6rem;padding-bottom:.7rem;border-bottom:1px solid var(--line)}
+  .mock .av{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:.8rem;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--accent),var(--violet))}
+  .mock .nm{font-weight:700;font-size:.95rem}
+  .mock .pres{margin-left:auto;display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--muted)}
+  .mock .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(46,160,67,.18)}
+  .bub{max-width:78%;padding:.55rem .8rem;border-radius:12px;font-size:.92rem;line-height:1.4}
+  .bub.them{background:var(--surface2);border:1px solid var(--line);border-top-left-radius:4px;align-self:flex-start}
+  .bub.me{background:rgba(56,139,253,.16);border:1px solid rgba(56,139,253,.35);border-top-right-radius:4px;align-self:flex-end}
+  .bub .mn{color:var(--accent2);font-weight:650}
+  .bub .meta{display:block;font-size:.7rem;color:var(--dim);margin-top:.25rem}
+  .bub .read{color:var(--accent2)}
+  .typing{align-self:flex-start;font-size:.8rem;color:var(--dim);display:flex;gap:.3rem;align-items:center}
 
   .topbar{position:fixed;top:0;left:0;right:0;height:4px;z-index:5;background:transparent}
   .progress{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--violet));transition:width .4s}
@@ -123,163 +154,250 @@
   <!-- 1 · Title -->
   <section class="slide">
     <span class="kicker rise">사내 전용 AI 업무 비서</span>
-    <h1 class="rise">말 한마디로<br><span class="grad">일이 끝나는</span> 사내 AI</h1>
+    <h1 class="rise">물어보는 AI를 넘어,<br><span class="grad">함께 일하는 AI</span></h1>
     <p class="lead rise" style="margin-top:1.6rem">
-      외부 인터넷이 막힌 보안망에서도, <b>회사 안의 AI가 내 PC의 작업 폴더에서
-      문서·파일·자동화 작업을 대신 처리</b>해 주는 Windows 데스크톱 비서입니다.
+      외부 인터넷이 막힌 보안망 안에서 <b>회사의 AI가 내 PC 작업 폴더에서 직접 문서·파일·자동화를
+      처리</b>하고, 이제 <b>사내 동료와 실시간으로 협업</b>까지 — 설치형 Windows 데스크톱 비서.
     </p>
-    <p class="dim rise" style="margin-top:2rem;font-size:.9rem">설치형 · 폐쇄망 안전 · 권한 승인 기반 · 사용량 관리 &nbsp;|&nbsp; <kbd>→</kbd> 다음</p>
+    <div class="chips rise" style="margin-top:2rem">
+      <span class="chip"><b>폐쇄망</b> 안전</span>
+      <span class="chip"><b>26개</b> 내장 도구</span>
+      <span class="chip"><b>권한 승인</b> 3단계</span>
+      <span class="chip"><b>실시간</b> 팀 협업</span>
+    </div>
+    <p class="dim rise" style="margin-top:1.6rem;font-size:.9rem">설치형 · 외부 연결 0 · 사용량 통제 &nbsp;|&nbsp; <kbd>→</kbd> 다음</p>
   </section>
 
   <!-- 2 · The problem -->
   <section class="slide">
     <span class="kicker rise">지금의 불편함</span>
-    <h2 class="rise">AI는 <span class="grad">답만 알려주고</span>, 실행은 내 몫</h2>
+    <h2 class="rise">보안망의 AI는 <span class="grad">답만 주고</span>, 실행은 내 몫</h2>
     <div class="split">
       <div class="rise">
-        <p class="big">보안망에서는 똑똑한 AI 도구를 쓸 수 없고,
-        쓸 수 있는 건 "물어보면 답해주는" 채팅뿐입니다.</p>
+        <p class="big">보안망에서는 똑똑한 외부 AI 도구를 쓸 수 없습니다.
+        쓸 수 있는 건 "물어보면 답만 주는" 챗봇뿐이었죠.</p>
         <p class="lead" style="margin-top:1.2rem">
           그래서 AI가 알려준 대로 파일을 찾고, 고치고, 명령을 실행하는 일은
-          결국 사람이 손으로 다시 해야 했습니다.
+          결국 <b>사람이 손으로 다시</b> 해야 했습니다.
         </p>
       </div>
       <div class="vs rise">
         <div class="col bad">
-          <h4>그동안</h4>
+          <span class="lbl">그동안</span>
+          <h4>보여주는 챗봇</h4>
           <ul>
-            <li><span>✕</span> 답변을 보고 직접 따라 함</li>
+            <li><span>✕</span> 답변을 보고 사람이 직접 따라 함</li>
             <li><span>✕</span> 반복 작업도 매번 수동</li>
             <li><span>✕</span> 외부 AI 도구는 보안상 금지</li>
+            <li><span>✕</span> 협업은 또 다른 앱에서 따로</li>
           </ul>
         </div>
         <div class="col good">
-          <h4>OhMyAgent</h4>
+          <span class="lbl">앞으로</span>
+          <h4>일하는 비서</h4>
           <ul>
-            <li><span>✓</span> 목표만 말하면 AI가 실행</li>
+            <li><span>✓</span> 목표만 말하면 AI가 직접 실행</li>
             <li><span>✓</span> 찾고·고치고·확인까지 자동</li>
             <li><span>✓</span> 사내망 안에서 안전하게</li>
+            <li><span>✓</span> 팀 협업까지 한 앱에서</li>
           </ul>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- 3 · What it is -->
+  <!-- 3 · Insight -->
+  <section class="slide">
+    <span class="kicker rise">우리의 통찰</span>
+    <h2 class="rise">필요한 건 더 똑똑한 답이 아니라,<br><span class="grad">대신 일해줄 손</span>이었습니다</h2>
+    <p class="lead rise" style="margin-top:.4rem;max-width:60ch">
+      사람은 "무엇을 원하는지"만 말하면 충분합니다.
+      찾고·만들고·바꾸고·확인하는 <b>실제 손작업</b>은 AI가 맡습니다.
+      단, 보안망을 벗어나지 않고, 회사가 통제할 수 있는 방식으로.
+    </p>
+    <p class="quote rise" style="margin-top:2.2rem">
+      "답을 주는 AI"가 아니라 <span class="q">"일을 끝내는 AI"</span>.
+    </p>
+  </section>
+
+  <!-- 4 · Solution / agent loop -->
   <section class="slide">
     <span class="kicker rise">한마디로</span>
-    <h2 class="rise">"보여주는" 챗봇이 아니라<br><span class="grad">"해주는"</span> 업무 비서</h2>
-    <p class="lead rise">목표를 입력하면, AI가 스스로 무엇을 할지 정하고 <b>내 작업 폴더 안에서 직접 처리</b>한 뒤 결과까지 정리해 돌려줍니다.</p>
+    <h2 class="rise">목표 한 문장이면, <span class="grad">AI가 알아서 끝냅니다</span></h2>
+    <p class="lead rise">목표를 입력하면 AI가 스스로 계획하고, <b>내 작업 폴더 안에서 직접 처리</b>한 뒤 결과까지 정리해 돌려줍니다 — 이른바 <b>에이전트 루프</b>.</p>
     <div class="flow rise" style="margin-top:2.2rem">
       <div class="node">🎯 목표 한 문장</div><span class="arrow">→</span>
       <div class="node k">🧠 AI가 계획</div><span class="arrow">→</span>
-      <div class="node">🛠 직접 작업 수행</div><span class="arrow">→</span>
+      <div class="node">🛠 도구로 직접 실행</div><span class="arrow">→</span>
       <div class="node k">✅ 결과 정리·보고</div>
     </div>
-    <p class="dim rise" style="margin-top:1.4rem">사람은 "무엇을 원하는지"만, 나머지 손작업은 비서가 합니다.</p>
+    <p class="dim rise" style="margin-top:1.4rem">필요하면 스스로 반복합니다 — 작업이 끝날 때(<kbd>end_turn</kbd>)까지 자율로.</p>
   </section>
 
-  <!-- 4 · Use cases -->
+  <!-- 5 · Capabilities / 26 tools -->
   <section class="slide">
-    <span class="kicker rise">이런 일을 시킬 수 있어요</span>
-    <h2 class="rise">반복 업무를 <span class="grad">한 문장</span>으로</h2>
+    <span class="kicker rise">무엇을 할 수 있나</span>
+    <h2 class="rise"><span class="grad">26개</span> 내장 도구로, 진짜 업무를</h2>
     <div class="cards c4">
-      <div class="card rise"><span class="ic">📂</span><h3>문서 정리</h3><p>흩어진 보고서·로그를 찾아 하나로 합치고 정리.</p></div>
+      <div class="card rise"><span class="ic">📂</span><h3>문서 정리·병합</h3><p>흩어진 보고서·로그를 찾아 하나로 합치고 정리.</p></div>
       <div class="card rise"><span class="ic">⚙️</span><h3>업무 자동화</h3><p>파일 변환, 이름 일괄 변경, 폴더 정돈, 배치 처리.</p></div>
-      <div class="card rise"><span class="ic">🔎</span><h3>자료 찾기</h3><p>폴더 전체에서 원하는 단어·파일을 빠르게 추적.</p></div>
-      <div class="card rise"><span class="ic">💻</span><h3>개발 보조</h3><p>코드 탐색·수정·실행을 자율로 — 개발자에게도 유용.</p></div>
+      <div class="card rise"><span class="ic">🔎</span><h3>자료 검색</h3><p>폴더 전체에서 원하는 단어·파일을 빠르게 추적.</p></div>
+      <div class="card rise"><span class="ic">💻</span><h3>개발 보조</h3><p>코드 탐색·수정·실행을 자율로 — 개발자에게도.</p></div>
     </div>
-    <p class="lead rise" style="margin-top:1.8rem">예) "이 폴더의 모든 .log를 날짜별로 묶어 zip으로 만들어줘" → 찾고, 묶고, 압축하고, 확인까지.</p>
+    <div class="chips rise">
+      <span class="chip"><b>파일</b> 읽기·쓰기·검색</span>
+      <span class="chip"><b>셸·프로세스</b> 실행</span>
+      <span class="chip"><b>문서</b> CSV·Excel·PDF·Word</span>
+      <span class="chip"><b>스크린샷</b>·클립보드</span>
+      <span class="chip">사내 <b>HTTP</b></span>
+    </div>
+    <p class="dim rise" style="margin-top:1.2rem">예) "이 폴더의 모든 .log를 날짜별로 묶어 zip으로 만들어줘" → 찾고, 묶고, 압축하고, 확인까지.</p>
   </section>
 
-  <!-- 5 · How to use -->
+  <!-- 6 · How to use -->
   <section class="slide">
     <span class="kicker rise">사용 흐름</span>
     <h2 class="rise"><span class="grad">4단계</span>면 충분합니다</h2>
     <div class="cards c4">
       <div class="card rise"><span class="ic">①</span><h3>로그인</h3><p>앱을 켜고 사내 계정으로 로그인. 시작 화면에서 한 번만.</p></div>
-      <div class="card rise"><span class="ic">②</span><h3>작업 폴더 지정</h3><p>AI가 작업할 폴더를 고릅니다. 최대 10개까지, 폴더별 켜고 끄기.</p></div>
-      <div class="card rise"><span class="ic">③</span><h3>목표 말하기</h3><p>단축키 한 번으로 채팅창을 띄워 원하는 일을 입력. 파일도 첨부 가능.</p></div>
+      <div class="card rise"><span class="ic">②</span><h3>작업 폴더 지정</h3><p>AI가 작업할 폴더를 고릅니다. 최대 10개, 폴더별 켜고 끄기.</p></div>
+      <div class="card rise"><span class="ic">③</span><h3>목표 말하기</h3><p>단축키 한 번으로 채팅창을 띄워 입력. 파일도 첨부 가능.</p></div>
       <div class="card rise"><span class="ic">④</span><h3>승인 &amp; 완료</h3><p>중요한 작업은 한 번 확인만 누르면 AI가 마무리.</p></div>
     </div>
     <p class="dim rise" style="margin-top:1.6rem">대화는 <b>프로젝트</b>로 묶어 정리하고, 끌어다 놓기로 분류할 수 있습니다.</p>
   </section>
 
-  <!-- 6 · New conveniences -->
+  <!-- 7 · ★ Team Messenger (collaboration) -->
   <section class="slide">
-    <span class="kicker rise">이번에 더 편해졌어요</span>
-    <h2 class="rise">일상에 바로 와닿는 <span class="grad">새 기능</span></h2>
-    <div class="cards c4">
-      <div class="card rise"><span class="ic">💻</span><h3>여러 PC에서 이어보기</h3><p>대화를 회사 서버에 동기화해 사무실·재택 등 다른 PC에서 그대로 이어 봅니다.</p></div>
-      <div class="card rise"><span class="ic">📊</span><h3>남은 사용량 확인</h3><p>상단 칩에서 일·주·월 남은 사용량을 한눈에. 새로고침 버튼으로 즉시 갱신.</p></div>
-      <div class="card rise"><span class="ic">📎</span><h3>파일 첨부해 질문</h3><p>화면 캡처·문서 등 파일을 채팅에 첨부해 함께 보내고 물어봅니다.</p></div>
-      <div class="card rise"><span class="ic">🔔</span><h3>업데이트 알림</h3><p>새 버전·필수 버전이 나오면 앱이 직접 안내해 줍니다.</p></div>
+    <span class="kicker v rise">신규 핵심 기능</span>
+    <h2 class="rise">AI 비서에, 이제 <span class="gradg">팀 실시간 협업</span>까지</h2>
+    <div class="split">
+      <div class="rise">
+        <p class="big">사내 동료와 <b>1:1·단체 채팅</b>을 같은 앱에서. AI에게 일을 맡기고, 팀과 바로 소통합니다.</p>
+        <div class="cards c2" style="margin-top:1.4rem;gap:.7rem">
+          <div class="card hi"><span class="ic">💬</span><h3>실시간 메시징</h3><p>안읽음 배지·읽음 표시·타이핑·온라인 상태.</p></div>
+          <div class="card hi"><span class="ic">@</span><h3>멘션 &amp; 첨부</h3><p>@멘션으로 콕 집어 알리고, 파일도 함께.</p></div>
+          <div class="card hi"><span class="ic">✏️</span><h3>수정·삭제</h3><p>보낸 메시지를 고치거나 지울 수 있습니다.</p></div>
+          <div class="card hi"><span class="ic">🔌</span><h3>끊겨도 자동 복구</h3><p>연결이 끊겨도 자동 재연결 + 이력 재동기화.</p></div>
+        </div>
+      </div>
+      <div class="mock rise">
+        <div class="hd">
+          <span class="av">정</span><span class="nm">정산 TF</span>
+          <span class="pres"><span class="dot"></span>3명 온라인</span>
+        </div>
+        <div class="bub them"><span class="mn">@김민수</span> 월말 정산본 어디 있을까요?<span class="meta">오후 2:14</span></div>
+        <div class="bub me">AI가 방금 정리해서 공유 폴더에 올렸어요.<span class="meta">오후 2:15 · <span class="read">읽음</span></span></div>
+        <div class="bub them">오 감사합니다 🙌<span class="meta">오후 2:15</span></div>
+        <div class="typing"><span class="av" style="width:20px;height:20px;font-size:.65rem">박</span>박지영 입력 중<b style="color:var(--accent2)">···</b></div>
+      </div>
     </div>
-    <p class="dim rise" style="margin-top:1.6rem">작업 폴더도 <b>최대 10개</b>까지 등록하고 폴더별로 켜고 끄며 사용할 수 있습니다.</p>
+    <p class="dim rise" style="margin-top:1.2rem"><b>AI 비서 + 팀 협업을 한 앱에서.</b> WebSocket 실시간 · 동료를 사람 이름으로 표시 · 멤버 관리(추가/강퇴/나가기).</p>
   </section>
 
-  <!-- 7 · Projects -->
+  <!-- 8 · Differentiation (3-way vs) -->
+  <section class="slide">
+    <span class="kicker rise">무엇이 다른가</span>
+    <h2 class="rise">보여주기 → 일하기 → <span class="grad">함께 일하기</span></h2>
+    <div class="vs rise">
+      <div class="col bad">
+        <span class="lbl">1세대</span>
+        <h4>보여주는 챗봇</h4>
+        <ul>
+          <li><span>💬</span> 답변만 제공</li>
+          <li><span>🙋</span> 실행은 사람 몫</li>
+          <li><span>🚫</span> 보안망에서 사용 제약</li>
+          <li><span>—</span> 협업 기능 없음</li>
+        </ul>
+      </div>
+      <div class="col mid">
+        <span class="lbl">2세대</span>
+        <h4>일하는 비서</h4>
+        <ul>
+          <li><span>🛠</span> 도구로 직접 실행</li>
+          <li><span>📦</span> 작업 폴더 안에서 처리</li>
+          <li><span>🔒</span> 폐쇄망 안전</li>
+          <li><span>—</span> 혼자 쓰는 도구</li>
+        </ul>
+      </div>
+      <div class="col good">
+        <span class="lbl">OhMyAgent</span>
+        <h4>함께 일하는 비서</h4>
+        <ul>
+          <li><span>✓</span> 일하는 AI <b>+</b> 안전한 통제</li>
+          <li><span>✓</span> 권한 승인·샌드박스 내장</li>
+          <li><span>✓</span> 폐쇄망 100% · 외부 연결 0</li>
+          <li><span>✓</span> <b>팀 실시간 협업까지</b></li>
+        </ul>
+      </div>
+    </div>
+    <p class="dim rise" style="margin-top:1.6rem">실행력 · 보안 · 협업 — 세 가지를 한 앱에서 동시에 만족하는 사내 AI.</p>
+  </section>
+
+  <!-- 9 · Safety / trust -->
+  <section class="slide">
+    <span class="kicker rise">안심하고 쓰세요</span>
+    <h2 class="rise">강력하지만 <span class="grad">선을 지킵니다</span></h2>
+    <div class="cards c4">
+      <div class="card rise"><span class="ic">🔒</span><h3>폐쇄망 안에서만</h3><p>외부 인터넷으로 데이터가 나가지 않습니다. 외부 유출 0.</p></div>
+      <div class="card rise"><span class="ic">📦</span><h3>작업 폴더 샌드박스</h3><p>지정 폴더 밖은 차단. 경로 탈출 방지.</p></div>
+      <div class="card rise"><span class="ic">🛡️</span><h3>권한 승인 3단계</h3><p>수동 · 안전 자동 · 전체 자동. 위험 작업은 실행 전 확인.</p></div>
+      <div class="card rise"><span class="ic">🏢</span><h3>회사가 통제</h3><p>사용 기능·사용량 한도를 서버 정책으로 관리.</p></div>
+    </div>
+    <p class="lead rise" style="margin-top:1.8rem">설치 바이너리는 <b>서명·해시(SHA-256/Authenticode)</b>로 무결성을 검증 — 변조 없는 배포를 보장합니다.</p>
+  </section>
+
+  <!-- 10 · Projects / sync -->
   <section class="slide">
     <span class="kicker rise">정리되는 업무 기록</span>
-    <h2 class="rise">대화를 <span class="grad">프로젝트</span>로 묶어 관리</h2>
+    <h2 class="rise">대화를 <span class="grad">프로젝트</span>로 묶고, 어디서나 이어보기</h2>
     <div class="split">
       <div class="rise">
         <p class="big">업무별로 대화를 모아두면, 나중에 다시 찾기 쉽습니다.</p>
         <p class="lead" style="margin-top:1.2rem">
-          "사내포털 리뉴얼", "월말 정산" 처럼 프로젝트를 만들고
-          대화를 끌어다 놓아 분류하세요. 모든 기록은 <b>기본적으로 내 PC에 저장</b>되며,
-          원할 때만 회사 서버와 동기화해 다른 PC에서도 볼 수 있습니다.
+          "사내포털 리뉴얼", "월말 정산" 처럼 프로젝트를 만들고 대화를 끌어다 놓아 분류하세요.
+          모든 기록은 <b>기본적으로 내 PC에 저장</b>되며, 원할 때만 회사 서버와 동기화해
+          <b>사무실·재택 등 다른 PC에서 그대로</b> 이어 봅니다.
         </p>
       </div>
       <div class="cards rise" style="margin-top:0">
         <div class="card"><span class="ic">🗂️</span><h3>프로젝트로 묶기</h3><p>여러 대화를 업무 단위로 그룹화.</p></div>
         <div class="card"><span class="ic">🖱️</span><h3>드래그앤드롭</h3><p>대화를 끌어다 놓아 손쉽게 분류.</p></div>
-        <div class="card"><span class="ic">☁️</span><h3>선택적 동기화</h3><p>평소엔 내 PC에, 필요할 때만 서버로.</p></div>
+        <div class="card"><span class="ic">☁️</span><h3>로컬 우선 + 선택 동기화</h3><p>평소엔 내 PC에, 필요할 때만 서버로 — 여러 PC에서 이어보기.</p></div>
       </div>
     </div>
   </section>
 
-  <!-- 8 · Safety / trust -->
+  <!-- 11 · Impact stats -->
   <section class="slide">
-    <span class="kicker rise">안심하고 쓰세요</span>
-    <h2 class="rise">강력하지만 <span class="grad">선을 지킵니다</span></h2>
-    <div class="cards c4">
-      <div class="card rise"><span class="ic">🔒</span><h3>폐쇄망 안에서만</h3><p>외부 인터넷으로 데이터가 나가지 않습니다. 회사 안 AI만 사용.</p></div>
-      <div class="card rise"><span class="ic">📦</span><h3>작업 폴더 샌드박스</h3><p>지정한 폴더 밖은 건드리지 않습니다. 다른 영역 접근 차단.</p></div>
-      <div class="card rise"><span class="ic">🛡️</span><h3>권한 승인</h3><p>파일 삭제 같은 중요한 작업은 실행 전 사용자 확인을 받습니다.</p></div>
-      <div class="card rise"><span class="ic">🏢</span><h3>회사가 통제</h3><p>사용 가능한 기능·사용량 한도를 회사 정책으로 관리합니다.</p></div>
+    <span class="kicker rise">한눈에</span>
+    <h2 class="rise">숫자로 보는 <span class="grad">OhMyAgent</span></h2>
+    <div class="statgrid rise">
+      <div class="stat-card"><div class="n">26개</div><div class="l">내장 도구 — 파일·셸·문서·시스템</div></div>
+      <div class="stat-card"><div class="n">10개</div><div class="l">동시 작업 폴더 — 폴더별 on/off</div></div>
+      <div class="stat-card"><div class="n">3단계</div><div class="l">권한 승인 — 수동·안전자동·전체자동</div></div>
+      <div class="stat-card"><div class="n">100%</div><div class="l">폐쇄망 동작 — 데이터 외부 유출 0</div></div>
+      <div class="stat-card"><div class="n">0</div><div class="l">추가 외부 연결 — 설치형 단독 동작</div></div>
+      <div class="stat-card"><div class="n">실시간</div><div class="l">팀 협업 — WebSocket, 자동 재연결</div></div>
     </div>
-    <p class="lead rise" style="margin-top:1.8rem">권한 모드는 <b>수동 승인 · 안전 자동 · 전체 자동</b> 3단계 — 신뢰 수준에 맞춰 고르세요.</p>
+    <p class="dim rise" style="margin-top:1.4rem">개발자에게는 코딩 비서, 일반 사용자에게는 문서·자동화 비서, 그리고 모두에게 협업 도구.</p>
   </section>
 
-  <!-- 9 · Value / benefits -->
-  <section class="slide">
-    <span class="kicker rise">도입 효과</span>
-    <h2 class="rise">사람은 <span class="grad">판단</span>에, 반복은 <span class="grad">AI</span>에게</h2>
-    <ul class="checks rise">
-      <li><span class="ck">✓</span> 반복·수작업 시간을 줄여 핵심 업무에 집중</li>
-      <li><span class="ck">✓</span> 외부 도구 없이 보안망 안에서 AI 생산성 확보</li>
-      <li><span class="ck">✓</span> 권한 승인·작업 폴더 제한·사용량 한도로 통제 가능한 안전성</li>
-      <li><span class="ck">✓</span> 설치형 데스크톱 — 별도 서버 구축·외부 연결 불필요</li>
-    </ul>
-    <p class="dim rise" style="margin-top:1.6rem">개발자에게는 코딩 비서, 일반 사용자에게는 문서·자동화 비서가 됩니다.</p>
-  </section>
-
-  <!-- 10 · Close -->
+  <!-- 12 · Close -->
   <section class="slide">
     <span class="kicker rise">한 줄로</span>
-    <h1 class="rise">보안망에도<br><span class="grad">진짜 일하는 AI</span>를</h1>
-    <p class="quote rise" style="margin-top:1.8rem">
-      "물어보는 AI"에서 <span class="q">"일해주는 AI"</span>로.<br>
-      안전한 회사 안에서, 한 문장으로.
+    <h1 class="rise">물어보는 AI →<br><span class="grad">일해주는 AI</span> → 함께 일하는 AI</h1>
+    <p class="quote rise" style="margin-top:1.8rem;max-width:36ch">
+      보안망 안에서 <span class="q">실제로 일하고, 안전하며, 이제 팀과 함께</span> 일하는
+      사내 전용 AI 업무 비서.
     </p>
-    <p class="dim rise" style="margin-top:2.4rem">OhMyAgent · 사내 전용 AI 업무 비서</p>
+    <p class="dim rise" style="margin-top:2.4rem">OhMyAgent · 폐쇄망에서 일하고, 함께 일합니다</p>
   </section>
 
 </div>
 
 <div class="nav">
-  <span class="count"><span id="cur">1</span> / <span id="tot">10</span></span>
+  <span class="count"><span id="cur">1</span> / <span id="tot">12</span></span>
   <button id="prev" aria-label="이전">‹</button>
   <button id="next" aria-label="다음">›</button>
 </div>

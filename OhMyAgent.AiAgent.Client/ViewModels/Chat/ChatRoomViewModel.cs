@@ -154,43 +154,33 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
             IsLoading = false;
         }).ConfigureAwait(false);
 
-        // 열람 시 읽음 처리(하단 도달과 동일 효과).
+        // 열람 시 읽음 처리(읽을 게 있을 때만 서버 통지 — MarkReadAsync 내부 throttle).
         await MarkReadAsync().ConfigureAwait(false);
 
-        // 1:1 방이면 상대 표시이름으로 헤더 갱신(group 은 방이름 유지).
-        if (_room.Type == ChatRoomType.Direct)
-        {
-            try
-            {
-                var counterpart = await _realtime.GetDirectCounterpartAsync(_room.Id).ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(counterpart))
-                    await UiInvokeAsync(() =>
-                    {
-                        _counterpartId = counterpart;
-                        DisplayName = _realtime.DisplayName(counterpart);
-                    }).ConfigureAwait(false);
-            }
-            catch { /* 상대 해석 실패 시 "1:1 대화" 유지 */ }
-        }
-
-        // 멤버 패널(Flyout) 로드 — 헤더 멤버 토글에서 바로 보이도록 방 열람 시 채운다.
-        await Members.LoadCommand.ExecuteAsync(null).ConfigureAwait(false);
-
-        // 멘션 후보 + 헤더 온라인 수 시드(best-effort). presence WS 이벤트는 전환 시에만 오므로 최초 1회 조회로 시드한다.
+        // 멤버 + presence 를 1회만 조회해 멤버패널·멘션후보·온라인수·1:1 상대이름에 공유한다(중복 호출 제거).
         try
         {
             var members = await _realtime.GetMembersAsync(_room.Id).ConfigureAwait(false);
             var online  = await _realtime.GetPresenceAsync(_room.Id).ConfigureAwait(false);
             await UiInvokeAsync(() =>
             {
-                Mentions.SetMembers(members, _currentUserId, _realtime.DisplayName);
-                OnlinePresence.Clear();
-                foreach (var id in online)
-                    if (!OnlinePresence.Contains(id))
-                        OnlinePresence.Add(id);
+                Members.ApplyMembers(members, online);                          // 멤버 패널(Flyout)
+                Mentions.SetMembers(members, _currentUserId, _realtime.DisplayName); // 멘션 후보
+                OnlinePresence.Clear();                                          // 헤더 "N명 온라인"
+                foreach (var id in online) OnlinePresence.Add(id);
+
+                if (_room.Type == ChatRoomType.Direct)                          // 1:1 헤더 = 상대 이름
+                {
+                    var counterpart = members.FirstOrDefault(m => !string.Equals(m, _currentUserId, StringComparison.Ordinal));
+                    if (!string.IsNullOrEmpty(counterpart))
+                    {
+                        _counterpartId = counterpart;
+                        DisplayName = _realtime.DisplayName(counterpart);
+                    }
+                }
             }).ConfigureAwait(false);
         }
-        catch { /* graceful — 멘션/온라인 표시 없이도 동작. */ }
+        catch { /* graceful — 멤버/멘션/온라인 표시 없이도 동작. */ }
     }
 
     // ── 전송(낙관 렌더) ────────────────────────────────────────────────

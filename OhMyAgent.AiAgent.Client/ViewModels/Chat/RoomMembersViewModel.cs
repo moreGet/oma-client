@@ -64,7 +64,24 @@ public sealed partial class RoomMembersViewModel : ObservableObject, IDisposable
                 m.DisplayName = _realtime.DisplayName(m.MemberId);
         });
 
-    /// <summary>멤버 목록 + presence 로드. 패널 열람 시 호출.</summary>
+    /// <summary>미리 받은 멤버/온라인 목록으로 채운다(방 열람 시 ChatRoomViewModel 이 1회 조회분을 공유 — 중복 호출 방지). UI 스레드.</summary>
+    public void ApplyMembers(IReadOnlyList<string> members, IReadOnlyList<string> online)
+        => PopulateMembers(members, online);
+
+    /// <summary>멤버 행을 presence 와 함께 재구성한다(ApplyMembers/LoadAsync 공통). UI 스레드에서 호출.</summary>
+    private void PopulateMembers(IReadOnlyList<string> members, IReadOnlyList<string> online)
+    {
+        var onlineSet = new HashSet<string>(online, StringComparer.Ordinal);
+        Members.Clear();
+        foreach (var id in members)
+            Members.Add(new RoomMemberViewModel(
+                id,
+                _realtime.DisplayName(id),
+                isMe: string.Equals(id, _currentUserId, StringComparison.Ordinal),
+                presence: onlineSet.Contains(id) ? RoomMemberPresence.Online : RoomMemberPresence.Offline));
+    }
+
+    /// <summary>멤버 목록 + presence 로드. 멤버 추가/강퇴 후 재조회용(방 열람 시엔 ApplyMembers 로 공유).</summary>
     [RelayCommand]
     private async Task LoadAsync()
     {
@@ -87,16 +104,9 @@ public sealed partial class RoomMembersViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var onlineSet = new HashSet<string>(online, StringComparer.Ordinal);
         await UiInvokeAsync(() =>
         {
-            Members.Clear();
-            foreach (var id in members)
-                Members.Add(new RoomMemberViewModel(
-                    id,
-                    _realtime.DisplayName(id),
-                    isMe: string.Equals(id, _currentUserId, StringComparison.Ordinal),
-                    presence: onlineSet.Contains(id) ? RoomMemberPresence.Online : RoomMemberPresence.Offline));
+            PopulateMembers(members, online);
             IsLoading = false;
         }).ConfigureAwait(false);
     }

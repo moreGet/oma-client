@@ -27,6 +27,20 @@ public sealed class ChatRealtimeService(
     private readonly ConcurrentDictionary<string, string> _names = new(StringComparer.Ordinal);
     private const int ShortIdLength = 8;
 
+    // 안읽음 로컬 추적(roomId → count). 서버 /chat/unread 는 start·reconnect 에만 조회하고,
+    // 그 외엔 WS 수신/읽음으로 로컬 증감 → 메시지마다 HTTP 를 쏘지 않는다(네트워크 절약).
+    private readonly ConcurrentDictionary<string, int> _unread = new(StringComparer.Ordinal);
+
+    // 1:1 상대 memberId 캐시(roomId → counterpart). 방 목록 재로드 시 GetMembers 재호출 회피.
+    private readonly ConcurrentDictionary<string, string> _directCounterpart = new(StringComparer.Ordinal);
+
+    // 현재 사용자가 보고 있는 방(열림+포커스). 이 방 수신분은 안읽음 증가 제외.
+    private volatile string? _activeRoomId;
+
+    // 읽음(POST /read) 디바운스 — roomId → 마지막 마크 tick. 스크롤마다 read POST 방지.
+    private readonly ConcurrentDictionary<string, long> _lastMarkTick = new(StringComparer.Ordinal);
+    private const long MarkReadDebounceMs = 2500;
+
     private bool _socketHooked;
     private ChatConnectionState _connectionState = ChatConnectionState.Disconnected;
 
@@ -58,6 +72,7 @@ public sealed class ChatRealtimeService(
         try
         {
             var unread = await api.GetUnreadAsync(ct).ConfigureAwait(false);
+            SeedUnread(unread);
             await RaiseAsync(() => UnreadChanged?.Invoke(this, unread)).ConfigureAwait(false);
         }
         catch (ChatApiException ex) { HandleApiException(ex); }
@@ -83,11 +98,17 @@ public sealed class ChatRealtimeService(
 
     public async Task<string?> GetDirectCounterpartAsync(string roomId, CancellationToken ct = default)
     {
+        if (_directCounterpart.TryGetValue(roomId, out var cached))
+            return cached;   // 캐시 — 방 목록 재로드 시 GetMembers 재호출 회피
+
         var members = await GetMembersAsync(roomId, ct).ConfigureAwait(false);
         var me = MyId();
         foreach (var m in members)
             if (!string.Equals(m, me, StringComparison.Ordinal))
+            {
+                _directCounterpart[roomId] = m;
                 return m;
+            }
         return null;
     }
 
@@ -122,6 +143,10 @@ public sealed class ChatRealtimeService(
         UnhookSocket();
         await socket.DisconnectAsync().ConfigureAwait(false);
         _rooms.Clear();
+        _unread.Clear();
+        _directCounterpart.Clear();
+        _lastMarkTick.Clear();
+        _activeRoomId = null;
     }
 
     public async ValueTask DisposeAsync()
@@ -221,13 +246,30 @@ public sealed class ChatRealtimeService(
     }
 
     public Task MarkReadAsync(string roomId, CancellationToken ct = default)
-        => ExecuteVoidAsync(async () =>
+    {
+        var had = _unread.TryGetValue(roomId, out var c) && c > 0;
+
+        // 배지 즉시 0 (로컬, 무지연·무플리커).
+        if (had)
         {
-            var result = await api.MarkReadAsync(roomId, ct).ConfigureAwait(false);
-            // 내 읽음 전진 → 해당 방 안읽음 0. 서버가 WS read 도 브로드캐스트.
+            _unread[roomId] = 0;
+            _ = RaiseLocalUnreadAsync();
+        }
+
+        // POST 디바운스: 새 안읽음이 없는데 최근(MarkReadDebounceMs) 마크했으면 생략 — 스크롤마다 read POST 방지.
+        // 새 안읽음(had)이 있으면 디바운스 무시하고 즉시 통지(읽음 표시 정확도 유지).
+        var now = Environment.TickCount64;
+        if (!had && _lastMarkTick.TryGetValue(roomId, out var last) && now - last < MarkReadDebounceMs)
+            return Task.CompletedTask;
+        _lastMarkTick[roomId] = now;
+
+        return ExecuteVoidAsync(async () =>
+        {
+            var result = await api.MarkReadAsync(roomId, ct).ConfigureAwait(false);   // 서버 읽음 전진 + 타멤버에 read 브로드캐스트
             var state = GetOrAddRoom(roomId);
             state.AdvanceRead(MyId(), result.LastReadAt);
         });
+    }
 
     // ── 단순 위임 ──
 
@@ -242,7 +284,33 @@ public sealed class ChatRealtimeService(
         }, Array.Empty<ChatReadReceipt>());
 
     public Task<IReadOnlyList<string>> GetMembersAsync(string roomId, CancellationToken ct = default)
-        => ExecuteAsync(() => api.GetMembersAsync(roomId, ct), Array.Empty<string>());
+        => ExecuteAsync(async () =>
+        {
+            // ?detail=1 로 이름까지 받아 캐시(_names)를 채운다 — 일반 사용자도 방 멤버 이름이 즉시 표시된다
+            // (기존 /members 디렉터리는 admin 전용). 반환값은 멤버 id 목록이라 호출부는 그대로 동작.
+            var detailed = await api.GetRoomMembersDetailedAsync(roomId, ct).ConfigureAwait(false);
+            await MergeNamesAsync(detailed).ConfigureAwait(false);
+            return (IReadOnlyList<string>)detailed.Select(m => m.Id).ToList();
+        }, Array.Empty<string>());
+
+    /// <summary>?detail=1 결과를 이름 캐시에 병합한다(display_name 우선, 없으면 username). 변경 시 DirectoryUpdated.</summary>
+    private async Task MergeNamesAsync(IReadOnlyList<ChatMemberDetail> members)
+    {
+        var changed = false;
+        foreach (var m in members)
+        {
+            var name = !string.IsNullOrWhiteSpace(m.DisplayName) ? m.DisplayName!
+                     : !string.IsNullOrWhiteSpace(m.Username) ? m.Username : null;
+            if (name is null) continue;
+            if (!_names.TryGetValue(m.Id, out var existing) || !string.Equals(existing, name, StringComparison.Ordinal))
+            {
+                _names[m.Id] = name;
+                changed = true;
+            }
+        }
+        if (changed)
+            await RaiseAsync(() => DirectoryUpdated?.Invoke(this, EventArgs.Empty)).ConfigureAwait(false);
+    }
 
     public Task<IReadOnlyList<string>> AddMembersAsync(string roomId, IReadOnlyList<string> memberIds, CancellationToken ct = default)
         => ExecuteThrowAsync(() => api.AddMembersAsync(roomId, memberIds, ct));
@@ -375,25 +443,39 @@ public sealed class ChatRealtimeService(
 
         _ = RaiseAsync(() => MessageUpserted?.Invoke(this, new RoomMessageEvent(message, isEdited, isDeletedFinal)));
 
-        // 남이 보낸 신규 메시지면 전역 안읽음 배지를 서버 권위(/chat/unread)로 재조회해 실시간 반영한다.
-        // (내가 보낸 것·수정·삭제·에코는 제외 — 불필요한 재조회 방지.)
+        // 남이 보낸 신규 메시지면 안읽음 +1(로컬). 단 지금 보고 있는 방(_activeRoomId)은 제외(읽는 중).
+        // 서버 /chat/unread 재조회 없이 로컬 카운터만 증가 → 메시지당 HTTP 0.
         if (isNew && !isEdited && !isDeletedFinal
-            && !string.Equals(message.SenderId, MyId(), StringComparison.Ordinal))
+            && !string.Equals(message.SenderId, MyId(), StringComparison.Ordinal)
+            && !string.Equals(message.RoomId, _activeRoomId, StringComparison.Ordinal))
         {
-            _ = RefreshUnreadAsync();
+            _unread.AddOrUpdate(message.RoomId, 1, (_, v) => v + 1);
+            _ = RaiseLocalUnreadAsync();
         }
     }
 
-    /// <summary>전역 안읽음 배지를 서버 권위(/chat/unread)로 재조회·발화. 남의 신규 메시지 수신 시 실시간 갱신용.</summary>
-    private async Task RefreshUnreadAsync()
+    // ── 안읽음 로컬 추적 ──
+
+    public void SetActiveRoom(string? roomId) => _activeRoomId = roomId;
+
+    /// <summary>서버 /chat/unread 응답으로 로컬 카운터를 시드(start·reconnect 시 권위 동기화).</summary>
+    private void SeedUnread(ChatUnreadResponse unread)
     {
-        try
-        {
-            var unread = await api.GetUnreadAsync().ConfigureAwait(false);
-            await RaiseAsync(() => UnreadChanged?.Invoke(this, unread)).ConfigureAwait(false);
-        }
-        catch (ChatApiException ex) { HandleApiException(ex); }
-        catch { /* 배지 갱신 실패는 무시 */ }
+        _unread.Clear();
+        if (unread.Rooms is not null)
+            foreach (var kv in unread.Rooms)
+                _unread[kv.Key] = kv.Value;
+    }
+
+    /// <summary>로컬 카운터로 전역 안읽음 스냅샷을 만들어 발화(HTTP 없음).</summary>
+    private Task RaiseLocalUnreadAsync()
+    {
+        var rooms = new Dictionary<string, int>(StringComparer.Ordinal);
+        var total = 0;
+        foreach (var kv in _unread)
+            if (kv.Value > 0) { rooms[kv.Key] = kv.Value; total += kv.Value; }
+        var snapshot = new ChatUnreadResponse(total, rooms);
+        return RaiseAsync(() => UnreadChanged?.Invoke(this, snapshot));
     }
 
     /// <summary>
@@ -402,10 +484,11 @@ public sealed class ChatRealtimeService(
     /// </summary>
     private async Task ResyncAsync()
     {
-        // 1) 전역 안읽음 재조회.
+        // 1) 전역 안읽음 재조회(권위 재동기화).
         try
         {
             var unread = await api.GetUnreadAsync().ConfigureAwait(false);
+            SeedUnread(unread);
             await RaiseAsync(() => UnreadChanged?.Invoke(this, unread)).ConfigureAwait(false);
         }
         catch (ChatApiException ex) { HandleApiException(ex); }

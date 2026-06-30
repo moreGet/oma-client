@@ -30,6 +30,7 @@ public interface IChatApiClient
 
     // 멤버 / presence
     Task<IReadOnlyList<string>> GetMembersAsync(string roomId, CancellationToken ct = default);
+    Task<IReadOnlyList<ChatMemberDetail>> GetRoomMembersDetailedAsync(string roomId, CancellationToken ct = default); // ?detail=1 (이름 포함, 방 멤버 누구나)
     Task<IReadOnlyList<string>> AddMembersAsync(string roomId, IReadOnlyList<string> memberIds, CancellationToken ct = default);  // group 한정
     Task KickMemberAsync(string roomId, string memberId, CancellationToken ct = default);                          // 생성자/group 한정
     Task LeaveRoomAsync(string roomId, CancellationToken ct = default);                                            // group 한정

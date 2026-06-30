@@ -90,14 +90,21 @@ Views/Chat/                         ViewModels/Chat/                 Services/Ch
 
 ## 5.1 이름 표시(디렉터리)
 - 채팅 식별자는 member UUID 라(§4), UI 는 **이름 해석 캐시**(`IChatRealtimeService.DisplayName(id)`)로 사람 이름을 표시한다: 멤버 목록·1:1 방 헤더/목록·멘션 후보·멘션 피드 발신자·아바타 이니셜.
-- 캐시 소스: 본인 `GET /users/me`(display_name/username) + best-effort `GET /members`. **`/members` 는 admin 전용**이라 admin 은 모든 멤버 username 이 보이고, 일반 user 는 본인만 이름·나머지는 **UUID 앞 8자리 폴백**.
-- 캐시 갱신 시 `DirectoryUpdated` 이벤트로 라벨 일괄 재해석.
-- 서버가 **방 멤버 스코프 이름 엔드포인트**([`docs/server-request-chat-directory.md`](server-request-chat-directory.md))를 추가하면 일반 user 도 즉시 이름 표시(소스 한 줄 교체).
+- **주 소스: `GET /chat/rooms/{id}/members?detail=1`** — 멤버 `{id, username, display_name?}` 를 반환하며 **방 멤버라면 누구나**(admin 불필요). 방 열람·멤버 조회 시 `GetMembersAsync` 가 이 엔드포인트로 멤버 id 목록을 받으면서 이름 캐시(`_names`)를 함께 채운다. → **일반 사용자도 방 멤버 이름이 표시됨.**
+- 보조 소스: 본인 `GET /users/me`(display_name/username) + best-effort `GET /members`(admin 전용). 캐시 미스는 **UUID 앞 8자리 폴백**.
+- 캐시 갱신 시 `DirectoryUpdated` 이벤트로 모든 라벨(방목록·헤더·멤버·멘션) 일괄 재해석.
+
+## 5.2 네트워크 / UI 최적화
+- **안읽음: 로컬 카운터**(`_unread`) 로 추적 — 메시지마다 `/chat/unread` 를 호출하지 않는다. 서버 권위 조회는 **시작·재연결 시 1회**(`SeedUnread`). 남이 보낸 신규 메시지면 로컬 +1, `MarkRead` 시 로컬 0 → 배지 즉시·무플리커.
+- **읽음(read) POST 디바운스**(`MarkReadDebounceMs` 2.5s): 스크롤마다 `POST /read` 가 나가지 않게 같은 방은 디바운스(새 안읽음이 있으면 즉시 통지해 읽음표시 정확도 유지).
+- **방 열 때 1회 공유 조회**: 멤버·presence 를 한 번만 조회해 멤버패널·멘션후보·온라인수·1:1 상대이름에 공유(중복 호출 제거).
+- **active room**: 보고 있는 방 수신분은 안읽음 증가에서 제외. **1:1 상대 id 캐시**(`_directCounterpart`)로 방 목록 재로드 시 재조회 회피.
+- **UI 안정화**: 방 목록은 **증분 upsert**(Clear 후 재생성 금지 → 깜빡임 제거), 안읽음 변동 시 **재정렬 안 함**(배지 숫자만 in-place), 메시지 일괄 로드 중엔 per-add 스크롤 생략 후 **완료 시 1회만** 하단 이동.
 
 ## 6. 알려진 한계 / 후속 과제
 
-- 일반 user 의 타 멤버 **이름 표시**는 서버의 멤버 스코프 이름 API 추가 전까지 UUID 앞자리 폴백(위 §5.1, 서버 요청서 제출됨).
-- 전체 사용자 디렉터리 API 부재 → 새 방 생성·멤버 추가 시 상대 **member UUID 직접 입력**(자동완성/검색 UI는 디렉터리 API 추가 후).
+- **멤버 이름 표시는 해결됨**(§5.1, `?detail=1` 채택). 캐시 미스 시에만 UUID 앞자리 폴백.
+- 전체 사용자 디렉터리(방 밖) API 부재 → 새 방 생성·멤버 추가 시 상대 **member UUID 직접 입력**(이름 자동완성/검색 UI는 사용자 디렉터리 API 추가 후).
 - REST 이력의 mentions/attachments 복원은 **서버 측 DTO 보완** 필요.
 - 첨부 인라인 미리보기(썸네일), 이모지 리액션, 메시지 검색은 범위 외(서버 미제공).
 - 재로그인으로 토큰이 바뀌어도 메신저 VM의 `currentUserId` 는 즉시 갱신되지 않습니다(서버 `sender_id` 가 권위라 표시 영향은 최소 — 다음 메신저 재오픈 시 정정).

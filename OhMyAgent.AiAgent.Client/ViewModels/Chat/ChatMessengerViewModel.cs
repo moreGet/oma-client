@@ -154,6 +154,8 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
             IsMentionFeedOpen = false;
         }).ConfigureAwait(false);
 
+        _realtime.SetActiveRoom(room.Id);   // 이 방 수신분은 안읽음 증가 제외(보는 중)
+
         if (previous is not null)
         {
             previous.Members.Left -= OnRoomLeft;
@@ -165,6 +167,7 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
 
     private void OnRoomLeft(object? sender, EventArgs e)
     {
+        _realtime.SetActiveRoom(null);
         _ = UiInvokeAsync(() =>
         {
             if (CurrentRoom is { } room)

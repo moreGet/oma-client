@@ -134,6 +134,13 @@ public sealed class ChatApiClient(HttpClient httpClient, ISettingsService settin
         return resp.Members ?? Array.Empty<string>();
     }
 
+    public async Task<IReadOnlyList<ChatMemberDetail>> GetRoomMembersDetailedAsync(string roomId, CancellationToken ct = default)
+    {
+        // ?detail=1 → 이름(username/display_name) 포함. 방 멤버라면 누구나(admin 불필요).
+        var resp = await GetAsync<ChatMembersDetailResponse>($"{RoomsPath}/{Uri.EscapeDataString(roomId)}/members?detail=1", ct).ConfigureAwait(false);
+        return resp.Members ?? Array.Empty<ChatMemberDetail>();
+    }
+
     public async Task<IReadOnlyList<string>> AddMembersAsync(string roomId, IReadOnlyList<string> memberIds, CancellationToken ct = default)
     {
         var resp = await PostAsync<ChatMembersResponse>(

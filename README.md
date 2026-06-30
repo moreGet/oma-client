@@ -21,7 +21,8 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 - **토큰 쿼터**: 일/주/월 사용량·잔여를 상단바 칩 + 팝업 게이지로 표시(`GET /api/v1/me/quota`), **새로고침 버튼** 제공. 한도 초과(429)는 안내만 하고 로그아웃하지 않음
 - **파일 첨부**: 컴포저에 첨부한 파일을 base64로 인코딩해 메시지에 실어 전송(파일당 ≤10MiB, `messages[].attachments[]`)
 - **서버 세션 동기화**(선택): 대화 세션을 서버에 업서트/병합해 **여러 PC에서 공유**(`/api/v1/agent/sessions`, `updated_at` 최신 우선)
-- **실시간 채팅(메신저)**: LLM 채팅과 **별개**인 사람↔사람 메신저. 단체/1:1 방, 송수신·수정·삭제, 읽음·안읽음 배지, 타이핑, 온라인 상태(presence), 멘션, 첨부, 멤버 관리를 **WebSocket**(`/api/v1/chat/ws`, 끊기면 지수 backoff 자동 재연결+이력 재동기화)+REST(`/api/v1/chat/*`)로 실시간 반영. 트레이/사이드바에서 별도 메신저 창으로 진입 ([상세](docs/realtime-chat.md))
+- **실시간 채팅(메신저)**: LLM 채팅과 **별개**인 사람↔사람 메신저. 단체/1:1 방, 송수신·수정·삭제, 읽음·안읽음 배지, 타이핑, 온라인 상태(presence), 멘션, 첨부, 멤버 관리를 **WebSocket**(`/api/v1/chat/ws`, 끊기면 지수 backoff 자동 재연결+이력 재동기화)+REST(`/api/v1/chat/*`)로 실시간 반영. 멤버는 **이름으로 표시**(UUID→이름, `GET /chat/rooms/{id}/members?detail=1` — 방 멤버 누구나). 트레이/사이드바에서 별도 메신저 창으로 진입 ([상세](docs/realtime-chat.md))
+- **메신저 네트워크/UI 최적화**: 안읽음을 **로컬 카운터**로 추적해 메시지마다 `/chat/unread`를 호출하지 않음(서버 조회는 시작·재연결 시 1회). 읽음(read) POST는 **디바운스**, 방 열 때 멤버/presence는 **1회 공유 조회**, 1:1 상대·이름은 **캐시**. UI는 방 목록 **증분 갱신**(Clear 재생성 제거)으로 깜빡임 없음
 - **서버 제어형 도구/보안**(선택, 2중 안전): 사용 가능 도구를 서버가 통제(`GET /api/v1/tools/policy`, cached/realtime) — 비활성 도구는 모델에 **노출조차 안 됨**. 위험 명령 차단 패턴도 **클라 디폴트 ∪ 서버 추가**(`GET /api/v1/security/command-policy`)로 운영하며, 서버 값이 없으면 클라 내장 디폴트만 적용
 - **버전 관리 / 업데이트 알림**: SemVer + 빌드 git 해시. 서버 버전 점검으로 새/필수 버전 배너 안내(`GET /api/v1/client/version`)
 - **사용자 친화 에러**: 서버 원문(영문/기술 문구) 대신 상태 코드 기준 한국어 안내로 변환. **401에서만 재로그인**, 403/429/404/5xx는 메시지만(로그아웃 없음)
@@ -146,6 +147,7 @@ dotnet run --project OhMyAgent.AiAgent.Client
 | `GET/POST` | `/api/v1/projects` | 프로젝트 목록 조회 / 업서트(`client_id` 기준) — *선택적 동기화* |
 | `POST/DELETE` | `/api/v1/projects/{id}/conversations[/{cid}]` | 대화 업서트(push) / 삭제 — *선택적 동기화* |
 | `GET/POST/PATCH/DELETE` | `/api/v1/chat/rooms[…]`, `/chat/unread`, `/chat/mentions`, `/chat/attachments[…]` | **실시간 메신저** REST — 방/메시지/읽음/멤버/presence/멘션/첨부 |
+| `GET` | `/api/v1/chat/rooms/{id}/members?detail=1` | 멤버 **이름 포함**(id/username/display_name) — 방 멤버 누구나, UUID→이름 해석 |
 | `GET` (WS) | `/api/v1/chat/ws` | **메신저 WebSocket** — message/typing/read/presence/member 이벤트(자동 재연결) |
 
 > 프로필·쿼터·버전·도구정책·세션/프로젝트 동기화 엔드포인트는 모두 **graceful fallback** 으로 다룹니다.

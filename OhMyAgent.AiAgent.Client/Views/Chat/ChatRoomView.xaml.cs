@@ -39,20 +39,35 @@ public partial class ChatRoomView : UserControl
         DetachMessages();
         _vm = DataContext as ChatRoomViewModel;
         if (_vm is not null)
+        {
             _vm.Messages.CollectionChanged += Messages_CollectionChanged;
+            _vm.PropertyChanged += Vm_PropertyChanged;
+        }
     }
 
     private void DetachMessages()
     {
         if (_vm is not null)
+        {
             _vm.Messages.CollectionChanged -= Messages_CollectionChanged;
+            _vm.PropertyChanged -= Vm_PropertyChanged;
+        }
         _vm = null;
+    }
+
+    private void Vm_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // 최초 메시지 일괄 로드 완료(IsLoading false) 시 한 번만 하단으로(로드 중 add 마다 스크롤하지 않아 깜빡임 방지).
+        if (e.PropertyName == nameof(ChatRoomViewModel.IsLoading) && _vm is { IsLoading: false })
+            Dispatcher.BeginInvoke(new Action(() => MessagesScroll.ScrollToEnd()));
     }
 
     private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        // 신규 메시지 추가 시, 사용자가 하단 근처면 오토스크롤(과거 로드 시 위치 유지).
         if (e.Action != NotifyCollectionChangedAction.Add) return;
+        if (_vm is { IsLoading: true }) return;   // 일괄 로드 중엔 per-add 스크롤 생략(완료 후 1회만)
+
+        // 실시간 신규 메시지: 사용자가 하단 근처면 오토스크롤(과거 로드 시 위치 유지).
         bool nearBottom = MessagesScroll.ScrollableHeight - MessagesScroll.VerticalOffset <= AutoScrollNearBottomPx;
         if (nearBottom)
             Dispatcher.BeginInvoke(new Action(() => MessagesScroll.ScrollToEnd()));

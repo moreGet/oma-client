@@ -4,6 +4,12 @@
 > 작성: 클라이언트(OhMyAgent.AiAgent.Client) — 실시간 채팅(메신저) 기능
 > 우선순위: **High** (현재 일반 사용자 화면에서 사람 이름이 전부 UUID 로 보임)
 
+> ✅ **구현 완료 (Option A 채택, 서버)** — `GET /api/v1/chat/rooms/{id}/members?detail=1`
+> 응답 `{ "members": [ { "id", "username", "display_name"? } ] }`. **방 멤버라면 누구나**(admin 불필요, 기존 멤버십 게이트 재사용).
+> `display_name` 이 비면 응답에서 생략(클라가 `username` 폴백). 디렉터리에 없는 id 는 `id` 만 채워 반환(UUID 폴백).
+> 무인자(`?detail` 없음)는 **기존 `{members:[<uuid>]}` 배열 그대로**(하위호환). 시각/envelope 등 다른 규약 변경 없음.
+> 서버 상세: `OhMyAgent.AiAgent.Server/docs/API-SPEC.md`(실시간 채팅 표) + 신규 `MemberDirectory` 포트(members 테이블 배치 조회).
+
 ## 문제
 
 채팅의 모든 사람 식별자(`sender_id` / `member_id` / direct `user_id`)는 **member UUID** 다(예: `4bbd47a2-4837-42a0-abda-3d2efc91a642`).

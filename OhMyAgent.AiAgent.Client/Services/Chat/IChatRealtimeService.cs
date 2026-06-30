@@ -35,6 +35,9 @@ public interface IChatRealtimeService : IAsyncDisposable
     event EventHandler<WsMemberPayload>? MemberJoined;
     event EventHandler<WsMemberPayload>? MemberLeft;
 
+    /// <summary>현재 보고 있는 방(열림+포커스) 지정. 이 방 수신분은 안읽음 증가 제외. 닫으면 null.</summary>
+    void SetActiveRoom(string? roomId);
+
     // 이름 디렉터리 — memberId(UUID) → 사람이 읽을 수 있는 표시이름. 캐시 미스 시 UUID 앞자리 폴백.
     event EventHandler? DirectoryUpdated;                             // 디렉터리 캐시 갱신 → VM 라벨 재해석
     string DisplayName(string memberId);                             // 동기(캐시/폴백)

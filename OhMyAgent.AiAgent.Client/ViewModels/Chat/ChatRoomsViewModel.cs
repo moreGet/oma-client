@@ -90,12 +90,19 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
         var directItems = new List<ChatRoomListItemViewModel>();
         await UiInvokeAsync(() =>
         {
-            Rooms.Clear();
+            // 증분 갱신(Clear 후 재생성 금지 — 전체 리스트 깜빡임 방지).
+            var serverIds = new HashSet<string>(rooms.Select(r => r.Id), StringComparer.Ordinal);
+            for (var i = Rooms.Count - 1; i >= 0; i--)
+                if (!serverIds.Contains(Rooms[i].Id)) Rooms.RemoveAt(i);   // 사라진 방 제거
+
             foreach (var r in rooms)
             {
+                var existing = Rooms.FirstOrDefault(x => string.Equals(x.Id, r.Id, StringComparison.Ordinal));
+                if (existing is not null) { existing.ApplyRoom(r); continue; }   // 기존 행 in-place 갱신
+
                 var item = new ChatRoomListItemViewModel(r);
                 Rooms.Add(item);
-                if (item.Type == ChatRoomType.Direct) directItems.Add(item);
+                if (item.Type == ChatRoomType.Direct) directItems.Add(item);    // 신규 1:1 만 이름 해석
             }
             Resort();
             IsLoading = false;
@@ -169,9 +176,9 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
         var perRoom = unread.Rooms;
         _ = UiInvokeAsync(() =>
         {
+            // 배지 카운트만 in-place 갱신 — 정렬 키(활동시각)는 안 바뀌므로 재정렬하지 않는다(깜빡임 방지).
             foreach (var item in Rooms)
                 item.UnreadCount = perRoom is not null && perRoom.TryGetValue(item.Id, out var c) ? c : 0;
-            Resort();
         });
     }
 
@@ -235,10 +242,11 @@ public sealed partial class ChatRoomListItemViewModel : ObservableObject
         _lastActivityAt = room.CreatedAt;
     }
 
-    /// <summary>서버 DTO로 갱신(unread/이름/활동시각). UI 스레드에서 호출.</summary>
+    /// <summary>서버 DTO로 갱신(unread/이름/활동시각). UI 스레드에서 호출. 1:1 은 해석된 상대이름을 보존.</summary>
     public void ApplyRoom(ChatRoom room)
     {
-        DisplayName = string.IsNullOrWhiteSpace(room.Name) ? "1:1 대화" : room.Name!;
+        if (Type == ChatRoomType.Group && !string.IsNullOrWhiteSpace(room.Name))
+            DisplayName = room.Name!;   // direct 는 ResolveDirectNameAsync 가 채운 이름 유지
         UnreadCount = room.UnreadCount;
         if (room.CreatedAt > LastActivityAt) LastActivityAt = room.CreatedAt;
     }
