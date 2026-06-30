@@ -95,8 +95,9 @@
             <!-- group 한정 액션. 1:1 이면 IsGroup=false → 숨김 -->
             <StackPanel Grid.Row="2" Margin="0,10,0,0"
                         Visibility="{Binding IsGroup, Converter={StaticResource BoolToVisibility}}">
+                <!-- 멤버 추가: AddMembersCommand 는 member UUID 리스트 인자가 필요하므로 code-behind 가 입력 모달을 띄운다. -->
                 <Button Content="멤버 추가"
-                        Command="{Binding AddMembersCommand}"
+                        Click="AddMembers_Click"
                         Style="{StaticResource OutlineButton}"
                         Padding="12,7" FontSize="{StaticResource FontSizeSmall}"
                         HorizontalAlignment="Stretch" Margin="0,0,0,6"/>

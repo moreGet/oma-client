@@ -112,6 +112,13 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
     /// <summary>방 생성/선택 시 셸이 해당 방을 열도록 알림.</summary>
     public event EventHandler<ChatRoomListItemViewModel>? RoomOpenRequested;
 
+    /// <summary>목록에서 방을 선택하면 셸이 해당 방을 연다(ListBox SelectedItem TwoWay 바인딩 → 자동 오픈).</summary>
+    partial void OnSelectedRoomChanged(ChatRoomListItemViewModel? value)
+    {
+        if (value is not null)
+            RoomOpenRequested?.Invoke(this, value);
+    }
+
     // ── realtime 이벤트(UI 마샬) ───────────────────────────────────────
 
     private void OnRoomUpserted(object? sender, ChatRoom room)

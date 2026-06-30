@@ -49,7 +49,7 @@
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <!-- 멤버관리 토글(Flyout) -->
-                    <ToggleButton x:Name="MembersToggle" Style="{StaticResource ComposerIconButton}"
+                    <ToggleButton x:Name="MembersToggle" Style="{StaticResource ComposerIconToggleButton}"
                                   ToolTip="멤버">
                         <TextBlock Text="&#xE716;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                    FontSize="{StaticResource FontSizeBodyLarge}"/>

@@ -17,6 +17,17 @@ public partial class ChatRoomsView : UserControl
 
     private ChatRoomsViewModel? Vm => DataContext as ChatRoomsViewModel;
 
+    /// <summary>"새 대화" 좌클릭 → 1:1/그룹 선택 메뉴를 연다(ContextMenu 는 우클릭 전용이므로 수동 오픈).</summary>
+    private void NewConversation_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button { ContextMenu: { } menu } btn)
+        {
+            menu.PlacementTarget = btn;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+        }
+    }
+
     /// <summary>1:1 대화 — 상대 member UUID 입력 → CreateDirectCommand(userId).</summary>
     private void NewDirect_Click(object sender, RoutedEventArgs e)
     {

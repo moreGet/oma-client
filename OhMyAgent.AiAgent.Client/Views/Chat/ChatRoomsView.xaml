@@ -24,9 +24,10 @@
                        FontWeight="SemiBold"
                        VerticalAlignment="Center"/>
 
-            <!-- + 새 대화: 1:1 / group 선택 -->
+            <!-- + 새 대화: 1:1 / group 선택. 좌클릭으로 메뉴를 연다(ContextMenu 는 우클릭 전용이라 Click 핸들러로 강제 오픈). -->
             <Button HorizontalAlignment="Right"
                     Style="{StaticResource ComposerIconButton}"
+                    Click="NewConversation_Click"
                     ToolTip="새 대화">
                 <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                            FontSize="{StaticResource FontSizeBodyLarge}"/>

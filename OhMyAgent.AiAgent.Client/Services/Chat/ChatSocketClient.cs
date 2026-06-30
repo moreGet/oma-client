@@ -23,6 +23,11 @@ public sealed class ChatSocketClient(ISettingsService settings) : IChatSocketCli
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan KeepAlive  = TimeSpan.FromSeconds(20);
 
+    // 수신 펌프 프레임 버퍼(멀티프레임은 누적 처리).
+    private const int ReceiveBufferBytes = 8192;
+    // backoff 지수 상한(2^Cap; 실제 지연은 MaxBackoff 로 다시 클램프).
+    private const int MaxBackoffExponent = 10;
+
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly Random _jitter = new();
 
@@ -186,7 +191,7 @@ public sealed class ChatSocketClient(ISettingsService settings) : IChatSocketCli
 
     private async Task ReceivePumpAsync(ClientWebSocket ws, CancellationToken ct)
     {
-        var buffer = new byte[8192];
+        var buffer = new byte[ReceiveBufferBytes];
         var accum = new StringBuilder();
 
         while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
@@ -336,7 +341,7 @@ public sealed class ChatSocketClient(ISettingsService settings) : IChatSocketCli
     private async Task DelayBackoffAsync(int attempt, CancellationToken ct)
     {
         // 1→2→4→…최대 30s + 지터(±20%).
-        var baseMs = MinBackoff.TotalMilliseconds * Math.Pow(2, Math.Min(attempt - 1, 10));
+        var baseMs = MinBackoff.TotalMilliseconds * Math.Pow(2, Math.Min(attempt - 1, MaxBackoffExponent));
         var cappedMs = Math.Min(baseMs, MaxBackoff.TotalMilliseconds);
         var jitterMs = cappedMs * (0.8 + _jitter.NextDouble() * 0.4);
 

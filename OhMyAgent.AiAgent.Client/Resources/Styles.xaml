@@ -637,6 +637,38 @@
         </Setter>
     </Style>
 
+    <!-- ComposerIconButton 의 ToggleButton 변형 — IsChecked(예: 멤버 Flyout 열림) 상태 강조 지원.
+         ToggleButton 은 Button 이 아니라 ButtonBase 파생이므로 Button 대상 스타일을 적용할 수 없어 별도 정의. -->
+    <Style x:Key="ComposerIconToggleButton" TargetType="ToggleButton">
+        <Setter Property="Background"      Value="Transparent"/>
+        <Setter Property="Foreground"      Value="{StaticResource TextSecondary}"/>
+        <Setter Property="Width"           Value="32"/>
+        <Setter Property="Height"          Value="32"/>
+        <Setter Property="FontSize"        Value="16"/>
+        <Setter Property="Cursor"          Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="16">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface3Bg}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface3Bg}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- 컴포저 인라인 칩 버튼 (승인요청 ⌄, 모델, My project ⌄) -->
     <Style x:Key="ComposerChipButton" TargetType="Button">
         <Setter Property="Background"      Value="Transparent"/>

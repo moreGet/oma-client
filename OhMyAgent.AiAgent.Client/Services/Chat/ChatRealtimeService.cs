@@ -48,22 +48,12 @@ public sealed class ChatRealtimeService(
     {
         HookSocket();
 
-        // 1) 초기 안읽음 + 방 목록 로드(REST).
+        // 1) 초기 전역 안읽음 배지 로드(REST). 방 목록은 셸 VM 의 LoadRoomsCommand 가 단독으로 로드한다
+        //    (여기서 RoomUpserted 로 또 발화하면 이중 GetRooms 가 되므로 중복 제거).
         try
         {
             var unread = await api.GetUnreadAsync(ct).ConfigureAwait(false);
             await RaiseAsync(() => UnreadChanged?.Invoke(this, unread)).ConfigureAwait(false);
-        }
-        catch (ChatApiException ex) { HandleApiException(ex); }
-
-        try
-        {
-            var rooms = await api.GetRoomsAsync(ct).ConfigureAwait(false);
-            await RaiseAsync(() =>
-            {
-                foreach (var room in rooms)
-                    RoomUpserted?.Invoke(this, room);
-            }).ConfigureAwait(false);
         }
         catch (ChatApiException ex) { HandleApiException(ex); }
 
@@ -325,9 +315,29 @@ public sealed class ChatRealtimeService(
     {
         var state = GetOrAddRoom(message.RoomId);
         var isDeletedFinal = isDeleted || (message.Deleted ?? false);
-        state.UpsertMessage(message);   // id dedup 병합
+        var isNew = state.UpsertMessage(message);   // id dedup 병합(신규면 true)
 
         _ = RaiseAsync(() => MessageUpserted?.Invoke(this, new RoomMessageEvent(message, isEdited, isDeletedFinal)));
+
+        // 남이 보낸 신규 메시지면 전역 안읽음 배지를 서버 권위(/chat/unread)로 재조회해 실시간 반영한다.
+        // (내가 보낸 것·수정·삭제·에코는 제외 — 불필요한 재조회 방지.)
+        if (isNew && !isEdited && !isDeletedFinal
+            && !string.Equals(message.SenderId, MyId(), StringComparison.Ordinal))
+        {
+            _ = RefreshUnreadAsync();
+        }
+    }
+
+    /// <summary>전역 안읽음 배지를 서버 권위(/chat/unread)로 재조회·발화. 남의 신규 메시지 수신 시 실시간 갱신용.</summary>
+    private async Task RefreshUnreadAsync()
+    {
+        try
+        {
+            var unread = await api.GetUnreadAsync().ConfigureAwait(false);
+            await RaiseAsync(() => UnreadChanged?.Invoke(this, unread)).ConfigureAwait(false);
+        }
+        catch (ChatApiException ex) { HandleApiException(ex); }
+        catch { /* 배지 갱신 실패는 무시 */ }
     }
 
     /// <summary>
