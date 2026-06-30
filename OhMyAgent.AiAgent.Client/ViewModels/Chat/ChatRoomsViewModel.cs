@@ -35,12 +35,40 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
 
         _realtime.RoomUpserted += OnRoomUpserted;
         _realtime.UnreadChanged += OnUnreadChanged;
+        _realtime.DirectoryUpdated += OnDirectoryUpdated;
         _unsubscribe = () =>
         {
             _realtime.RoomUpserted -= OnRoomUpserted;
             _realtime.UnreadChanged -= OnUnreadChanged;
+            _realtime.DirectoryUpdated -= OnDirectoryUpdated;
         };
     }
+
+    /// <summary>1:1 방의 표시이름을 상대 memberId 의 해석 이름으로 채운다(없으면 GetDirectCounterpart 로 상대 id 조회).</summary>
+    private async Task ResolveDirectNameAsync(ChatRoomListItemViewModel item)
+    {
+        if (item.Type != ChatRoomType.Direct) return;
+        try
+        {
+            var counterpart = item.CounterpartId ?? await _realtime.GetDirectCounterpartAsync(item.Id).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(counterpart)) return;
+            await UiInvokeAsync(() =>
+            {
+                item.CounterpartId = counterpart;
+                item.DisplayName = _realtime.DisplayName(counterpart);
+            }).ConfigureAwait(false);
+        }
+        catch { /* 상대 해석 실패 시 "1:1 대화" 유지 */ }
+    }
+
+    /// <summary>디렉터리 캐시 갱신 → 1:1 방 표시이름 재해석(UUID→이름).</summary>
+    private void OnDirectoryUpdated(object? sender, EventArgs e)
+        => _ = UiInvokeAsync(() =>
+        {
+            foreach (var item in Rooms)
+                if (item.Type == ChatRoomType.Direct && !string.IsNullOrEmpty(item.CounterpartId))
+                    item.DisplayName = _realtime.DisplayName(item.CounterpartId!);
+        });
 
     /// <summary>방 목록 로드(안읽음 포함). 셸 StartAsync 후 호출.</summary>
     [RelayCommand]
@@ -59,14 +87,23 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var directItems = new List<ChatRoomListItemViewModel>();
         await UiInvokeAsync(() =>
         {
             Rooms.Clear();
             foreach (var r in rooms)
-                Rooms.Add(new ChatRoomListItemViewModel(r));
+            {
+                var item = new ChatRoomListItemViewModel(r);
+                Rooms.Add(item);
+                if (item.Type == ChatRoomType.Direct) directItems.Add(item);
+            }
             Resort();
             IsLoading = false;
         }).ConfigureAwait(false);
+
+        // 1:1 방 표시이름 해석(상대 memberId → 이름). 방 수만큼 GetMembers — 보통 소수.
+        foreach (var item in directItems)
+            await ResolveDirectNameAsync(item).ConfigureAwait(false);
     }
 
     /// <summary>1:1 방 가져오기/생성(중복방지). 성공 시 RoomOpenRequested로 셸에 알림.</summary>
@@ -80,6 +117,8 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
             await UiInvokeAsync(() =>
             {
                 var item = Upsert(room);
+                item.CounterpartId = userId;                 // 생성 시 상대 id 를 알고 있음
+                item.DisplayName = _realtime.DisplayName(userId);
                 RoomOpenRequested?.Invoke(this, item);
             }).ConfigureAwait(false);
         }
@@ -175,6 +214,9 @@ public sealed partial class ChatRoomListItemViewModel : ObservableObject
 {
     public string Id { get; }
     public ChatRoomType Type { get; }
+
+    /// <summary>1:1 방의 상대 memberId(이름 해석용). group/미해석 시 null.</summary>
+    public string? CounterpartId { get; set; }
 
     [ObservableProperty] private string _displayName;
     [ObservableProperty] private int _unreadCount;

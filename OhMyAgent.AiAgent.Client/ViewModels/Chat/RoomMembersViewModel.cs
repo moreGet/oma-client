@@ -46,13 +46,23 @@ public sealed partial class RoomMembersViewModel : ObservableObject, IDisposable
         _realtime.MemberJoined += OnMemberJoined;
         _realtime.MemberLeft += OnMemberLeft;
         _realtime.PresenceChanged += OnPresenceChanged;
+        _realtime.DirectoryUpdated += OnDirectoryUpdated;
         _unsubscribe = () =>
         {
             _realtime.MemberJoined -= OnMemberJoined;
             _realtime.MemberLeft -= OnMemberLeft;
             _realtime.PresenceChanged -= OnPresenceChanged;
+            _realtime.DirectoryUpdated -= OnDirectoryUpdated;
         };
     }
+
+    /// <summary>디렉터리 갱신 → 멤버 표시이름 재해석(UUID→이름).</summary>
+    private void OnDirectoryUpdated(object? sender, EventArgs e)
+        => _ = UiInvokeAsync(() =>
+        {
+            foreach (var m in Members)
+                m.DisplayName = _realtime.DisplayName(m.MemberId);
+        });
 
     /// <summary>멤버 목록 + presence 로드. 패널 열람 시 호출.</summary>
     [RelayCommand]
@@ -84,6 +94,7 @@ public sealed partial class RoomMembersViewModel : ObservableObject, IDisposable
             foreach (var id in members)
                 Members.Add(new RoomMemberViewModel(
                     id,
+                    _realtime.DisplayName(id),
                     isMe: string.Equals(id, _currentUserId, StringComparison.Ordinal),
                     presence: onlineSet.Contains(id) ? RoomMemberPresence.Online : RoomMemberPresence.Offline));
             IsLoading = false;
@@ -166,6 +177,7 @@ public sealed partial class RoomMembersViewModel : ObservableObject, IDisposable
             if (Members.Any(m => string.Equals(m.MemberId, p.MemberId, StringComparison.Ordinal))) return;
             Members.Add(new RoomMemberViewModel(
                 p.MemberId,
+                _realtime.DisplayName(p.MemberId),
                 isMe: string.Equals(p.MemberId, _currentUserId, StringComparison.Ordinal),
                 presence: RoomMemberPresence.Offline));
         });
@@ -206,14 +218,18 @@ public sealed partial class RoomMemberViewModel : ObservableObject
 {
     public string MemberId { get; }
 
+    /// <summary>표시이름(해석 캐시). 미해석 시 UUID 앞자리.</summary>
+    [ObservableProperty] private string _displayName;
+
     /// <summary>나 자신 여부(강퇴 불가).</summary>
     public bool IsMe { get; }
 
     [ObservableProperty] private RoomMemberPresence _presence;
 
-    public RoomMemberViewModel(string memberId, bool isMe, RoomMemberPresence presence)
+    public RoomMemberViewModel(string memberId, string displayName, bool isMe, RoomMemberPresence presence)
     {
         MemberId = memberId;
+        _displayName = string.IsNullOrWhiteSpace(displayName) ? memberId : displayName;
         IsMe = isMe;
         _presence = presence;
     }

@@ -35,7 +35,12 @@ public interface IChatRealtimeService : IAsyncDisposable
     event EventHandler<WsMemberPayload>? MemberJoined;
     event EventHandler<WsMemberPayload>? MemberLeft;
 
-    Task StartAsync(CancellationToken ct = default);                 // unread 초기로드 + 방목록 + WS connect
+    // 이름 디렉터리 — memberId(UUID) → 사람이 읽을 수 있는 표시이름. 캐시 미스 시 UUID 앞자리 폴백.
+    event EventHandler? DirectoryUpdated;                             // 디렉터리 캐시 갱신 → VM 라벨 재해석
+    string DisplayName(string memberId);                             // 동기(캐시/폴백)
+    Task<string?> GetDirectCounterpartAsync(string roomId, CancellationToken ct = default); // 1:1 상대 memberId
+
+    Task StartAsync(CancellationToken ct = default);                 // unread 초기로드 + 이름 디렉터리 + WS connect
     Task StopAsync();
 
     Task<IReadOnlyList<ChatRoom>> LoadRoomsAsync(CancellationToken ct = default);

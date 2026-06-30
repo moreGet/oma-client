@@ -58,7 +58,10 @@ public sealed partial class MentionFeedViewModel : ObservableObject
         {
             Items.Clear();
             foreach (var dto in mentions)
-                Items.Add(new ChatMessageViewModel(dto, _currentUserId));
+                Items.Add(new ChatMessageViewModel(dto, _currentUserId)
+                {
+                    SenderName = _realtime.DisplayName(dto.SenderId),   // UUID → 표시이름
+                });
             IsLoading = false;
         }).ConfigureAwait(false);
     }

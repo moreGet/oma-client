@@ -29,8 +29,8 @@ public sealed partial class MentionAutoCompleteViewModel : ObservableObject
     /// <summary>현재 필터 쿼리(@ 뒤 부분 토큰). 디버그/표시용.</summary>
     [ObservableProperty] private string _query = string.Empty;
 
-    /// <summary>방 멤버 후보 갱신(RoomMembersViewModel 로드 후 또는 member_joined/left 시).</summary>
-    public void SetMembers(IReadOnlyList<string> memberIds, string? currentUserId = null)
+    /// <summary>방 멤버 후보 갱신. <paramref name="resolveName"/> 로 memberId→표시이름 해석(없으면 id 라벨).</summary>
+    public void SetMembers(IReadOnlyList<string> memberIds, string? currentUserId = null, Func<string, string>? resolveName = null)
     {
         _all.Clear();
         foreach (var id in memberIds)
@@ -38,7 +38,8 @@ public sealed partial class MentionAutoCompleteViewModel : ObservableObject
             // 나 자신은 멘션 후보에서 제외.
             if (currentUserId is not null && string.Equals(id, currentUserId, StringComparison.Ordinal))
                 continue;
-            _all.Add(new MentionCandidate(id, id));
+            var name = resolveName?.Invoke(id);
+            _all.Add(new MentionCandidate(id, string.IsNullOrWhiteSpace(name) ? id : name!));
         }
     }
 

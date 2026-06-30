@@ -88,9 +88,16 @@ Views/Chat/                         ViewModels/Chat/                 Services/Ch
 
 ---
 
+## 5.1 이름 표시(디렉터리)
+- 채팅 식별자는 member UUID 라(§4), UI 는 **이름 해석 캐시**(`IChatRealtimeService.DisplayName(id)`)로 사람 이름을 표시한다: 멤버 목록·1:1 방 헤더/목록·멘션 후보·멘션 피드 발신자·아바타 이니셜.
+- 캐시 소스: 본인 `GET /users/me`(display_name/username) + best-effort `GET /members`. **`/members` 는 admin 전용**이라 admin 은 모든 멤버 username 이 보이고, 일반 user 는 본인만 이름·나머지는 **UUID 앞 8자리 폴백**.
+- 캐시 갱신 시 `DirectoryUpdated` 이벤트로 라벨 일괄 재해석.
+- 서버가 **방 멤버 스코프 이름 엔드포인트**([`docs/server-request-chat-directory.md`](server-request-chat-directory.md))를 추가하면 일반 user 도 즉시 이름 표시(소스 한 줄 교체).
+
 ## 6. 알려진 한계 / 후속 과제
 
-- 전체 사용자 디렉터리 API 부재 → 새 방 생성 시 상대 **member UUID 직접 입력**(자동완성/검색 UI는 디렉터리 API 추가 후).
+- 일반 user 의 타 멤버 **이름 표시**는 서버의 멤버 스코프 이름 API 추가 전까지 UUID 앞자리 폴백(위 §5.1, 서버 요청서 제출됨).
+- 전체 사용자 디렉터리 API 부재 → 새 방 생성·멤버 추가 시 상대 **member UUID 직접 입력**(자동완성/검색 UI는 디렉터리 API 추가 후).
 - REST 이력의 mentions/attachments 복원은 **서버 측 DTO 보완** 필요.
 - 첨부 인라인 미리보기(썸네일), 이모지 리액션, 메시지 검색은 범위 외(서버 미제공).
 - 재로그인으로 토큰이 바뀌어도 메신저 VM의 `currentUserId` 는 즉시 갱신되지 않습니다(서버 `sender_id` 가 권위라 표시 영향은 최소 — 다음 메신저 재오픈 시 정정).

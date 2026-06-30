@@ -49,19 +49,20 @@
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                             <Border Width="26" Height="26" CornerRadius="13"
                                                     Background="{StaticResource AccentSoftBrush}" Margin="0,0,8,0">
-                                                <TextBlock Text="{Binding SenderId}"
+                                                <TextBlock Text="{Binding SenderName, Converter={StaticResource Initial}}"
                                                            Foreground="White"
                                                            FontFamily="{StaticResource AppFont}"
                                                            FontSize="{StaticResource FontSizeSmall}"
                                                            FontWeight="SemiBold"
                                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
-                                            <TextBlock Text="{Binding SenderId}"
+                                            <TextBlock Text="{Binding SenderName}"
                                                        Foreground="{StaticResource TextSecondary}"
                                                        FontFamily="{StaticResource AppFont}"
                                                        FontSize="{StaticResource FontSizeSmall}"
                                                        FontWeight="SemiBold"
-                                                       VerticalAlignment="Center"/>
+                                                       VerticalAlignment="Center"
+                                                       ToolTip="{Binding SenderId}"/>
                                             <TextBlock Text="{Binding CreatedAt, Converter={StaticResource UnixSecondsToLocalTime}}"
                                                        Foreground="{StaticResource TextMuted}"
                                                        FontFamily="{StaticResource AppFont}"

@@ -23,6 +23,10 @@ public sealed class ChatRealtimeService(
     // roomId → 방 상태(메시지 목록/멤버별 읽음/presence/typing).
     private readonly ConcurrentDictionary<string, RoomState> _rooms = new();
 
+    // memberId(UUID) → 표시이름. 캐시 미스 시 UUID 앞 ShortIdLength 자리 폴백.
+    private readonly ConcurrentDictionary<string, string> _names = new(StringComparer.Ordinal);
+    private const int ShortIdLength = 8;
+
     private bool _socketHooked;
     private ChatConnectionState _connectionState = ChatConnectionState.Disconnected;
 
@@ -39,6 +43,7 @@ public sealed class ChatRealtimeService(
     public event EventHandler<WsPresencePayload>? PresenceChanged;
     public event EventHandler<WsMemberPayload>? MemberJoined;
     public event EventHandler<WsMemberPayload>? MemberLeft;
+    public event EventHandler? DirectoryUpdated;
 
     // ─────────────────────────────────────────────────────────────────────────
     // 수명주기
@@ -57,8 +62,59 @@ public sealed class ChatRealtimeService(
         }
         catch (ChatApiException ex) { HandleApiException(ex); }
 
+        // 1b) 이름 디렉터리 prime(본인 /users/me + best-effort 디렉터리). 방/멤버 로드 전에 준비되도록 먼저.
+        await PrimeDirectoryAsync(ct).ConfigureAwait(false);
+
         // 2) WS 연결(자동재연결 내장).
         await socket.ConnectAsync(ct).ConfigureAwait(false);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 이름 디렉터리 (memberId → 표시이름)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public string DisplayName(string memberId)
+    {
+        if (string.IsNullOrEmpty(memberId)) return string.Empty;
+        if (_names.TryGetValue(memberId, out var name) && !string.IsNullOrWhiteSpace(name))
+            return name;
+        return memberId.Length > ShortIdLength ? memberId[..ShortIdLength] : memberId;   // 폴백: UUID 앞자리
+    }
+
+    public async Task<string?> GetDirectCounterpartAsync(string roomId, CancellationToken ct = default)
+    {
+        var members = await GetMembersAsync(roomId, ct).ConfigureAwait(false);
+        var me = MyId();
+        foreach (var m in members)
+            if (!string.Equals(m, me, StringComparison.Ordinal))
+                return m;
+        return null;
+    }
+
+    /// <summary>이름 캐시 채우기: 본인(/users/me) + best-effort 디렉터리(/members, 비admin 은 불가). 갱신 시 DirectoryUpdated.</summary>
+    private async Task PrimeDirectoryAsync(CancellationToken ct)
+    {
+        var changed = false;
+        try
+        {
+            var profile = await api.GetMyProfileAsync(ct).ConfigureAwait(false);
+            var myName = profile is null ? null
+                : !string.IsNullOrWhiteSpace(profile.DisplayName) ? profile.DisplayName
+                : profile.Username;
+            if (!string.IsNullOrWhiteSpace(myName)) { _names[MyId()] = myName!; changed = true; }
+        }
+        catch { /* 본인 이름 실패는 무시 */ }
+
+        try
+        {
+            var dir = await api.TryGetMemberDirectoryAsync(ct).ConfigureAwait(false);
+            if (dir is not null)
+                foreach (var kv in dir) { _names[kv.Key] = kv.Value; changed = true; }
+        }
+        catch { /* 디렉터리 실패(403 등)는 무시 — UUID 폴백 */ }
+
+        if (changed)
+            await RaiseAsync(() => DirectoryUpdated?.Invoke(this, EventArgs.Empty)).ConfigureAwait(false);
     }
 
     public async Task StopAsync()

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using OhMyAgent.AiAgent.Client.Models;
 using OhMyAgent.AiAgent.Client.Models.Chat;
 
 namespace OhMyAgent.AiAgent.Client.Services.Chat;
@@ -33,6 +34,10 @@ public interface IChatApiClient
     Task KickMemberAsync(string roomId, string memberId, CancellationToken ct = default);                          // 생성자/group 한정
     Task LeaveRoomAsync(string roomId, CancellationToken ct = default);                                            // group 한정
     Task<IReadOnlyList<string>> GetPresenceAsync(string roomId, CancellationToken ct = default);
+
+    // 이름 디렉터리(memberId → 표시이름) 소스
+    Task<UserProfile?> GetMyProfileAsync(CancellationToken ct = default);                                   // /users/me (본인 이름)
+    Task<IReadOnlyDictionary<string, string>?> TryGetMemberDirectoryAsync(CancellationToken ct = default); // best-effort, null=불가
 
     // 멘션 / 첨부
     Task<IReadOnlyList<ChatMessage>> GetMentionsAsync(int limit = 50, CancellationToken ct = default);

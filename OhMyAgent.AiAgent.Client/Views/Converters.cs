@@ -292,3 +292,17 @@ public sealed class IsMineToBubbleBrushConverter : IValueConverter
     public object ConvertBack(object value, Type t, object p, CultureInfo c)
         => throw new NotSupportedException();
 }
+
+/// <summary>표시이름 → 아바타 이니셜(첫 글자, 대문자). 빈 값은 "?".</summary>
+public sealed class InitialConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object p, CultureInfo c)
+    {
+        var s = value?.ToString()?.Trim();
+        if (string.IsNullOrEmpty(s)) return "?";
+        return char.ToUpper(s[0], c).ToString();
+    }
+
+    public object ConvertBack(object value, Type t, object p, CultureInfo c)
+        => throw new NotSupportedException();
+}

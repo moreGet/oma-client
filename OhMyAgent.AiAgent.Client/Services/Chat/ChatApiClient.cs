@@ -5,8 +5,10 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using OhMyAgent.AiAgent.Client.Models;
 using OhMyAgent.AiAgent.Client.Models.Chat;
 
 namespace OhMyAgent.AiAgent.Client.Services.Chat;
@@ -24,7 +26,48 @@ public sealed class ChatApiClient(HttpClient httpClient, ISettingsService settin
     private const string MentionsPath    = "/api/v1/chat/mentions";
     private const string AttachmentsPath = "/api/v1/chat/attachments";
 
+    private const string ProfilePath = "/api/v1/users/me";
+    private const string MembersPath = "/api/v1/members";        // admin 전용 — 비admin 은 403(graceful)
+
     private const long MaxAttachmentBytes = 10 * 1024 * 1024;   // 10 MiB
+
+    // ── 이름 디렉터리(memberId → 표시이름) 소스 ──
+
+    /// <summary>본인 프로필(/users/me). 표시이름 해석용. 실패 시 null(graceful).</summary>
+    public async Task<UserProfile?> GetMyProfileAsync(CancellationToken ct = default)
+    {
+        try { return await GetAsync<UserProfile>(ProfilePath, ct).ConfigureAwait(false); }
+        catch (ChatApiException) { return null; }
+    }
+
+    /// <summary>
+    /// 멤버 디렉터리(id → 이름) best-effort. 현재 소스는 admin 전용 <c>/members</c> 라 일반 user 는 403→null.
+    /// 서버가 멤버 스코프 이름 엔드포인트를 추가하면(docs/server-request-chat-directory.md) 이 메서드 소스만 교체한다.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, string>?> TryGetMemberDirectoryAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await GetAsync<MembersListResponse>($"{MembersPath}?limit=200", ct).ConfigureAwait(false);
+            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var m in resp.Items ?? Array.Empty<MemberItem>())
+            {
+                var name = !string.IsNullOrWhiteSpace(m.DisplayName) ? m.DisplayName!
+                         : !string.IsNullOrWhiteSpace(m.Username) ? m.Username! : null;
+                if (name is not null && !string.IsNullOrEmpty(m.Id)) map[m.Id] = name;
+            }
+            return map;
+        }
+        catch (ChatApiException) { return null; }   // 403(비admin)/기타 → 디렉터리 없음(폴백)
+    }
+
+    private sealed record MembersListResponse(
+        [property: JsonPropertyName("items")] IReadOnlyList<MemberItem>? Items);
+
+    private sealed record MemberItem(
+        [property: JsonPropertyName("id")]           string Id,
+        [property: JsonPropertyName("username")]     string? Username,
+        [property: JsonPropertyName("display_name")] string? DisplayName);
 
     // ── 방 ──
 

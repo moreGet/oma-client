@@ -94,17 +94,12 @@
                             <Border Grid.Column="0" Width="40" Height="40" CornerRadius="20"
                                     Background="{StaticResource AccentSoftBrush}"
                                     Margin="0,0,10,0" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding DisplayName}"
+                                <TextBlock Text="{Binding DisplayName, Converter={StaticResource Initial}}"
                                            Foreground="White"
                                            FontFamily="{StaticResource AppFont}"
                                            FontSize="{StaticResource FontSizeBodyLarge}"
                                            FontWeight="SemiBold"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <!-- 첫 글자만 보이도록 폭 제한 -->
-                                    <TextBlock.Resources>
-                                        <Style TargetType="TextBlock"/>
-                                    </TextBlock.Resources>
-                                </TextBlock>
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
 
                             <!-- 이름 + 미리보기 -->

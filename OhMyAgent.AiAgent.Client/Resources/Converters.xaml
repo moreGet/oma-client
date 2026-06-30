@@ -25,5 +25,6 @@
     <views:ChatConnectionStateToBrushConverter x:Key="ChatConnectionStateToBrush"/>
     <views:IsMineToAlignmentConverter          x:Key="IsMineToAlignment"/>
     <views:IsMineToBubbleBrushConverter        x:Key="IsMineToBubbleBrush"/>
+    <views:InitialConverter                    x:Key="Initial"/>
 
 </ResourceDictionary>

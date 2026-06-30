@@ -76,11 +76,12 @@
                                     </Style>
                                 </Ellipse.Style>
                             </Ellipse>
-                            <TextBlock Text="{Binding MemberId}"
+                            <TextBlock Text="{Binding DisplayName}"
                                        Foreground="{StaticResource TextPrimary}"
                                        FontFamily="{StaticResource AppFont}"
                                        FontSize="{StaticResource FontSizeBody}"
-                                       VerticalAlignment="Center"/>
+                                       VerticalAlignment="Center"
+                                       ToolTip="{Binding MemberId}"/>
                             <TextBlock Text="(나)" Margin="6,0,0,0"
                                        Foreground="{StaticResource TextMuted}"
                                        FontFamily="{StaticResource AppFont}"

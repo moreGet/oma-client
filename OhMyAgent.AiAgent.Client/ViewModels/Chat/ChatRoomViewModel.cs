@@ -39,7 +39,12 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
     /// <summary>방 식별/표시(헤더 바인딩).</summary>
     public string RoomId => _room.Id;
     public ChatRoomType RoomType => _room.Type;
-    public string DisplayName => string.IsNullOrWhiteSpace(_room.Name) ? "1:1 대화" : _room.Name!;
+
+    /// <summary>헤더 표시이름. group=방이름, 1:1=상대 해석이름(초기 "1:1 대화", InitializeAsync 에서 갱신).</summary>
+    [ObservableProperty] private string _displayName;
+
+    /// <summary>1:1 상대 memberId(이름 재해석용).</summary>
+    private string? _counterpartId;
 
     /// <summary>메시지 버블(오래된→최신 순). 상단 prepend=이력, 하단 append=신규.</summary>
     public ObservableCollection<ChatMessageViewModel> Messages { get; } = [];
@@ -88,6 +93,7 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
         _realtime = realtime;
         _room = room;
         _currentUserId = currentUserId;
+        _displayName = string.IsNullOrWhiteSpace(room.Name) ? "1:1 대화" : room.Name!;
         Members = new RoomMembersViewModel(realtime, room, currentUserId);
 
         _typingTimer = new Timer(TypingDebounceMs) { AutoReset = false };
@@ -100,13 +106,22 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
         _realtime.ReadChanged += OnReadChanged;
         _realtime.TypingChanged += OnTypingChanged;
         _realtime.PresenceChanged += OnPresenceChanged;
+        _realtime.DirectoryUpdated += OnDirectoryUpdated;
         _unsubscribe = () =>
         {
             _realtime.MessageUpserted -= OnMessageUpserted;
             _realtime.ReadChanged -= OnReadChanged;
             _realtime.TypingChanged -= OnTypingChanged;
             _realtime.PresenceChanged -= OnPresenceChanged;
+            _realtime.DirectoryUpdated -= OnDirectoryUpdated;
         };
+    }
+
+    /// <summary>디렉터리 갱신 → 1:1 헤더 이름 재해석.</summary>
+    private void OnDirectoryUpdated(object? sender, EventArgs e)
+    {
+        if (string.IsNullOrEmpty(_counterpartId)) return;
+        _ = UiInvokeAsync(() => DisplayName = _realtime.DisplayName(_counterpartId!));
     }
 
     // ── 초기 로드 ──────────────────────────────────────────────────────
@@ -142,6 +157,22 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
         // 열람 시 읽음 처리(하단 도달과 동일 효과).
         await MarkReadAsync().ConfigureAwait(false);
 
+        // 1:1 방이면 상대 표시이름으로 헤더 갱신(group 은 방이름 유지).
+        if (_room.Type == ChatRoomType.Direct)
+        {
+            try
+            {
+                var counterpart = await _realtime.GetDirectCounterpartAsync(_room.Id).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(counterpart))
+                    await UiInvokeAsync(() =>
+                    {
+                        _counterpartId = counterpart;
+                        DisplayName = _realtime.DisplayName(counterpart);
+                    }).ConfigureAwait(false);
+            }
+            catch { /* 상대 해석 실패 시 "1:1 대화" 유지 */ }
+        }
+
         // 멤버 패널(Flyout) 로드 — 헤더 멤버 토글에서 바로 보이도록 방 열람 시 채운다.
         await Members.LoadCommand.ExecuteAsync(null).ConfigureAwait(false);
 
@@ -152,7 +183,7 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
             var online  = await _realtime.GetPresenceAsync(_room.Id).ConfigureAwait(false);
             await UiInvokeAsync(() =>
             {
-                Mentions.SetMembers(members, _currentUserId);
+                Mentions.SetMembers(members, _currentUserId, _realtime.DisplayName);
                 OnlinePresence.Clear();
                 foreach (var id in online)
                     if (!OnlinePresence.Contains(id))

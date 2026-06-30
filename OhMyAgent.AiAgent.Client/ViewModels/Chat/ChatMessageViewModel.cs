@@ -19,6 +19,9 @@ public sealed partial class ChatMessageViewModel : ObservableObject
 
     public string SenderId { get; }
 
+    /// <summary>발신자 표시이름(멘션 피드 등). 기본=SenderId, 상위(피드 VM)가 디렉터리로 해석해 설정.</summary>
+    [ObservableProperty] private string _senderName;
+
     /// <summary>소속 방 id(DTO에 포함). 멘션 피드에서 "방 열기"에 사용. 낙관 메시지는 생성 시 전달된 방 id.</summary>
     public string RoomId { get; }
 
@@ -59,6 +62,7 @@ public sealed partial class ChatMessageViewModel : ObservableObject
     {
         Id = dto.Id;
         SenderId = dto.SenderId;
+        _senderName = dto.SenderId;
         RoomId = dto.RoomId;
         _content = dto.Content ?? string.Empty;
         CreatedAt = dto.CreatedAt;
@@ -85,6 +89,7 @@ public sealed partial class ChatMessageViewModel : ObservableObject
     {
         Id = clientLocalId;
         SenderId = senderId;
+        _senderName = senderId;
         RoomId = roomId;
         _content = content ?? string.Empty;
         CreatedAt = createdAt;
