@@ -117,5 +117,46 @@
   - **에이전트 메타(1)**: `manage_todos` (다단계 작업 계획 추적)
   > 이전 문서판은 앞 20개만 나열했음 — 문서·데이터 6개와 `manage_todos` 1개(총 7개)가 누락돼 있었다. 정책으로 이들까지 통제하려면 서버 도구 목록에 반드시 포함할 것.
 
+---
+
+## 향후 추가 예정 도구 (로드맵 · 아직 미구현)
+
+> 아래는 **아직 클라에 구현되지 않은** 계획된 도구다. 구현되면 클라가 스키마를 서버로 보내기 시작하므로,
+> 서버 정책 카탈로그(enabled/disabled 참조용)에 **이름을 미리 등록**해 두면 출시 즉시 통제할 수 있다.
+> 이름은 확정 전 잠정값이며, 실제 구현 시 이 문서와 위 "현재 도구" 목록을 함께 갱신한다.
+> 전부 순수 관리코드/OS 내장 기능만 사용해 **폐쇄망 적합**을 원칙으로 한다.
+
+### 1순위 — 명백한 공백 보완
+| 도구명(잠정) | 위험도 | 용도 | 구현 방식 |
+|------|:---:|------|------|
+| `compress_files`  | Write | 파일·폴더 → zip 압축 | `System.IO.Compression`(BCL) |
+| `extract_archive` | Write | zip 해제 | `System.IO.Compression`(BCL) |
+| `write_document`  | Write | Word `.docx` 생성/수정 | OpenXML(관리) — 현재 read_document(읽기)만 존재 |
+| `read_pptx`       | ReadOnly | PowerPoint `.pptx` 텍스트 추출 | OpenXML SDK(순수 관리) |
+| `write_pptx`      | Write | PowerPoint `.pptx` 생성 | OpenXML SDK(순수 관리) |
+| `read_hwpx`       | ReadOnly | 한글 `.hwpx` 본문 추출(한국 사내 필수) | zip+XML → BCL 파싱 (구형 바이너리 `.hwp`는 별도·고난도) |
+
+### 2순위 — 유용
+| 도구명(잠정) | 위험도 | 용도 | 구현 방식 |
+|------|:---:|------|------|
+| `read_json` / `write_json` | ReadOnly / Write | JSON 읽기·쓰기 | `System.Text.Json`(BCL) |
+| `read_xml`        | ReadOnly | XML 읽기·질의 | BCL |
+| `merge_pdf` / `split_pdf` | Write | PDF 병합·분할 | PdfPig/PdfSharp(관리) — read_pdf 보완 |
+| `read_image_text` | ReadOnly | 이미지/스크린샷 → 텍스트(OCR) | `Windows.Media.Ocr`(OS 내장, 오프라인·한국어팩) |
+| `send_email`      | Execute | 사내 SMTP 메일 발송 | `System.Net.Mail`(BCL) |
+| `replace_in_files`| Write | 여러 파일 일괄 문자열 치환 | BCL(grep 보완) |
+
+### 3순위 — 강력하나 신중(고위험)
+| 도구명(잠정) | 위험도 | 용도 | 구현 방식 |
+|------|:---:|------|------|
+| `create_scheduled_task` | Execute | Windows 작업 스케줄러 등록 | schtasks/TaskScheduler |
+| `ui_automate`     | Execute | 레거시 앱 자동화(키 입력·클릭, RPA) | UIAutomation — 불안정성 주의 |
+| `get_system_info` | ReadOnly | 디스크·메모리·OS 진단 정보 | BCL/WMI |
+| `registry_read`   | ReadOnly | 레지스트리 설정 조회(쓰기는 제외) | `Microsoft.Win32.Registry` |
+| `clipboard_read_image` | ReadOnly | 클립보드 이미지 읽기(현재 텍스트만) | WPF Clipboard(STA) |
+
+> 위험도(ToolRisk) 매핑은 로컬 권한 게이트(②)에도 그대로 적용된다: Write/Execute/Destructive는 권한 모드에 따라 실행 전 승인 카드를 띄운다.
+> 서버 정책(①)에서 이름 기반 enabled/disabled로 조직별 노출/실행을 통제할 수 있다.
+
 ## 우선순위
 - 선택 기능. 미구현이어도 클라 정상 동작(전체 허용). 통제 강화가 필요해질 때 도입.
