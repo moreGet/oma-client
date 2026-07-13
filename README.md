@@ -12,7 +12,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 ## 핵심 특징
 
 - **에이전트 루프**: `질의 → 도구 호출 → 실행 → 결과 반환 → 반복`을 `end_turn` 까지 자동 수행
-- **27개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷, 사무직 문서·데이터(CSV·Excel·PDF·Word), 작업 계획 추적(manage_todos)까지 (아래 표 참조)
+- **29개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷, 압축(zip), 사무직 문서·데이터(CSV·Excel·PDF·Word), 작업 계획 추적(manage_todos)까지 (아래 표 참조)
 - **멀티루트 워크스페이스**: 최대 **10개** 작업 디렉토리를 동시 등록, **폴더별 접근 허용/차단 토글**. 모든 파일/셸 작업이 활성 루트 기준으로 resolve되고 경로 탈출은 차단
 - **프로젝트(대화 묶음)**: 여러 대화 세션을 상위 컨테이너로 묶어 관리. **로컬 우선 저장 + 선택적 서버 동기화**, 사이드바에서 대화를 **드래그앤드롭**으로 프로젝트에 분류
 - **권한 게이트**: Manual / Auto-Safe / Full-Auto 3단계. 위험 작업은 실행 전 사용자 승인
@@ -62,7 +62,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 
 ---
 
-## 내장 도구 (27)
+## 내장 도구 (29)
 
 | 도구 | 위험도 | 설명 |
 |------|--------|------|
@@ -80,6 +80,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 | `read_excel` / `write_excel` | ReadOnly / Write | .xlsx 읽기 · 생성·추가(ClosedXML) |
 | `read_pdf` | ReadOnly | PDF 페이지별 텍스트 추출(PdfPig) |
 | `read_document` | ReadOnly | Word .docx 본문 추출(BCL) |
+| `compress_files` / `extract_archive` | Write | 파일·폴더 → zip 압축 / zip 해제(zip-slip 차단, BCL `System.IO.Compression`) |
 | `manage_todos` | ReadOnly | 에이전트 작업 계획 추적(다단계 작업 분해·진행상태) — 메인 화면 계획 카드에 반영 |
 
 > 도구 실행 결정 순서: **모델 요청 → 서버 도구 정책 게이트 → 로컬 권한 게이트(승인 카드) → 샌드박스(경로 검증) → 실행**.
@@ -217,7 +218,7 @@ dotnet run --project OhMyAgent.AiAgent.Client
     ├── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry · PermissionService ·
     │   │                     ToolPolicyService · ProjectService · ChatHistoryService · SessionSyncService ·
     │   │                     AppVersion · UserErrorMessages · FileAttachmentService · 워크스페이스/보안
-    │   ├── Tools/            27개 ITool 구현(코어 26 + 작업계획 manage_todos)
+    │   ├── Tools/            29개 ITool 구현(파일·셸·시스템·문서·압축 + manage_todos)
     │   └── Chat/             IChatApiClient(REST) · IChatSocketClient(WS) · IChatRealtimeService(파사드) ·
     │                         ChatMessengerCoordinator · JwtIdentity(식별자) · ChatApiException
     ├── ViewModels/           AgentSessionViewModel · SettingsViewModel · ProjectsViewModel ·

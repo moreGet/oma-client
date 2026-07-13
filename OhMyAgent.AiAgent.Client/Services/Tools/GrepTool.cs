@@ -43,7 +43,8 @@ public sealed class GrepTool : ITool
         {
             var opts = RegexOptions.Compiled;
             if (ignoreCase) opts |= RegexOptions.IgnoreCase;
-            regex = new Regex(pattern, opts);
+            // ReDoS 방어 — catastrophic backtracking 이 CPU 를 무한 점유하지 않도록 매칭 타임아웃.
+            regex = new Regex(pattern, opts, TimeSpan.FromSeconds(2));
         }
         catch (ArgumentException ex)
         {
@@ -72,16 +73,23 @@ public sealed class GrepTool : ITool
                 continue; // 바이너리/접근 불가 파일 스킵.
             }
 
-            for (var i = 0; i < lines.Length; i++)
+            try
             {
-                if (!regex.IsMatch(lines[i])) continue;
-
-                matches.Add(new { file = rel, line = i + 1, text = Truncate(lines[i]) });
-                if (matches.Count >= MaxMatches)
+                for (var i = 0; i < lines.Length; i++)
                 {
-                    truncated = true;
-                    break;
+                    if (!regex.IsMatch(lines[i])) continue;
+
+                    matches.Add(new { file = rel, line = i + 1, text = Truncate(lines[i]) });
+                    if (matches.Count >= MaxMatches)
+                    {
+                        truncated = true;
+                        break;
+                    }
                 }
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                return ToolResult.Fail("정규식 매칭 시간 초과 — 패턴이 너무 복잡합니다(백트래킹). 더 단순한 패턴으로 시도하세요.");
             }
 
             if (truncated) break;
@@ -107,7 +115,8 @@ public sealed class GrepTool : ITool
             catch { continue; }
 
             foreach (var f in files) yield return f;
-            foreach (var d in subDirs) pending.Push(d);
+            foreach (var d in subDirs)
+                if (!PathIgnore.IsIgnoredDir(d)) pending.Push(d);   // .git/bin/obj/node_modules 등 제외
         }
     }
 

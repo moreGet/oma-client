@@ -126,6 +126,9 @@ public partial class App : Application
             new WriteExcelTool(),
             new ReadPdfTool(),
             new ReadDocumentTool(),
+            // ── 압축 도구 (zip) ──
+            new CompressFilesTool(),
+            new ExtractArchiveTool(),
         };
 
         // 6) 도구 레지스트리

@@ -184,9 +184,35 @@ public sealed class AgentOrchestrator(
             Model: s.ModelId,
             Stream: true,
             MaxTokens: DefaultMaxTokens,
-            Messages: new List<AgentMessage>(session.Messages),
+            Messages: WindowMessages(session.Messages),
             Tools: exposedTools,
             Metadata: new RequestMetadata("windows", workspace.Root, ClientVersion));
+    }
+
+    // 히스토리 예산(문자). 평소엔 미발동 — 초과 시에만 오래된 tool 결과를 요약 대체해 컨텍스트/토큰 폭증을 막는다.
+    private const int HistoryCharBudget = 300_000;
+    private const string ElidedToolResult = "[이전 도구 결과 생략 — 컨텍스트 절약]";
+
+    /// <summary>
+    /// 최신에서부터 누적 크기를 재고 예산을 넘긴 뒤의 '오래된' tool 결과 content 만 플레이스홀더로 대체한다.
+    /// 메시지 개수·역할·tool_call_id 페어링과 assistant/user 메시지는 그대로 보존(서버 계약 유지). session.Messages 는 불변(영속 원본 보존).
+    /// </summary>
+    private static List<AgentMessage> WindowMessages(IReadOnlyList<AgentMessage> all)
+    {
+        var running = 0;
+        var elide = false;
+        var result = new AgentMessage[all.Count];
+        for (var i = all.Count - 1; i >= 0; i--)
+        {
+            var m = all[i];
+            running += m.Content?.Length ?? 0;
+            if (!elide && running > HistoryCharBudget) elide = true;
+
+            result[i] = (elide && m.Role == MessageRole.Tool && (m.Content?.Length ?? 0) > ElidedToolResult.Length)
+                ? m with { Content = ElidedToolResult }
+                : m;
+        }
+        return new List<AgentMessage>(result);
     }
 
     // R3(설계 의도): 도구 예외는 여기서 중앙집중으로 ToolResult.Fail(is_error) 변환 — 모든 도구가

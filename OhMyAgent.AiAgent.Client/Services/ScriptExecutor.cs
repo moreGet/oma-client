@@ -65,13 +65,15 @@ public class ScriptExecutor : IScriptExecutor
             var stdoutSb = new StringBuilder();
             var stderrSb = new StringBuilder();
 
+            // 폭주 출력(무한 echo 등)이 메모리를 잠식하지 않도록 스트림당 상한. 초과분은 버린다(도구가 추가로 절단·고지).
+            const int MaxStreamChars = 200_000;
             process.OutputDataReceived += (_, e) =>
             {
-                if (e.Data != null) stdoutSb.AppendLine(e.Data);
+                if (e.Data != null && stdoutSb.Length < MaxStreamChars) stdoutSb.AppendLine(e.Data);
             };
             process.ErrorDataReceived += (_, e) =>
             {
-                if (e.Data != null) stderrSb.AppendLine(e.Data);
+                if (e.Data != null && stderrSb.Length < MaxStreamChars) stderrSb.AppendLine(e.Data);
             };
 
             try

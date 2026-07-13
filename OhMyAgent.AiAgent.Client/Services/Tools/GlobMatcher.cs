@@ -53,7 +53,7 @@ internal static class GlobMatcher
             foreach (var f in files)
                 yield return f;
             foreach (var d in subDirs)
-                pending.Push(d);
+                if (!PathIgnore.IsIgnoredDir(d)) pending.Push(d);   // .git/bin/obj/node_modules 등 제외
         }
     }
 

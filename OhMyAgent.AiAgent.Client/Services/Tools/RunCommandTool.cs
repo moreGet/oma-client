@@ -45,8 +45,8 @@ public sealed class RunCommandTool(IScriptExecutor executor) : ITool
             var payload = new
             {
                 exit_code = result.ExitCode,
-                stdout = result.Stdout,
-                stderr = result.Stderr,
+                stdout = Cap(result.Stdout),
+                stderr = Cap(result.Stderr),
                 timed_out = result.TimedOut
             };
 
@@ -61,5 +61,13 @@ public sealed class RunCommandTool(IScriptExecutor executor) : ITool
         {
             return ToolResult.Fail(ex.Message);
         }
+    }
+
+    // 모델 컨텍스트 보호 — 스트림당 상한. 초과 시 뒤를 자르고 고지(전체 로그는 셸에서 파일 리다이렉트 권장).
+    private const int MaxStreamChars = 24_000;
+    private static string? Cap(string? s)
+    {
+        if (string.IsNullOrEmpty(s) || s.Length <= MaxStreamChars) return s;
+        return s[..MaxStreamChars] + $"\n\n[... 출력이 {MaxStreamChars}자로 잘렸습니다. 필요하면 명령을 좁히거나 파일로 리다이렉트하세요 ...]";
     }
 }

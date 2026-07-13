@@ -110,10 +110,11 @@
 ## 운영 권장
 - **cached**가 기본(성능·오프라인 내성). 고위험·강감사 사용자/조직만 **realtime**.
 - realtime에서 `authorize`는 매 도구 호출마다 오므로 **낮은 지연**으로 응답할 것(에이전트 루프 체감 속도 직결).
-- 도구명은 클라 내장 도구 식별자와 정확히 일치해야 함. **현재 클라 내장 도구 = 27개**(정책 `enabled`/`disabled`는 이 이름들을 참조):
+- 도구명은 클라 내장 도구 식별자와 정확히 일치해야 함. **현재 클라 내장 도구 = 29개**(정책 `enabled`/`disabled`는 이 이름들을 참조):
   - **파일(10)**: `read_file`, `write_file`, `edit_file`, `list_directory`, `glob`, `grep`, `create_directory`, `move`, `copy`, `delete`
   - **셸·시스템(10)**: `run_command`, `get_environment`, `clipboard_read`, `clipboard_write`, `list_processes`, `list_processes_memory_kb`, `start_process`, `kill_process`, `http_fetch`, `screenshot`
   - **문서·데이터(6)**: `read_csv`, `write_csv`, `read_excel`, `write_excel`, `read_pdf`, `read_document`
+  - **압축(2)**: `compress_files`(zip 생성), `extract_archive`(zip 해제)
   - **에이전트 메타(1)**: `manage_todos` (다단계 작업 계획 추적)
   > 이전 문서판은 앞 20개만 나열했음 — 문서·데이터 6개와 `manage_todos` 1개(총 7개)가 누락돼 있었다. 정책으로 이들까지 통제하려면 서버 도구 목록에 반드시 포함할 것.
 
@@ -126,11 +127,11 @@
 > 이름은 확정 전 잠정값이며, 실제 구현 시 이 문서와 위 "현재 도구" 목록을 함께 갱신한다.
 > 전부 순수 관리코드/OS 내장 기능만 사용해 **폐쇄망 적합**을 원칙으로 한다.
 
+> ✅ **구현 완료**: `compress_files`·`extract_archive`(zip) — 2026-07-14 반영, 위 "현재 도구 · 압축(2)" 참조.
+
 ### 1순위 — 명백한 공백 보완
 | 도구명(잠정) | 위험도 | 용도 | 구현 방식 |
 |------|:---:|------|------|
-| `compress_files`  | Write | 파일·폴더 → zip 압축 | `System.IO.Compression`(BCL) |
-| `extract_archive` | Write | zip 해제 | `System.IO.Compression`(BCL) |
 | `write_document`  | Write | Word `.docx` 생성/수정 | OpenXML(관리) — 현재 read_document(읽기)만 존재 |
 | `read_pptx`       | ReadOnly | PowerPoint `.pptx` 텍스트 추출 | OpenXML SDK(순수 관리) |
 | `write_pptx`      | Write | PowerPoint `.pptx` 생성 | OpenXML SDK(순수 관리) |

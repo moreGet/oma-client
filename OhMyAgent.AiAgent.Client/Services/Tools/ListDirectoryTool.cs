@@ -27,7 +27,18 @@ public sealed class ListDirectoryTool : ITool
         if (!Directory.Exists(full))
             return Task.FromResult(ToolResult.Fail($"디렉토리가 존재하지 않습니다: {(string.IsNullOrEmpty(path) ? "." : path)}"));
 
-        var entries = Directory.EnumerateFileSystemEntries(full)
+        // 대형 디렉토리가 컨텍스트를 폭증시키지 않도록 상한. 초과 시 truncated 고지.
+        const int cap = 1000;
+        var raw = new List<string>();
+        var truncated = false;
+        foreach (var e in Directory.EnumerateFileSystemEntries(full))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (raw.Count >= cap) { truncated = true; break; }
+            raw.Add(e);
+        }
+
+        var entries = raw
             .Select(e =>
             {
                 var isDir = Directory.Exists(e);
@@ -47,6 +58,6 @@ public sealed class ListDirectoryTool : ITool
             .ThenBy(e => e.name)
             .ToList();
 
-        return Task.FromResult(ToolResult.Json(new { entries }));
+        return Task.FromResult(ToolResult.Json(new { entries, count = entries.Count, truncated }));
     }
 }

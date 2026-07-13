@@ -11,7 +11,8 @@ namespace OhMyAgent.AiAgent.Client.Services.Tools;
 
 public sealed class ReadFileTool : ITool
 {
-    private const int MaxBytes = 200 * 1024; // ~200KB
+    private const int MaxChars = 100_000; // 문자 기준 상한(멀티바이트 안전). ASCII ~100KB, 한글 ~200KB 상당
+    private const string TruncNotice = "\n\n[... 출력이 상한을 초과해 잘렸습니다. start_line/end_line 으로 범위를 좁히세요 ...]";
 
     private static readonly JsonElement Schema = ToolSchemas.Parse(
         """
@@ -39,24 +40,38 @@ public sealed class ReadFileTool : ITool
         string content;
         if (startLine.HasValue || endLine.HasValue)
         {
-            var lines = await File.ReadAllLinesAsync(full, Encoding.UTF8, ct).ConfigureAwait(false);
+            // 지연 열거 — 대형 파일에서 필요한 라인 범위까지만 읽어 메모리 절약.
             var from = Math.Max(1, startLine ?? 1);
-            var to = Math.Min(lines.Length, endLine ?? lines.Length);
-            if (from > lines.Length)
-                return ToolResult.Ok("");
-            content = string.Join('\n', lines.Skip(from - 1).Take(Math.Max(0, to - from + 1)));
+            var count = endLine.HasValue ? Math.Max(0, endLine.Value - from + 1) : int.MaxValue;
+            var sb = new StringBuilder();
+            var taken = 0;
+            foreach (var line in File.ReadLines(full, Encoding.UTF8).Skip(from - 1))
+            {
+                ct.ThrowIfCancellationRequested();
+                if (taken >= count || sb.Length > MaxChars) break;
+                if (taken > 0) sb.Append('\n');
+                sb.Append(line);
+                taken++;
+            }
+            content = sb.ToString();
         }
         else
         {
-            content = await File.ReadAllTextAsync(full, Encoding.UTF8, ct).ConfigureAwait(false);
+            // 전체 파일을 한 번에 로드하지 않고 상한(+1)까지만 읽어 초대형 파일에서도 메모리 안전.
+            using var reader = new StreamReader(full, Encoding.UTF8);
+            var buffer = new char[MaxChars + 1];
+            var read = 0;
+            int r;
+            while (read < buffer.Length && (r = await reader.ReadAsync(buffer.AsMemory(read, buffer.Length - read), ct).ConfigureAwait(false)) > 0)
+                read += r;
+            if (read > MaxChars)
+                return ToolResult.Ok(new string(buffer, 0, MaxChars) + TruncNotice);
+            content = new string(buffer, 0, read);
         }
 
-        var bytes = Encoding.UTF8.GetByteCount(content);
-        if (bytes > MaxBytes)
-        {
-            var truncated = content.Length > MaxBytes ? content[..MaxBytes] : content;
-            return ToolResult.Ok(truncated + $"\n\n[... 출력이 {MaxBytes} 바이트로 잘렸습니다 ...]");
-        }
+        // 문자 기준 상한(멀티바이트 안전) — 범위 읽기 결과가 상한을 넘으면 절단.
+        if (content.Length > MaxChars)
+            return ToolResult.Ok(content[..MaxChars] + TruncNotice);
 
         return ToolResult.Ok(content);
     }
