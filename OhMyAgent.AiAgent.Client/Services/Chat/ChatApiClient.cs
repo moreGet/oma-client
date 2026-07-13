@@ -239,9 +239,7 @@ public sealed class ChatApiClient(HttpClient httpClient, ISettingsService settin
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 공용 HTTP 헬퍼 (AgentApiClient 패턴 미러)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── 공용 HTTP 헬퍼 (AgentApiClient 패턴 미러) ────────────────────────
 
     private Task<T> GetAsync<T>(string path, CancellationToken ct)
         => SendAsync<T>(HttpMethod.Get, path, body: null, ct);

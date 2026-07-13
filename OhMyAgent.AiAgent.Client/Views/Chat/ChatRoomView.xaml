@@ -24,65 +24,89 @@
                 Padding="18,12">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>  <!-- 아바타 -->
+                    <ColumnDefinition Width="*"/>     <!-- 이름 -->
+                    <ColumnDefinition Width="Auto"/>  <!-- presence -->
+                    <ColumnDefinition Width="Auto"/>  <!-- 멤버 토글 -->
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="{Binding DisplayName}"
-                               Foreground="{StaticResource TextPrimary}"
+                <!-- 30x30 그라디언트 아바타 + 이니셜 -->
+                <Border Grid.Column="0" Width="30" Height="30" CornerRadius="9"
+                        Background="{StaticResource ChatAvatarGradient}"
+                        VerticalAlignment="Center" Margin="0,0,10,0">
+                    <TextBlock Text="{Binding DisplayName, Converter={StaticResource Initial}}"
+                               Foreground="White" FontWeight="Bold"
                                FontFamily="{StaticResource AppFont}"
-                               FontSize="{StaticResource FontSizeSubtitle}"
-                               FontWeight="SemiBold"
-                               TextTrimming="CharacterEllipsis"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                        <Ellipse Width="7" Height="7" Fill="{StaticResource ConnectedDot}"
-                                 VerticalAlignment="Center" Margin="0,0,5,0"
-                                 Visibility="{Binding OnlinePresence.Count, Converter={StaticResource CountToVisibility}}"/>
-                        <TextBlock Foreground="{StaticResource TextMuted}"
-                                   FontFamily="{StaticResource AppFont}"
-                                   FontSize="{StaticResource FontSizeSmall}">
-                            <Run Text="{Binding OnlinePresence.Count, Mode=OneWay}"/><Run Text="명 온라인"/>
-                        </TextBlock>
-                    </StackPanel>
+                               FontSize="{StaticResource FontSizeSmall}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
+                           Foreground="{StaticResource TextPrimary}"
+                           FontFamily="{StaticResource AppFont}"
+                           FontSize="{StaticResource FontSizeSubtitle}"
+                           FontWeight="Bold"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"/>
+
+                <!-- presence: 발광 초록 점 + "N명 온라인" -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                            Margin="12,0,8,0"
+                            Visibility="{Binding OnlinePresence.Count, Converter={StaticResource CountToVisibility}}">
+                    <Grid Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,5,0">
+                        <Ellipse Width="14" Height="14" Fill="{StaticResource ChatOnlineGlowBrush}"/>
+                        <Ellipse Width="8" Height="8" Fill="{StaticResource ChatOnlineBrush}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+                    <TextBlock Foreground="{StaticResource ChatMutedBrush}"
+                               FontFamily="{StaticResource AppFont}"
+                               FontSize="{StaticResource FontSizeSmall}"
+                               VerticalAlignment="Center">
+                        <Run Text="{Binding OnlinePresence.Count, Mode=OneWay}"/><Run Text="명 온라인"/>
+                    </TextBlock>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <!-- 멤버관리 토글(Flyout) -->
-                    <ToggleButton x:Name="MembersToggle" Style="{StaticResource ComposerIconToggleButton}"
-                                  ToolTip="멤버">
-                        <TextBlock Text="&#xE716;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                   FontSize="{StaticResource FontSizeBodyLarge}"/>
-                    </ToggleButton>
-                </StackPanel>
+                <!-- 멤버관리 토글(Flyout) -->
+                <ToggleButton Grid.Column="3" x:Name="MembersToggle"
+                              Style="{StaticResource ComposerIconToggleButton}"
+                              VerticalAlignment="Center" ToolTip="멤버">
+                    <TextBlock Text="&#xE716;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               FontSize="{StaticResource FontSizeBodyLarge}"/>
+                </ToggleButton>
             </Grid>
         </Border>
 
         <!-- ── 메시지 영역 ──────────────────────────────────────────── -->
         <Grid Grid.Row="1">
-            <ScrollViewer x:Name="MessagesScroll"
-                          Padding="0,8"
-                          ScrollChanged="MessagesScroll_ScrollChanged"
-                          VerticalScrollBarVisibility="Auto">
-                <ScrollViewer.Resources>
-                    <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/>
-                </ScrollViewer.Resources>
-                <StackPanel>
-                    <!-- 상단 더보기 로더 -->
-                    <ProgressBar IsIndeterminate="True" Height="3" Margin="0,0,0,4"
-                                 Background="Transparent" BorderThickness="0"
-                                 Foreground="{StaticResource AccentBrush}"
-                                 Visibility="{Binding IsLoadingMore, Converter={StaticResource BoolToVisibility}}"/>
+            <!-- 방 카드: 파랑 계열 서피스 + 라인 + 둥근 모서리 + 부드러운 그림자 -->
+            <Border Background="{StaticResource ChatSurfaceBrush}"
+                    BorderBrush="{StaticResource ChatLineBrush}" BorderThickness="1"
+                    CornerRadius="18" Margin="12,8"
+                    Effect="{StaticResource SoftShadow}">
+                <ScrollViewer x:Name="MessagesScroll"
+                              Padding="0,8"
+                              ScrollChanged="MessagesScroll_ScrollChanged"
+                              VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer.Resources>
+                        <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/>
+                    </ScrollViewer.Resources>
+                    <StackPanel>
+                        <!-- 상단 더보기 로더 -->
+                        <ProgressBar IsIndeterminate="True" Height="3" Margin="0,0,0,4"
+                                     Background="Transparent" BorderThickness="0"
+                                     Foreground="{StaticResource ChatAccentBrush}"
+                                     Visibility="{Binding IsLoadingMore, Converter={StaticResource BoolToVisibility}}"/>
 
-                    <ItemsControl ItemsSource="{Binding Messages}" Focusable="False">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="{x:Type vm:ChatMessageViewModel}">
-                                <controls:ChatMessageBubble/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding Messages}" Focusable="False">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:ChatMessageViewModel}">
+                                    <controls:ChatMessageBubble/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
 
             <!-- 멤버 Flyout (헤더 토글) -->
             <Popup IsOpen="{Binding IsChecked, ElementName=MembersToggle}"
@@ -100,18 +124,46 @@
                 </ContentControl>
             </Popup>
 
-            <!-- typing 인디케이터 + 읽음 오버레이 -->
+            <!-- typing 인디케이터: 20px 그라디언트 아바타 + 텍스트 + 페이드 "···" -->
             <Border VerticalAlignment="Bottom" HorizontalAlignment="Left"
-                    Background="{StaticResource Surface2Bg}"
+                    Background="{StaticResource ChatSurface2Brush}"
+                    BorderBrush="{StaticResource ChatLineBrush}" BorderThickness="1"
                     CornerRadius="{StaticResource RadiusPill}"
-                    Padding="12,6" Margin="16,0,0,8"
+                    Padding="8,5" Margin="24,0,0,18"
                     Effect="{StaticResource SoftShadow}"
                     Visibility="{Binding TypingIndicatorText, Converter={StaticResource StringToVisibility}}">
-                <TextBlock Text="{Binding TypingIndicatorText}"
-                           Foreground="{StaticResource TextSecondary}"
-                           FontFamily="{StaticResource AppFont}"
-                           FontSize="{StaticResource FontSizeSmall}"
-                           FontStyle="Italic"/>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="20" Height="20" CornerRadius="6"
+                            Background="{StaticResource ChatAvatarGradient}"
+                            Margin="0,0,7,0" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE125;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="White" FontSize="{StaticResource FontSizeMicro}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="{Binding TypingIndicatorText}"
+                               Foreground="{StaticResource ChatDimBrush}"
+                               FontFamily="{StaticResource AppFont}"
+                               FontSize="{StaticResource FontSizeSmall}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="···" Margin="4,0,0,0"
+                               Foreground="{StaticResource ChatAccent2Brush}"
+                               FontFamily="{StaticResource AppFont}"
+                               FontSize="{StaticResource FontSizeBodyLarge}"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center">
+                        <TextBlock.Triggers>
+                            <EventTrigger RoutedEvent="TextBlock.Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                         From="0.25" To="1" Duration="0:0:0.6"
+                                                         AutoReverse="True" RepeatBehavior="Forever"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </TextBlock.Triggers>
+                    </TextBlock>
+                </StackPanel>
             </Border>
         </Grid>
 
@@ -185,8 +237,8 @@
                                      Background="Transparent" BorderThickness="0"
                                      Foreground="{StaticResource TextPrimary}"
                                      FontFamily="{StaticResource AppFont}" FontSize="{StaticResource FontSizeBody}"
-                                     CaretBrush="{StaticResource AccentBrush}"
-                                     SelectionBrush="{StaticResource AccentBrush}"
+                                     CaretBrush="{StaticResource ChatAccentBrush}"
+                                     SelectionBrush="{StaticResource ChatAccentBrush}"
                                      Text="{Binding Draft, UpdateSourceTrigger=PropertyChanged}"
                                      TextWrapping="Wrap" AcceptsReturn="True"
                                      MaxLines="6" MinHeight="24" MaxHeight="140"

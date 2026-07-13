@@ -59,9 +59,7 @@ public sealed class ChatRealtimeService(
     public event EventHandler<WsMemberPayload>? MemberLeft;
     public event EventHandler? DirectoryUpdated;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 수명주기
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── 수명주기 ────────────────────────
 
     public async Task StartAsync(CancellationToken ct = default)
     {
@@ -84,9 +82,7 @@ public sealed class ChatRealtimeService(
         await socket.ConnectAsync(ct).ConfigureAwait(false);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 이름 디렉터리 (memberId → 표시이름)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── 이름 디렉터리 (memberId → 표시이름) ────────────────────────
 
     public string DisplayName(string memberId)
     {
@@ -155,9 +151,7 @@ public sealed class ChatRealtimeService(
         await socket.DisposeAsync().ConfigureAwait(false);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // REST 위임(상태 병합 포함)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── REST 위임(상태 병합 포함) ────────────────────────
 
     public Task<IReadOnlyList<ChatRoom>> LoadRoomsAsync(CancellationToken ct = default)
         => ExecuteAsync(() => api.GetRoomsAsync(ct), Array.Empty<ChatRoom>());
@@ -195,9 +189,7 @@ public sealed class ChatRealtimeService(
         return room;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 전송(WS 우선, REST 폴백)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── 전송(WS 우선, REST 폴백) ────────────────────────
 
     public async Task SendMessageAsync(string roomId, string? content, IReadOnlyList<string>? mentions = null, IReadOnlyList<ChatAttachment>? attachments = null, CancellationToken ct = default)
     {
@@ -340,9 +332,7 @@ public sealed class ChatRealtimeService(
     public Task<Stream> DownloadAttachmentAsync(string attachmentId, CancellationToken ct = default)
         => ExecuteThrowAsync(() => api.DownloadAttachmentAsync(attachmentId, ct));
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // WS 이벤트 구독 → 집계 → 상위 event raise(UI 마샬)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── WS 이벤트 구독 → 집계 → 상위 event raise(UI 마샬) ────────────────────────
 
     private void HookSocket()
     {
@@ -526,9 +516,7 @@ public sealed class ChatRealtimeService(
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 오류 분기 + UI 마샬 + 실행 헬퍼
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── 오류 분기 + UI 마샬 + 실행 헬퍼 ────────────────────────
 
     private void HandleApiException(ChatApiException ex)
     {
@@ -575,9 +563,7 @@ public sealed class ChatRealtimeService(
     /// </summary>
     private string MyId() => JwtIdentity.MemberId(settings.Current.AuthToken);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 방 단위 상태(메모리 보유). 안읽음 정의: 내 last_read 이후 남의 비삭제 메시지 수.
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── 방 단위 상태(메모리 보유). 안읽음 정의: 내 last_read 이후 남의 비삭제 메시지 수. ────────────────────────
     private sealed class RoomState
     {
         private readonly object _gate = new();

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -518,13 +520,37 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         var attachmentPayloads = await BuildAttachmentPayloadsAsync(token).ConfigureAwait(false);
         await UiInvokeAsync(() => Attachments.Clear()).ConfigureAwait(false);
 
+        // 토큰 델타는 버퍼에 모아 ~50ms/1KB 간격으로 일괄 반영 — 매 토큰 디스패치+문자열 재레이아웃(O(n²)) 폭주 방지.
+        var pendingText = new StringBuilder();
+        var sinceFlush = Stopwatch.StartNew();
+
+        async Task FlushTextAsync()
+        {
+            if (pendingText.Length == 0) return;
+            var chunk = pendingText.ToString();
+            pendingText.Clear();
+            sinceFlush.Restart();
+            await UiInvokeAsync(() => EnsureAssistant().Text += chunk).ConfigureAwait(false);
+        }
+
         try
         {
             await foreach (var evt in _orchestrator.RunAsync(goal, _session, attachmentPayloads, token).ConfigureAwait(false))
             {
+                if (evt is AgentTextDelta delta)
+                {
+                    pendingText.Append(delta.Text);
+                    if (sinceFlush.ElapsedMilliseconds >= 50 || pendingText.Length >= 1024)
+                        await FlushTextAsync().ConfigureAwait(false);
+                    continue;
+                }
+
+                // 비-텍스트 이벤트는 순서 보존 위해 버퍼를 먼저 비운 뒤 반영.
+                await FlushTextAsync().ConfigureAwait(false);
                 var captured = evt;
                 await UiInvokeAsync(() => Project(captured)).ConfigureAwait(false);
             }
+            await FlushTextAsync().ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -545,6 +571,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         }
         finally
         {
+            await FlushTextAsync().ConfigureAwait(false);   // 취소/오류로 남은 버퍼 반영
             await UiInvokeAsync(() =>
             {
                 if (_currentAssistant is { IsStreaming: true } a)

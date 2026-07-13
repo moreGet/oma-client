@@ -189,10 +189,8 @@ public sealed class AgentOrchestrator(
             Metadata: new RequestMetadata("windows", workspace.Root, ClientVersion));
     }
 
-    // R3(설계 의도): 도구 예외는 개별 ITool 이 아니라 여기서 중앙 집중적으로
-    // ToolResult.Fail(is_error) 로 변환한다. 이렇게 하면 모든 도구가 동일한 오류
-    // 계약을 따르고(크래시 없이 모델에 에러를 피드백), 개별 도구는 정상 경로만
-    // 구현하면 된다. 도구별 try/catch 는 의도적으로 두지 않는다.
+    // R3(설계 의도): 도구 예외는 여기서 중앙집중으로 ToolResult.Fail(is_error) 변환 — 모든 도구가
+    // 동일 오류계약을 따르고 정상 경로만 구현. 도구별 try/catch 는 의도적으로 두지 않는다.
     private async Task<(ToolResult Result, bool Cancelled)> ExecuteCallAsync(
         ITool tool, ToolCall call, ToolRisk risk, ToolContext ctx, CancellationToken ct)
     {

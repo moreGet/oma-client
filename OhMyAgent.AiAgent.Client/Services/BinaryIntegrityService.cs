@@ -48,11 +48,8 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
     /// <summary>현재 서명 키 버전(키 로테이션 대비). 키 파생 솔트와 함께 사용.</summary>
     private const int CurrentSignatureKeyVersion = 1;
 
-    // --- HMAC 서명 키 베이스(앱 내장 비밀) ----------------------------------
-    // 의도적으로 여러 조각으로 분산해 단순 문자열 스캔으로 추출하기 어렵게 한다.
-    // 위협모델 한계: 동일 사용자 권한 공격자가 바이너리를 리버스해 이 값과 파생 로직을
-    // 복원하면 매니페스트를 위조할 수 있다. HMAC은 "매니페스트 파일 단독 변조"에 대한
-    // tamper-evidence(변조 탐지)만 제공한다.
+    // HMAC 서명 키 베이스(앱 내장 비밀) — 여러 조각으로 분산해 단순 문자열 스캔 추출을 어렵게 함.
+    // 한계: 동일 권한 공격자가 리버스로 값·파생로직 복원 시 위조 가능. HMAC은 단독 변조 탐지만 제공.
     private static readonly byte[] SecretA = [0x4F, 0x68, 0x4D, 0x79, 0x41, 0x67, 0x65, 0x6E, 0x74];
     private static readonly byte[] SecretB = [0x49, 0x6E, 0x74, 0x65, 0x67, 0x72, 0x69, 0x74, 0x79];
     private static readonly byte[] SecretC = [0xA7, 0x3C, 0x91, 0x5E, 0x02, 0xD4, 0x88, 0x1B, 0x6F, 0xC0, 0x29, 0x7A];
@@ -517,9 +514,8 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
             ? new HashSet<string>(options.IncludeExtensions, StringComparer.OrdinalIgnoreCase)
             : null;
 
-        // 매니페스트는 이제 %APPDATA% 하위(대상 폴더 밖)에 저장되므로 스캔 대상에 포함될 일이 없다.
-        // ExcludeManifestFile 자기제외 로직은 더 이상 필요치 않으나, 대상이 우연히 %APPDATA% 하위인
-        // 극단적 경우의 안전망으로 옵션을 존중해 남겨 둔다.
+        // 매니페스트는 %APPDATA% 하위(대상 폴더 밖) 저장이라 스캔 대상에 포함될 일이 없음.
+        // ExcludeManifestFile 자기제외는 불필요하나 극단적 경우 안전망으로 옵션 존중해 유지.
         var manifestFull = SafeGetFullPath(manifestPath);
         var results = new List<string>();
 

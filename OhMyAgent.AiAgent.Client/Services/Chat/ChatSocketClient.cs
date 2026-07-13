@@ -111,9 +111,7 @@ public sealed class ChatSocketClient(ISettingsService settings) : IChatSocketCli
         _sendLock.Dispose();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 연결 루프 + 수신 펌프 + 자동재연결
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── 연결 루프 + 수신 펌프 + 자동재연결 ────────────────────────
 
     private async Task RunConnectionLoopAsync(CancellationToken ct)
     {
@@ -293,9 +291,7 @@ public sealed class ChatSocketClient(ISettingsService settings) : IChatSocketCli
     private static T? Deserialize<T>(string payload) where T : class
         => JsonSerializer.Deserialize<T>(payload, ChatJson.Options);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 송신
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── 송신 ────────────────────────
 
     private async Task SendRawAsync(string json, CancellationToken ct)
     {
@@ -316,9 +312,7 @@ public sealed class ChatSocketClient(ISettingsService settings) : IChatSocketCli
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 유틸
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── 유틸 ────────────────────────
 
     private Uri BuildWsUri()
     {

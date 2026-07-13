@@ -4,9 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace OhMyAgent.AiAgent.Client.Models.Chat;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WebSocket envelope (설계서 §2). 인바운드는 type peek 후 해당 payload 역직렬화.
-// ─────────────────────────────────────────────────────────────────────────────
+// ── WebSocket envelope (설계서 §2). 인바운드는 type peek 후 해당 payload 역직렬화. ────────────────────────
 
 // ── 아웃바운드 (클라→서버) ──
 
@@ -75,11 +73,8 @@ public sealed record WsPresencePayload(
 public sealed record WsErrorEvent(
     [property: JsonPropertyName("error")] string Error);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ChatJson.Options — AgentJson.Options 복제(ToolCallJsonConverter 제외, D3).
-// snake_case enum + WhenWritingNull + Web defaults(대소문자 무시). DTO 의 명시적
-// [JsonPropertyName] 으로 snake_case 프로퍼티명을 처리한다(AgentJson 와 동일 전략).
-// ─────────────────────────────────────────────────────────────────────────────
+// ChatJson.Options — AgentJson.Options 복제(ToolCallJsonConverter 제외). snake_case enum +
+// WhenWritingNull + Web defaults, DTO 의 [JsonPropertyName] 으로 프로퍼티명 처리.
 public static class ChatJson
 {
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)

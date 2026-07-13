@@ -66,4 +66,27 @@
     <Color x:Key="ConnectedColor"     >#34D399</Color>
     <Color x:Key="ErrorColor"         >#FB7185</Color>
 
+    <!-- ══════════════════════════════════════════════════════════════
+         Chat(사람↔사람 메신저) 전용 파랑 팔레트 · presentation_service.html :root
+         전역 보라 accent 와 분리된 신규 키만 사용(기존 키 값 불변).
+         ══════════════════════════════════════════════════════════════ -->
+    <SolidColorBrush x:Key="ChatAccentBrush"     Color="#388BFD"/>  <!-- 채팅 파랑(주) -->
+    <SolidColorBrush x:Key="ChatAccent2Brush"    Color="#6EA8FF"/>  <!-- 멘션·읽음·보낸이·타이핑 -->
+    <SolidColorBrush x:Key="ChatVioletBrush"     Color="#A371F7"/>  <!-- 아바타 그라디언트 끝색 -->
+    <SolidColorBrush x:Key="ChatOnlineBrush"     Color="#2EA043"/>  <!-- 온라인 점(초록) -->
+    <SolidColorBrush x:Key="ChatOnlineGlowBrush" Color="#4D2EA043"/><!-- 온라인 점 글로우(rgba .30) -->
+    <SolidColorBrush x:Key="ChatSurfaceBrush"    Color="#151C28"/>  <!-- 방 카드 배경 -->
+    <SolidColorBrush x:Key="ChatSurface2Brush"   Color="#1B2433"/>  <!-- them 버블 배경 -->
+    <SolidColorBrush x:Key="ChatLineBrush"       Color="#26303F"/>  <!-- 카드/them 버블 테두리 -->
+    <SolidColorBrush x:Key="ChatMeBubbleBrush"   Color="#29388BFD"/><!-- me 버블 배경(rgba .16) -->
+    <SolidColorBrush x:Key="ChatMeBorderBrush"   Color="#59388BFD"/><!-- me 버블 테두리(rgba .35) -->
+    <SolidColorBrush x:Key="ChatMutedBrush"      Color="#93A1B5"/>  <!-- presence/부제 -->
+    <SolidColorBrush x:Key="ChatDimBrush"        Color="#5D6B7E"/>  <!-- 메타(시각) -->
+
+    <!-- 아바타 그라디언트 (CSS 135° : accent → violet) -->
+    <LinearGradientBrush x:Key="ChatAvatarGradient" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#388BFD" Offset="0"/>
+        <GradientStop Color="#A371F7" Offset="1"/>
+    </LinearGradientBrush>
+
 </ResourceDictionary>

@@ -212,10 +212,8 @@ public sealed class MultiplyConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  Chat (사람↔사람 메신저) 전용 컨버터 — 설계서 §1
-//  기존 디자인 토큰 색상값과 동일한 RGB 만 사용(신규 색 정의 금지).
-// ══════════════════════════════════════════════════════════════════
+// Chat(사람↔사람 메신저) 전용 컨버터 — 설계서 §1.
+// 기존 디자인 토큰과 동일한 RGB 만 사용(신규 색 정의 금지).
 
 /// <summary>long(unix epoch 초) =&gt; 로컬 시각 표시 문자열. 오늘=시각만, 어제="어제", 그 외=날짜.</summary>
 [ValueConversion(typeof(long), typeof(string))]
@@ -280,14 +278,14 @@ public sealed class IsMineToAlignmentConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-/// <summary>bool(내 메시지) =&gt; 버블 Brush(true=UserBubble violet / false=AgentBubble surface).</summary>
+/// <summary>bool(내 메시지) =&gt; 버블 Brush(true=ChatMeBubble 파랑 반투명 / false=ChatSurface2).</summary>
 [ValueConversion(typeof(bool), typeof(SolidColorBrush))]
 public sealed class IsMineToBubbleBrushConverter : IValueConverter
 {
     public object Convert(object? value, Type t, object p, CultureInfo c)
         => new SolidColorBrush(value is true
-            ? Color.FromRgb(0x7C, 0x5C, 0xFF)  // UserBubble
-            : Color.FromRgb(0x1B, 0x1F, 0x2A)); // AgentBubble
+            ? Color.FromArgb(0x29, 0x38, 0x8B, 0xFD)  // ChatMeBubbleBrush rgba(56,139,253,.16)
+            : Color.FromRgb(0x1B, 0x24, 0x33));        // ChatSurface2Brush #1B2433
 
     public object ConvertBack(object value, Type t, object p, CultureInfo c)
         => throw new NotSupportedException();

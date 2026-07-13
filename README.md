@@ -196,29 +196,36 @@ dotnet run --project OhMyAgent.AiAgent.Client
 
 ## 프로젝트 구조
 
+> 트리 루트는 **저장소 루트**. `docs/`·`CHANGELOG.md`·`README.md`는 저장소 루트에 있고, WPF 소스는 하위 프로젝트 폴더에 있다.
+
 ```
-OhMyAgent.AiAgent.Client/
-├── App.xaml(.cs)         컴포지션 루트 · 트레이 · 핫키 · 통합 로그인 게이트(ReturnToLogin)
-├── MainWindow.xaml(.cs)  메인 셸 · 프로젝트 사이드바(드래그앤드롭 분류) · 쿼터 칩 · 업데이트 배너
-├── Models/               AppSettings · WorkspaceFolder · ProjectRecord/Summary · UserProfile ·
-│   │                     QuotaInfo · ClientVersionInfo · ChatSessionRecord ·
-│   │                     Agent DTO(AgentMessage/ToolCall/Usage/RemoteProject/RemoteSession/ToolPolicy/Attachment …)
-│   └── Chat/             메신저 DTO(ChatDtos) · WS envelope(+ChatJson) · ChatEnums
-├── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry · PermissionService ·
-│   │                     ToolPolicyService · ProjectService · ChatHistoryService · SessionSyncService ·
-│   │                     AppVersion · UserErrorMessages · FileAttachmentService · 워크스페이스/보안
-│   ├── Tools/            26개 ITool 구현
-│   └── Chat/             IChatApiClient(REST) · IChatSocketClient(WS) · IChatRealtimeService(파사드) ·
-│                         ChatMessengerCoordinator · JwtIdentity(식별자) · ChatApiException
-├── ViewModels/           AgentSessionViewModel · SettingsViewModel · ProjectsViewModel ·
-│   │                     WorkspaceFolderViewModel · QuotaWindowViewModel · LoginViewModel · IntegrityViewModel
-│   └── Chat/             ChatMessengerViewModel(셸) · ChatRooms/ChatRoom/ChatMessage · 멤버/멘션 VM
-├── Views/                LoginWindow · ChatOnlyWindow · SettingsWindow · IntegrityWindow
-│   └── Chat/             ChatMessengerWindow · ChatRooms/ChatRoomView · RoomMembers/MentionFeed · Controls(말풍선/멘션)
-├── Resources/            Colors · Tokens(디자인 토큰) · Styles · Converters · TranscriptTemplates
-└── docs/                 아키텍처·API 계약 · tool-system(도구 설계) · realtime-chat(메신저) ·
-                          server-*.md(프로필/쿼터/버전/도구정책/명령보안 요구) ·
-                          design-tokens · api-conformance-report · CHANGELOG · 발표자료
+<repo-root>/
+├── README.md · CHANGELOG.md · CLAUDE.md
+├── docs/                     AGENT_ARCHITECTURE_PLAN · API_CONTRACT · tool-system(도구 설계) ·
+│                             realtime-chat(메신저) · server-*.md(쿼터/버전/도구정책/명령보안) ·
+│                             design-tokens · 발표자료(presentation_*.html)
+└── OhMyAgent.AiAgent.Client/          (WPF 프로젝트)
+    ├── App.xaml(.cs)         컴포지션 루트 · 트레이 · 핫키 · 통합 로그인 게이트(ReturnToLogin)
+    ├── MainWindow.xaml(.cs)  메인 셸 · 프로젝트 사이드바(드래그앤드롭 분류) · 쿼터 칩 · 업데이트 배너
+    ├── Models/               AppSettings · WorkspaceFolder · ProjectRecord/Summary · UserProfile ·
+    │   │                     ChatSessionRecord/Summary · Attachment · Suggestion
+    │   ├── Agent/            Agent DTO(AgentMessage/ToolCall/Usage/QuotaInfo/ClientVersionInfo/
+    │   │                     RemoteProject/RemoteSession/ToolPolicy …)
+    │   ├── Chat/             메신저 DTO(ChatDtos) · WS envelope(+ChatJson) · ChatEnums
+    │   └── Integrity/        무결성 매니페스트(IntegrityManifest/Entry)
+    ├── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry · PermissionService ·
+    │   │                     ToolPolicyService · ProjectService · ChatHistoryService · SessionSyncService ·
+    │   │                     AppVersion · UserErrorMessages · FileAttachmentService · 워크스페이스/보안
+    │   ├── Tools/            26개 ITool 구현
+    │   └── Chat/             IChatApiClient(REST) · IChatSocketClient(WS) · IChatRealtimeService(파사드) ·
+    │                         ChatMessengerCoordinator · JwtIdentity(식별자) · ChatApiException
+    ├── ViewModels/           AgentSessionViewModel · SettingsViewModel · ProjectsViewModel ·
+    │   │                     WorkspaceFolderViewModel · QuotaWindowViewModel · LoginViewModel · IntegrityViewModel
+    │   └── Chat/             ChatMessengerViewModel(셸) · ChatRooms/ChatRoom/ChatMessage · 멤버/멘션 VM
+    ├── Views/                LoginWindow · ChatOnlyWindow · SettingsWindow · IntegrityWindow
+    │   └── Chat/             ChatMessengerWindow · ChatRooms/ChatRoomView · RoomMembers/MentionFeed · Controls(말풍선/멘션)
+    ├── Resources/            Colors · Tokens(디자인 토큰) · Styles · Converters · TranscriptTemplates
+    └── docs/                 api-conformance-report(API 정합성 리포트)
 ```
 
 ---

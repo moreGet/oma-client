@@ -9,9 +9,7 @@ public class AppSettings
     public double Opacity { get; set; } = 1.0;
     public int SchemaVersion { get; set; } = 5;   // bump 4 -> 5
 
-    // MCP 서버 은퇴로 제거됨 (v3 마이그레이션에서 drop):
-    //   public int  McpPort    { get; set; } = 3000;
-    //   public bool McpEnabled { get; set; } = true;
+    // MCP 서버 은퇴로 McpPort/McpEnabled 제거됨 (v3 마이그레이션에서 drop).
 
     // 신규 (Phase 1)
     public string WorkspaceRoot { get; set; } = "";            // 주 루트(primary). 첫 활성 폴더와 동기화. empty => Desktop fallback

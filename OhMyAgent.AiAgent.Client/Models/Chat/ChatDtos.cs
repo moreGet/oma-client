@@ -3,10 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace OhMyAgent.AiAgent.Client.Models.Chat;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// REST/WS DTO (설계서 §2). 모든 시각 = long(unix epoch 초). UI 표시 시점에만 변환.
+// REST/WS DTO (설계서 §2). 모든 시각 = long(unix epoch 초), UI 표시 시점에만 변환.
 // 직렬화 옵션 = ChatJson.Options (ChatWireEnvelopes.cs).
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ── 코어 엔티티 ──
 

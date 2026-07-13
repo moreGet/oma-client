@@ -47,7 +47,23 @@ public partial class App : Application
     /// <summary>MainWindow 사이드바 배지 중계용 — 메신저 VM 노출(없으면 null).</summary>
     internal ChatMessengerViewModel? ChatMessengerVm => _chatMessengerVm;
 
+    // async void — 미관측 예외 시 조용한 시작 크래시를 막도록 본문을 감싸 최상위에서 방어한다.
     protected override async void OnStartup(StartupEventArgs e)
+    {
+        try
+        {
+            await StartupAsync(e);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"앱을 시작하지 못했습니다:\n\n{ex.Message}",
+                "OhMyAgent", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(-1);
+        }
+    }
+
+    private async Task StartupAsync(StartupEventArgs e)
     {
         base.OnStartup(e);
 
@@ -380,8 +396,7 @@ public partial class App : Application
         _mainVm?.PrepareForLogout();
 
         // 1b) 메신저 WS 정리 — 재로그인 시 토큰이 바뀌므로 stale 연결을 끊고 Start 가드를 리셋한다.
-        //     다음 로그인 후 메신저 재오픈 시 새 토큰 기준으로 StartCommand 가 다시 돈다(currentUserId 갱신은
-        //     VM 재생성이 필요하나, 안읽음/메시지의 IsMine 판정은 서버 sender_id 기준이라 실무 영향 최소).
+        //     IsMine 판정은 서버 sender_id 기준이라 currentUserId(VM) 갱신 지연의 실무 영향은 최소.
         _chatStarted = false;
         if (_chatRealtime is { } realtime)
             _ = realtime.StopAsync();

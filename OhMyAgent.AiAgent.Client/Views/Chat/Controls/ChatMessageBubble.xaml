@@ -12,13 +12,37 @@
     <Grid Margin="14,3"
           HorizontalAlignment="{Binding IsMine, Converter={StaticResource IsMineToAlignment}}">
 
-        <Border MaxWidth="320"
+        <Border MaxWidth="360"
                 Background="{Binding IsMine, Converter={StaticResource IsMineToBubbleBrush}}"
-                CornerRadius="{StaticResource RadiusLg}"
+                BorderThickness="1"
                 Padding="12,8"
                 Effect="{StaticResource SoftShadow}"
                 Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
             <StackPanel>
+
+                <!-- 보낸이 이름(상대 메시지에만) -->
+                <TextBlock Text="{Binding SenderName}"
+                           Foreground="{StaticResource ChatAccent2Brush}"
+                           FontFamily="{StaticResource AppFont}"
+                           FontSize="{StaticResource FontSizeSmall}"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,3"
+                           TextTrimming="CharacterEllipsis">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding IsMine}" Value="False"/>
+                                        <Condition Binding="{Binding IsDeleted}" Value="False"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
 
                 <!-- 삭제된 메시지 -->
                 <TextBlock Text="삭제된 메시지"
@@ -53,7 +77,7 @@
                                         <Style TargetType="TextBlock">
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsMention}" Value="True">
-                                                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                                    <Setter Property="Foreground" Value="{StaticResource ChatAccent2Brush}"/>
                                                     <Setter Property="FontWeight" Value="SemiBold"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
@@ -96,7 +120,7 @@
                 <!-- 메타 행: 시각 · 수정됨 · 전송상태 · 읽음 -->
                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                     <TextBlock Text="{Binding CreatedAt, Converter={StaticResource UnixSecondsToLocalTime}}"
-                               Foreground="{StaticResource TextMuted}"
+                               Foreground="{StaticResource ChatDimBrush}"
                                FontFamily="{StaticResource AppFont}"
                                FontSize="{StaticResource FontSizeMicro}"
                                VerticalAlignment="Center"/>
@@ -125,7 +149,7 @@
 
                     <!-- 읽음 N (내 메시지에만) -->
                     <TextBlock Margin="6,0,0,0"
-                               Foreground="{StaticResource TextMuted}"
+                               Foreground="{StaticResource ChatAccent2Brush}"
                                FontFamily="{StaticResource AppFont}"
                                FontSize="{StaticResource FontSizeMicro}"
                                VerticalAlignment="Center">
@@ -171,10 +195,17 @@
                 </ContextMenu>
             </Border.ContextMenu>
 
-            <!-- Pending(낙관 전송 중) 흐림 -->
+            <!-- 버블 모서리/테두리: 기본=them(좌상단 4), IsMine=me(우상단 4) · Pending 흐림 -->
             <Border.Style>
                 <Style TargetType="Border">
+                    <!-- them 기본값 -->
+                    <Setter Property="CornerRadius" Value="4,12,12,12"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource ChatLineBrush}"/>
                     <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsMine}" Value="True">
+                            <Setter Property="CornerRadius" Value="12,4,12,12"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource ChatMeBorderBrush}"/>
+                        </DataTrigger>
                         <DataTrigger Binding="{Binding SendStatus}" Value="Pending">
                             <Setter Property="Opacity" Value="0.6"/>
                         </DataTrigger>
