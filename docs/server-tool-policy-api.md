@@ -110,7 +110,12 @@
 ## 운영 권장
 - **cached**가 기본(성능·오프라인 내성). 고위험·강감사 사용자/조직만 **realtime**.
 - realtime에서 `authorize`는 매 도구 호출마다 오므로 **낮은 지연**으로 응답할 것(에이전트 루프 체감 속도 직결).
-- 도구명은 클라 내장 도구 식별자와 일치해야 함(예: `read_file`, `write_file`, `edit_file`, `list_directory`, `glob`, `grep`, `create_directory`, `move`, `copy`, `delete`, `run_command`, `get_environment`, `clipboard_read`, `clipboard_write`, `list_processes`, `list_processes_memory_kb`, `start_process`, `kill_process`, `http_fetch`, `screenshot`).
+- 도구명은 클라 내장 도구 식별자와 정확히 일치해야 함. **현재 클라 내장 도구 = 27개**(정책 `enabled`/`disabled`는 이 이름들을 참조):
+  - **파일(10)**: `read_file`, `write_file`, `edit_file`, `list_directory`, `glob`, `grep`, `create_directory`, `move`, `copy`, `delete`
+  - **셸·시스템(10)**: `run_command`, `get_environment`, `clipboard_read`, `clipboard_write`, `list_processes`, `list_processes_memory_kb`, `start_process`, `kill_process`, `http_fetch`, `screenshot`
+  - **문서·데이터(6)**: `read_csv`, `write_csv`, `read_excel`, `write_excel`, `read_pdf`, `read_document`
+  - **에이전트 메타(1)**: `manage_todos` (다단계 작업 계획 추적)
+  > 이전 문서판은 앞 20개만 나열했음 — 문서·데이터 6개와 `manage_todos` 1개(총 7개)가 누락돼 있었다. 정책으로 이들까지 통제하려면 서버 도구 목록에 반드시 포함할 것.
 
 ## 우선순위
 - 선택 기능. 미구현이어도 클라 정상 동작(전체 허용). 통제 강화가 필요해질 때 도입.

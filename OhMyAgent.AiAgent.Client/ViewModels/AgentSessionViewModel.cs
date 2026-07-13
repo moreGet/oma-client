@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -33,6 +34,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     private readonly ISuggestionService _suggestions;
     private readonly IToolPolicyService _policy;
     private readonly ISessionSyncService _sessionSync;
+    private readonly ITodoService _todos;
 
     private AgentSession _session = new();
     private CancellationTokenSource? _cts;
@@ -106,6 +108,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     /// <summary>D — convenience flag mirroring <c>Attachments.Count &gt; 0</c>.</summary>
     [ObservableProperty] private bool _hasAttachments;
 
+    /// <summary>작업 계획 카드 표시 여부(<c>Todos.Count &gt; 0</c>).</summary>
+    [ObservableProperty] private bool _hasTodos;
+
     // ── Version / update notice ────────────────────────────────────────
 
     /// <summary>업데이트 알림 배너 문구. 비어 있으면 배너 숨김(StringToVisibility).</summary>
@@ -145,6 +150,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
     public ObservableCollection<ITranscriptItem> Transcript { get; } = [];
 
+    /// <summary>에이전트 작업 계획(manage_todos). 항목이 있으면 메인에 계획 카드를 띄운다.</summary>
+    public ObservableCollection<TodoItem> Todos { get; } = [];
+
     /// <summary>C — saved chat session summaries shown in the sidebar "채팅" list.</summary>
     public ObservableCollection<ChatSessionSummary> ChatSessions { get; } = [];
 
@@ -179,7 +187,8 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         IFileAttachmentService attachments,
         ISuggestionService suggestions,
         IToolPolicyService policy,
-        ISessionSyncService sessionSync)
+        ISessionSyncService sessionSync,
+        ITodoService todos)
     {
         _orchestrator = orchestrator;
         _api = api;
@@ -191,6 +200,16 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         _suggestions = suggestions;
         _policy = policy;
         _sessionSync = sessionSync;
+        _todos = todos;
+
+        // 도구(manage_todos)가 백그라운드 스레드에서 갱신 → UI 디스패처로 마샬해 Todos 컬렉션 재구성.
+        _todos.TodosChanged += OnTodosChanged;
+
+        // 세션 경계(새 대화/전환/복원/로그아웃)는 모두 Transcript.Clear()를 부르므로, 그때 작업 계획 카드도 리셋.
+        Transcript.CollectionChanged += (_, e) =>
+        {
+            if (e.Action == NotifyCollectionChangedAction.Reset) _todos.Clear();
+        };
 
         // Surface Manual-mode approvals through the inline approval card.
         _permissions.SetApprovalHandler(RequestApprovalAsync);
@@ -506,6 +525,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         ErrorMessage = string.Empty;
         _currentAssistant = null;
         _toolCards.Clear();
+        _todos.Clear();   // 새 목표 — 이전 작업 계획 리셋(에이전트가 manage_todos로 다시 채운다).
 
         Transcript.Add(new UserTurnViewModel { Text = goal });
 
@@ -1175,4 +1195,13 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
     /// <summary>UI 스레드 마샬링(공용 <see cref="UiDispatch"/> 위임). 오케스트레이터 스트림이 UI 밖에서 돌므로 Transcript/속성 변경이 이곳을 거친다.</summary>
     private static Task UiInvokeAsync(Action action) => UiDispatch.InvokeAsync(action);
+
+    // manage_todos 도구가 계획을 갱신하면(백그라운드 스레드일 수 있음) UI 스레드에서 Todos 컬렉션을 재구성한다.
+    private void OnTodosChanged(object? sender, IReadOnlyList<TodoItem> items)
+        => _ = UiInvokeAsync(() =>
+        {
+            Todos.Clear();
+            foreach (var t in items) Todos.Add(t);
+            HasTodos = Todos.Count > 0;
+        });
 }

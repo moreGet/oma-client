@@ -644,6 +644,58 @@
                         </StackPanel>
                     </Border>
                 </Grid>
+
+                <!-- ── 작업 계획 카드 (manage_todos) — 항목이 있을 때 트랜스크립트 상단에 오버레이 ── -->
+                <Border VerticalAlignment="Top" HorizontalAlignment="Stretch"
+                        Margin="24,8,24,0" Padding="14,10"
+                        Background="{StaticResource SurfaceBg}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="12" Effect="{StaticResource SoftShadow}"
+                        Visibility="{Binding HasTodos, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="&#xE9D2;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       Foreground="{StaticResource AccentBrush}"
+                                       FontSize="{StaticResource FontSizeBody}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="작업 계획" Foreground="{StaticResource TextPrimary}"
+                                       FontFamily="{StaticResource AppFont}" FontSize="{StaticResource FontSizeBody}"
+                                       FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <ScrollViewer MaxHeight="180" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Todos}" Focusable="False">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                            <TextBlock x:Name="Glyph" Text="○" Width="16"
+                                                       Foreground="{StaticResource TextMuted}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="{StaticResource FontSizeSmall}"
+                                                       VerticalAlignment="Top" Margin="0,1,6,0"/>
+                                            <TextBlock x:Name="Body" Text="{Binding Content}" TextWrapping="Wrap"
+                                                       Foreground="{StaticResource TextSecondary}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="{StaticResource FontSizeSmall}"/>
+                                        </StackPanel>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding Status}" Value="InProgress">
+                                                <Setter TargetName="Glyph" Property="Text" Value="●"/>
+                                                <Setter TargetName="Glyph" Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                                <Setter TargetName="Body" Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                                                <Setter TargetName="Body" Property="FontWeight" Value="SemiBold"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="Completed">
+                                                <Setter TargetName="Glyph" Property="Text" Value="✓"/>
+                                                <Setter TargetName="Glyph" Property="Foreground" Value="{StaticResource ConnectedDot}"/>
+                                                <Setter TargetName="Body" Property="Foreground" Value="{StaticResource TextMuted}"/>
+                                                <Setter TargetName="Body" Property="TextDecorations" Value="Strikethrough"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
             </Grid>
 
             <!-- ── 하단: 컴포저 + 워크스페이스 칩 + 인라인 승인 + 배너 ── -->

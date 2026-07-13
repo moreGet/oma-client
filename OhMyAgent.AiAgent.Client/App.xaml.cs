@@ -90,6 +90,9 @@ public partial class App : Application
         // 4b) http_fetch 전용 HttpClient (앱 API용 _httpClient 와 분리된 인스턴스)
         _toolHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
 
+        // 4c) 작업 계획(todo) 공유 저장소 — manage_todos 도구가 쓰고 메인 VM이 구독해 화면에 반영(싱글톤 1개).
+        var todoService = new TodoService();
+
         // 5) 파일/셸 도구 + 시스템(환경/클립보드/프로세스/HTTP/스크린샷) 도구 묶음 (배열 순서 = 표시 순서)
         var tools = new ITool[]
         {
@@ -114,6 +117,8 @@ public partial class App : Application
             new KillProcessTool(),
             new HttpFetchTool(_toolHttpClient),
             new ScreenshotTool(),
+            // ── 에이전트 메타 도구 (다단계 작업 계획 추적) ──
+            new ManageTodosTool(todoService),
             // ── 사무직 문서·데이터 도구 묶음 (CSV: BCL / Excel: ClosedXML / PDF: PdfPig / Word: BCL) ──
             new ReadCsvTool(),
             new WriteCsvTool(),
@@ -156,7 +161,7 @@ public partial class App : Application
         // 10) 루트 ViewModel
         _mainVm = new AgentSessionViewModel(
             orchestrator, _api, permissions, workspace, _settingsService,
-            chatHistory, attachments, suggestions, _toolPolicy, sessionSync);
+            chatHistory, attachments, suggestions, _toolPolicy, sessionSync, todoService);
 
         // 10b) 프로젝트 사이드바 VM 조립·주입 (#4). 메인 DataContext에서 Projects.* 로 바인딩.
         _mainVm.Projects = new ProjectsViewModel(_projectService, chatHistory);
