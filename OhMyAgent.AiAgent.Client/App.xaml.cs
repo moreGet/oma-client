@@ -126,6 +126,9 @@ public partial class App : Application
             new WriteExcelTool(),
             new ReadPdfTool(),
             new ReadDocumentTool(),
+            new ReadPptxTool(),
+            new WritePptxTool(),
+            new ReadHwpxTool(),
             // ── 압축 도구 (zip) ──
             new CompressFilesTool(),
             new ExtractArchiveTool(),
