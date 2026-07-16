@@ -99,12 +99,31 @@ public class SettingsService : ISettingsService
                         migrated = true;
                     }
 
+                    // 토큰 복호화: v6 이상은 AuthTokenProtected(DPAPI), v5 이하는 평문 AuthToken.
+                    Current.AuthToken = TokenProtector.Unprotect(Current.AuthTokenProtected);
+
+                    // v5 -> v6: 평문 AuthToken 을 DPAPI 로 옮긴다.
+                    // LegacyAuthToken 을 비워야 저장 시 파일에서 평문 키가 사라진다.
+                    if (Current.SchemaVersion < 6)
+                    {
+                        if (!string.IsNullOrEmpty(Current.LegacyAuthToken))
+                        {
+                            Current.AuthToken = Current.LegacyAuthToken;
+                            AppLog.Info("SettingsService", "평문 인증 토큰을 발견해 DPAPI 로 이전합니다(v6).");
+                        }
+                        Current.LegacyAuthToken = null;
+                        Current.SchemaVersion = 6;
+                        migrated = true;   // 아래에서 SaveAsync → 암호문으로 다시 기록됨
+                    }
+
                     return migrated;
                 }
                 catch (Exception ex)
                 {
-                    // 파일 손상/파싱 실패 시 기본값으로 폴백
+                    // 파일 손상/파싱 실패 → 기본값으로 폴백하되, 원본은 버리지 않고 백업해 둔다.
+                    // 종전에는 조용히 버려서 토큰·워크스페이스·단축키가 통째로 사라졌다.
                     AppLog.Warn("SettingsService", "LoadAsync failed", ex);
+                    BackupCorruptFile();
                     Current = new AppSettings();
                     return false;
                 }
@@ -126,8 +145,18 @@ public class SettingsService : ISettingsService
                     if (!Directory.Exists(SettingsDirectory))
                         Directory.CreateDirectory(SettingsDirectory);
 
+                    // 평문 토큰은 [JsonIgnore] 라 나가지 않는다. 저장 직전에 암호문만 채운다.
+                    // 암호화 실패 시 Protect 가 null 을 반환하고, 그러면 토큰 없이 저장된다(평문 폴백 금지).
+                    Current.AuthTokenProtected = TokenProtector.Protect(Current.AuthToken);
+
                     var json = JsonSerializer.Serialize(Current, PersistenceOptions);
-                    File.WriteAllText(SettingsFilePath, json);
+
+                    // 원자적 교체: 종전의 단순 WriteAllText 는 쓰기 중 크래시/전원차단 시
+                    // 잘린 JSON 을 남겼고, 다음 로드가 그걸 파싱 실패로 보고 설정을 통째로 초기화했다.
+                    // ChatHistoryService 가 이미 쓰던 패턴과 동일하게 맞춘다.
+                    var tmp = SettingsFilePath + ".tmp";
+                    File.WriteAllText(tmp, json);
+                    File.Move(tmp, SettingsFilePath, overwrite: true);
                 }
                 catch (Exception ex)
                 {
@@ -135,6 +164,23 @@ public class SettingsService : ISettingsService
                 }
             }
         });
+    }
+
+    /// <summary>손상된 settings.json 을 .corrupt 로 옮겨 둔다(덮어쓰기 전에 원본 보존).</summary>
+    private static void BackupCorruptFile()
+    {
+        try
+        {
+            if (!File.Exists(SettingsFilePath)) return;
+
+            var backup = SettingsFilePath + ".corrupt";
+            File.Move(SettingsFilePath, backup, overwrite: true);
+            AppLog.Warn("SettingsService", $"손상된 설정 파일을 백업했습니다: {backup}");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("SettingsService", "손상 파일 백업 실패", ex);
+        }
     }
 
     public async Task UpdateHotkeyAsync(HotkeySettings hotkey)
