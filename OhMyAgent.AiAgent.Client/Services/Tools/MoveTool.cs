@@ -31,10 +31,10 @@ public sealed class MoveTool : ITool
         var dst = ctx.Workspace.ResolvePath(destination);
 
         // R2: 작업 디렉토리 루트 자체를 이동하거나 루트를 덮어쓰는 것 차단.
-        var rootTrimmed = Path.TrimEndingDirectorySeparator(ctx.Workspace.Root);
-        if (string.Equals(Path.TrimEndingDirectorySeparator(src), rootTrimmed, StringComparison.OrdinalIgnoreCase))
+        // 종전에는 주 루트(Roots[0])만 막아, 두 번째 워크스페이스 폴더는 무방비였다.
+        if (SafeFileWalk.IsWorkspaceRootItself(ctx.Workspace, src))
             return Task.FromResult(ToolResult.Fail("작업 디렉토리 루트 자체는 이동할 수 없습니다."));
-        if (string.Equals(Path.TrimEndingDirectorySeparator(dst), rootTrimmed, StringComparison.OrdinalIgnoreCase))
+        if (SafeFileWalk.IsWorkspaceRootItself(ctx.Workspace, dst))
             return Task.FromResult(ToolResult.Fail("작업 디렉토리 루트를 덮어쓸 수 없습니다."));
 
         if (File.Exists(src))

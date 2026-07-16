@@ -29,13 +29,9 @@ public sealed class DeleteTool : ITool
         var full = ctx.Workspace.ResolvePath(path);
 
         // R2: 작업 디렉토리 루트 자체 삭제 차단(예: path "." 또는 "sub/..").
-        if (string.Equals(
-                Path.TrimEndingDirectorySeparator(full),
-                Path.TrimEndingDirectorySeparator(ctx.Workspace.Root),
-                StringComparison.OrdinalIgnoreCase))
-        {
+        // 종전에는 주 루트(Roots[0])만 막아, 두 번째 워크스페이스 폴더가 통째로 지워졌다.
+        if (SafeFileWalk.IsWorkspaceRootItself(ctx.Workspace, full))
             return Task.FromResult(ToolResult.Fail("작업 디렉토리 루트 자체는 삭제할 수 없습니다."));
-        }
 
         if (File.Exists(full))
         {

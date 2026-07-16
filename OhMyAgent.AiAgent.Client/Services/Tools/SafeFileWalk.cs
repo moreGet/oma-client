@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -65,6 +66,25 @@ internal static class SafeFileWalk
                 pending.Push(sub);
             }
         }
+    }
+
+    /// <summary>
+    /// <paramref name="fullPath"/> 가 활성 워크스페이스 루트 중 하나 "자체"인지.
+    /// 루트를 지우거나 옮기거나 덮어쓰는 것을 막는 도구(delete/move)가 쓴다.
+    ///
+    /// Roots 전체를 봐야 한다: <see cref="IWorkspaceContext.Root"/> 는 Roots[0](주 루트)일 뿐인데
+    /// ResolvePath 는 활성 루트 아무거나 통과시키므로, 주 루트만 비교하면 두 번째 워크스페이스 폴더가
+    /// 무방비로 남는다(멀티 루트 도입 시 delete/move 가 함께 갱신되지 않은 드리프트).
+    /// </summary>
+    public static bool IsWorkspaceRootItself(IWorkspaceContext workspace, string fullPath)
+    {
+        var trimmed = Path.TrimEndingDirectorySeparator(fullPath);
+        foreach (var root in workspace.Roots)
+        {
+            if (string.Equals(trimmed, Path.TrimEndingDirectorySeparator(root), StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>

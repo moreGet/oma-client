@@ -137,8 +137,9 @@ public partial class App : Application
         // 4) 스크립트 실행기 (run_command 엔진)
         var scriptExec = new ScriptExecutor();
 
-        // 4b) http_fetch 전용 HttpClient (앱 API용 _httpClient 와 분리된 인스턴스)
-        _toolHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        // 4b) http_fetch 전용 HttpClient (앱 API용 _httpClient 와 분리된 인스턴스).
+        //     자동 리다이렉트는 꺼져 있다 — HttpFetchTool 이 홉마다 SSRF 검증을 하며 직접 따라간다.
+        _toolHttpClient = HttpFetchTool.CreateDefaultClient();
 
         // 4c) 작업 계획(todo) 공유 저장소 — manage_todos 도구가 쓰고 메인 VM이 구독해 화면에 반영(싱글톤 1개).
         var todoService = new TodoService();
