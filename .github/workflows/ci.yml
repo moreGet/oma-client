@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    # WPF(net10.0-windows) 프로젝트라 Windows 러너가 필수 — ubuntu 에선 복원조차 되지 않는다.
+    # WorkspaceContext 테스트도 실제 정션(mklink /J)을 만들어 검증하므로 Windows 여야 의미가 있다.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # csproj 의 SetGitHash 타깃이 `git rev-parse` 로 해시를 읽는다(얕은 클론이어도 HEAD 는 있으므로 동작).
+          fetch-depth: 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore OhMyAgent.AiAgent.Client.sln
+
+      - name: Build (Release, warnings are errors)
+        # Directory.Build.props 의 TreatWarningsAsErrors 가 적용된다. --no-restore 로 위 단계 재사용.
+        run: dotnet build OhMyAgent.AiAgent.Client.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test OhMyAgent.AiAgent.Client.sln -c Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload test results
+        if: always()   # 테스트가 실패해도 결과는 올려야 진단이 된다.
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: warn

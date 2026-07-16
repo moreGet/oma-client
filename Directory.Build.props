@@ -1,0 +1,26 @@
+<Project>
+
+    <!--
+      전 프로젝트 공통 빌드 설정.
+
+      경고를 오류로 취급한다: 도입 시점 기준 전체 리빌드가 경고 0개였으므로 비용이 0이고,
+      나중에 도입할수록 밀린 경고를 치우는 비용만 커진다. Nullable 도 이미 켜져 있으나
+      경고에 머물면 아무도 고칠 의무가 없어 사실상 미적용 상태였다.
+
+      CI 가 아닌 로컬 개발 중에는 끄고 싶다면 `dotnet build -p:TreatWarningsAsErrors=false`.
+    -->
+    <PropertyGroup>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    </PropertyGroup>
+
+    <!--
+      AnalysisLevel 은 SDK 기본값(권장 최소 세트)을 유지한다.
+      `latest-recommended` 로 올리면 현재 코드에서 161건이 뜨는데, 대부분 CA1859(인터페이스→구체 타입
+      성능 미세최적화)·CA1707(명명) 류의 노이즈였다. 다만 그중 아래 둘은 실제로 볼 가치가 있어
+      별도 과제로 남긴다:
+        - CA2012  App.xaml.cs — 대기하지 않은 ValueTask
+        - CA1001  App / ScriptExecutor — 삭제 가능한 필드를 가진 형식이 IDisposable 미구현
+      올릴 때는 규칙을 한 번에 켜지 말고 .editorconfig 로 카테고리별 단계 도입을 권장한다.
+    -->
+
+</Project>
