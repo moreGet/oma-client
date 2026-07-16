@@ -38,7 +38,7 @@ public interface IAgentApiClient
     // ── 서버 도구 정책 게이트. 미구현 서버(404/501)/오프라인은 graceful null. ──
 
     /// <summary>GET /api/v1/tools/policy (Bearer). 200→ToolPolicy, 404/오류/오프라인→null(graceful).</summary>
-    Task<ToolPolicy?> GetToolPolicyAsync(CancellationToken ct = default);
+    Task<ToolPolicyFetch> GetToolPolicyAsync(CancellationToken ct = default);
 
     /// <summary>POST /api/v1/tools/authorize (Bearer). {tool,arguments} → ToolAuthorization. 200→객체, 오류/오프라인→null.</summary>
     Task<ToolAuthorization?> AuthorizeToolAsync(string tool, JsonElement arguments, CancellationToken ct = default);

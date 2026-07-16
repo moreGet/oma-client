@@ -281,8 +281,40 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     public Task<QuotaResponse?> GetQuotaAsync(CancellationToken ct = default)
         => GetGracefulAsync<QuotaResponse>(QuotaPath, ct);
 
-    public Task<ToolPolicy?> GetToolPolicyAsync(CancellationToken ct = default)
-        => GetGracefulAsync<ToolPolicy>(PolicyPath, ct);
+    /// <summary>
+    /// 도구 정책 조회. <see cref="GetGracefulAsync{T}"/> 를 쓰지 않는다 — 그 헬퍼는 404와 5xx/오프라인을
+    /// 똑같이 null 로 뭉개는데, 정책 게이트에서는 그 구분이 곧 보안 경계이기 때문이다(404=정책 없음→허용,
+    /// 그 외 실패=판단 불가→차단). 나머지 graceful GET 엔드포인트는 이 구분이 필요 없다.
+    /// </summary>
+    public async Task<ToolPolicyFetch> GetToolPolicyAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, PolicyPath);
+            ApplyAuth(req);
+            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
+
+            if (resp.StatusCode == HttpStatusCode.NotFound)
+                return ToolPolicyFetch.NotImplemented;
+
+            if (!resp.IsSuccessStatusCode)
+                return ToolPolicyFetch.Failed;
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            var policy = await JsonSerializer.DeserializeAsync<ToolPolicy>(stream, AgentJson.Options, ct)
+                .ConfigureAwait(false);
+
+            return policy is null ? ToolPolicyFetch.Failed : ToolPolicyFetch.Ok(policy);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return ToolPolicyFetch.Failed;
+        }
+    }
 
     public Task<CommandSecurityPolicyResponse?> GetCommandSecurityPolicyAsync(CancellationToken ct = default)
         => GetGracefulAsync<CommandSecurityPolicyResponse>(CommandPolicyPath, ct);

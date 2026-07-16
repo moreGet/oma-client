@@ -15,28 +15,36 @@ public static class SecurityValidator
 
     private const RegexOptions DefaultOptions = RegexOptions.IgnoreCase | RegexOptions.Compiled;
 
+    /// <summary>
+    /// 내장 패턴 매치 타임아웃. `.*` 중첩 수량자에 64KB 입력이 들어오면 백트래킹이 폭주하므로 필수.
+    /// 서버 패턴(<see cref="RegexTimeout"/>)과 달리 타임아웃은 차단으로 처리한다(디폴트가 최후 방어선이므로).
+    /// </summary>
+    private static readonly TimeSpan BuiltinRegexTimeout = TimeSpan.FromMilliseconds(100);
+
+    private static Regex Rx(string pattern) => new(pattern, DefaultOptions, BuiltinRegexTimeout);
+
     /// <summary>공통(PowerShell + CMD) 차단 패턴.</summary>
     private static readonly (Regex Regex, string Reason)[] CommonBlacklist =
     {
-        (new Regex(@"\brmdir\s+/s\b", DefaultOptions), "재귀 디렉토리 삭제 금지"),
-        (new Regex(@"\brd\s+/s\b", DefaultOptions), "재귀 디렉토리 삭제 금지"),
-        (new Regex(@"\bformat\s+[a-z]:", DefaultOptions), "디스크 포맷 명령 금지"),
-        (new Regex(@"\bdel\s+/[fqs]", DefaultOptions), "강제 파일 삭제 금지"),
-        (new Regex(@"\berase\s+/[fqs]", DefaultOptions), "강제 파일 삭제 금지"),
-        (new Regex(@"\breg\s+(delete|add)\b.*HKLM\\\\SYSTEM", DefaultOptions), "시스템 레지스트리 변조 금지"),
-        (new Regex(@"\bshutdown\b", DefaultOptions), "시스템 종료 명령 금지"),
+        (Rx(@"\brmdir\s+/s\b"), "재귀 디렉토리 삭제 금지"),
+        (Rx(@"\brd\s+/s\b"), "재귀 디렉토리 삭제 금지"),
+        (Rx(@"\bformat\s+[a-z]:"), "디스크 포맷 명령 금지"),
+        (Rx(@"\bdel\s+/[fqs]"), "강제 파일 삭제 금지"),
+        (Rx(@"\berase\s+/[fqs]"), "강제 파일 삭제 금지"),
+        (Rx(@"\breg\s+(delete|add)\b.*HKLM\\SYSTEM"), "시스템 레지스트리 변조 금지"),
+        (Rx(@"\bshutdown\b"), "시스템 종료 명령 금지"),
     };
 
     /// <summary>PowerShell 전용 차단 패턴.</summary>
     private static readonly (Regex Regex, string Reason)[] PowerShellBlacklist =
     {
-        (new Regex(@"\bStop-Computer\b", DefaultOptions), "시스템 종료 금지"),
-        (new Regex(@"\bRestart-Computer\b", DefaultOptions), "재부팅 금지"),
-        (new Regex(@"\bRemove-Item\b.*-Recurse\b.*-Force\b", DefaultOptions), "재귀 강제 삭제 금지"),
-        (new Regex(@"\bRemove-Item\b.*-Force\b.*-Recurse\b", DefaultOptions), "재귀 강제 삭제 금지"),
-        (new Regex(@"\bInvoke-Expression\b", DefaultOptions), "동적 코드 실행 금지"),
-        (new Regex(@"\biex\s", DefaultOptions), "Invoke-Expression 별칭 금지"),
-        (new Regex(@"\bSet-ExecutionPolicy\b", DefaultOptions), "실행 정책 변조 금지"),
+        (Rx(@"\bStop-Computer\b"), "시스템 종료 금지"),
+        (Rx(@"\bRestart-Computer\b"), "재부팅 금지"),
+        (Rx(@"\bRemove-Item\b.*-Recurse\b.*-Force\b"), "재귀 강제 삭제 금지"),
+        (Rx(@"\bRemove-Item\b.*-Force\b.*-Recurse\b"), "재귀 강제 삭제 금지"),
+        (Rx(@"\bInvoke-Expression\b"), "동적 코드 실행 금지"),
+        (Rx(@"\biex\s"), "Invoke-Expression 별칭 금지"),
+        (Rx(@"\bSet-ExecutionPolicy\b"), "실행 정책 변조 금지"),
     };
 
     /// <summary>CMD 전용 차단 패턴 (현재는 비어 있음, CommonBlacklist만 적용).</summary>
@@ -47,13 +55,20 @@ public static class SecurityValidator
     /// <summary>차단 디렉토리 (절대 경로 인자).</summary>
     private static readonly (Regex Regex, string Reason)[] BlockedPaths =
     {
-        (new Regex(@"C:\\Windows\\System32", DefaultOptions), "시스템 디렉토리 접근 금지"),
-        (new Regex(@"C:\\Windows\\SysWOW64", DefaultOptions), "시스템 디렉토리 접근 금지"),
-        (new Regex(@"C:\\Program Files", DefaultOptions), "프로그램 디렉토리 접근 금지"),
-        (new Regex(@"C:\\ProgramData", DefaultOptions), "프로그램 데이터 접근 금지"),
-        (new Regex(@"%SystemRoot%", DefaultOptions), "시스템 환경변수 경로 접근 금지"),
-        (new Regex(@"%WinDir%", DefaultOptions), "Windows 경로 접근 금지"),
+        (Rx(@"C:\\Windows\\System32"), "시스템 디렉토리 접근 금지"),
+        (Rx(@"C:\\Windows\\SysWOW64"), "시스템 디렉토리 접근 금지"),
+        (Rx(@"C:\\Program Files"), "프로그램 디렉토리 접근 금지"),
+        (Rx(@"C:\\ProgramData"), "프로그램 데이터 접근 금지"),
+        (Rx(@"%SystemRoot%"), "시스템 환경변수 경로 접근 금지"),
+        (Rx(@"%WinDir%"), "Windows 경로 접근 금지"),
     };
+
+    /// <summary>내장 패턴 매치. 타임아웃(ReDoS 의심 입력)은 차단으로 간주한다.</summary>
+    private static bool IsMatchOrTimeout(Regex regex, string script)
+    {
+        try { return regex.IsMatch(script); }
+        catch (RegexMatchTimeoutException) { return true; }
+    }
 
     // ── 서버 추가 패턴 (2중 안전: 위 디폴트에 "더해진다". 서버는 추가만, 디폴트 제거 불가) ──
     private sealed record ServerRule(bool IsRegex, Regex? Rx, string Substring, string Reason, string ScriptType);
@@ -142,7 +157,7 @@ public static class SecurityValidator
         // 3. 공통 패턴 매칭
         foreach (var (regex, reason) in CommonBlacklist)
         {
-            if (regex.IsMatch(script))
+            if (IsMatchOrTimeout(regex, script))
                 return ValidationResult.Invalid(reason, regex.ToString());
         }
 
@@ -150,14 +165,14 @@ public static class SecurityValidator
         var typed = scriptType == ScriptType.PowerShell ? PowerShellBlacklist : CmdBlacklist;
         foreach (var (regex, reason) in typed)
         {
-            if (regex.IsMatch(script))
+            if (IsMatchOrTimeout(regex, script))
                 return ValidationResult.Invalid(reason, regex.ToString());
         }
 
         // 5. 차단 디렉토리 매칭
         foreach (var (regex, reason) in BlockedPaths)
         {
-            if (regex.IsMatch(script))
+            if (IsMatchOrTimeout(regex, script))
                 return ValidationResult.Invalid(reason, regex.ToString());
         }
 

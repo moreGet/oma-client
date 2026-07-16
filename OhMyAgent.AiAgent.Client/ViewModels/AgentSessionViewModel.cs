@@ -311,9 +311,20 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 Text = "에이전트 서버에 연결되었습니다. 무엇을 도와드릴까요?",
             });
 
-            // 로그인 직후 1회 — 서버 도구 정책(모드+목록) 로드. best-effort(서버 미구현이면 fail-open).
-            try { await _policy.LoadAsync().ConfigureAwait(true); }
-            catch { /* graceful — 정책 로드 실패가 앱 동작을 막지 않는다(정책 부재=전체 허용). */ }
+            // 로그인 직후 1회 — 서버 도구 정책(모드+목록) 로드.
+            // 서버 미구현(404)이면 조용히 fail-open. 그 외 조회 실패는 fail-closed(전 도구 차단)이므로
+            // 삼키면 안 된다 — 도구가 왜 안 듣는지 모를 사용자에게 이유를 보여준다.
+            try
+            {
+                await _policy.LoadAsync().ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                Transcript.Add(new SystemNoticeViewModel
+                {
+                    Text = $"⚠ {ex.Message}",
+                });
+            }
 
             // 로그인 직후 1회 — 서버 추가 위험명령 패턴 로드(디폴트에 더해짐). 미구현/오류면 디폴트만.
             try { SecurityValidator.SetServerPatterns(await _api.GetCommandSecurityPolicyAsync().ConfigureAwait(true)); }

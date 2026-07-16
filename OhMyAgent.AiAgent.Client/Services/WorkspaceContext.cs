@@ -35,14 +35,14 @@ public sealed class WorkspaceContext : IWorkspaceContext
             .Where(r => !string.IsNullOrWhiteSpace(r))
             .Select(Normalize)
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(r => (root: r, realRoot: RealPath(r)))
+            .Select(r => (root: r, realRoot: RealRoot(r)))
             .ToList();
 
         // 빈 목록이면 Desktop 폴백 단일 루트 보장.
         if (normalized.Count == 0)
         {
             var fallback = Normalize("");
-            normalized = [ (fallback, RealPath(fallback)) ];
+            normalized = [ (fallback, RealRoot(fallback)) ];
         }
 
         _roots = normalized;
@@ -69,6 +69,8 @@ public sealed class WorkspaceContext : IWorkspaceContext
         }
 
         var real = RealPath(full);
+        if (real is null)
+            throw new AgentException($"경로를 확인할 수 없어 거부했습니다: {relativeOrAbsolute}");
 
         // 활성 루트 중 하나라도 양 단계(사전적 + 링크 해석) 모두 통과하면 허용.
         foreach (var (root, realRoot) in _roots)
@@ -96,6 +98,9 @@ public sealed class WorkspaceContext : IWorkspaceContext
         }
 
         var real = RealPath(full);
+        if (real is null)
+            return false;
+
         return _roots.Any(r => IsInside(full, r.root) && IsInside(real, r.realRoot));
     }
 
@@ -115,43 +120,58 @@ public sealed class WorkspaceContext : IWorkspaceContext
         return full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 
-    // 존재하는 가장 가까운 상위 경로의 링크(심볼릭/정션) 최종 대상을 해석해 실제 경로를 만든다.
-    // 아직 존재하지 않는 경로(예: write_file 신규 생성)는 존재하는 조상까지 해석 후 나머지를 이어붙인다.
-    private static string RealPath(string full)
+    // 경로를 드라이브 루트부터 세그먼트 단위로 내려가며 "각 단계마다" 링크(심볼릭/정션)를 해석한다.
+    //
+    // 리프만 해석하면 안 된다: <root>\link\secret.txt 처럼 중간 디렉토리가 정션인 경우
+    // 리프(secret.txt)는 재분석 지점이 아니므로 ResolveLinkTarget 이 null 을 반환하고,
+    // 사전적 경로가 그대로 통과해 샌드박스가 무력화된다. 에이전트는 run_command 로
+    // mklink /j 를 직접 실행할 수 있으므로(관리자 권한 불필요) 스스로 탈출구를 만들 수 있다.
+    //
+    // 아직 존재하지 않는 구간(예: write_file 신규 생성)은 링크일 수 없으므로 그대로 이어붙인다.
+    // 해석 실패 시 null 을 반환하며, 호출자는 반드시 거부해야 한다(사전적 경로 폴백 금지 —
+    // 폴백하면 접근 거부 등으로 해석이 막힌 링크가 검증을 우회하게 된다).
+    private static string? RealPath(string full)
     {
         try
         {
-            var current = full;
-            while (!string.IsNullOrEmpty(current))
+            var root = Path.GetPathRoot(full);
+            if (string.IsNullOrEmpty(root))
+                return null;
+
+            var segments = full[root.Length..].Split(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                StringSplitOptions.RemoveEmptyEntries);
+
+            var current = root;
+            foreach (var segment in segments)
             {
+                current = Path.Combine(current, segment);
+
                 FileSystemInfo? info =
                     File.Exists(current) ? new FileInfo(current) :
                     Directory.Exists(current) ? new DirectoryInfo(current) : null;
 
-                if (info != null)
-                {
-                    var resolved = info.ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? info.FullName;
-                    var tail = full.Length > current.Length
-                        ? full[current.Length..].TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                        : string.Empty;
-                    return string.IsNullOrEmpty(tail)
-                        ? resolved
-                        : Path.GetFullPath(Path.Combine(resolved, tail));
-                }
+                // 존재하지 않는 구간부터는 링크가 있을 수 없다.
+                if (info is null) continue;
 
-                var parent = Path.GetDirectoryName(current);
-                if (string.IsNullOrEmpty(parent) || parent == current)
-                    break;
-                current = parent;
+                var target = info.ResolveLinkTarget(returnFinalTarget: true);
+                if (target is not null)
+                    current = Path.GetFullPath(target.FullName);
             }
+
+            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(current));
         }
         catch
         {
-            // 링크 해석 실패 시 사전적 경로로 폴백(1차 검증은 이미 통과).
+            // 해석 불가(접근 거부/순환 링크/잘못된 경로) → 판단 불가이므로 거부한다.
+            return null;
         }
-
-        return full;
     }
+
+    // 루트 자체의 해석 실패는 사전적 경로로 폴백한다. 루트는 사용자가 직접 설정한 신뢰 입력이고,
+    // 폴백은 검사를 "더 엄격하게"만 만들 뿐(해석된 하위 경로가 사전적 루트에 속할 수 없으므로)
+    // 느슨하게 만들지 않는다. 반면 검사 대상 경로의 해석 실패는 위와 같이 거부해야 한다.
+    private static string RealRoot(string root) => RealPath(root) ?? root;
 
     private static string Normalize(string root)
     {
