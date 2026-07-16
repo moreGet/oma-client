@@ -55,7 +55,7 @@ public sealed class ChatHistoryService : IChatHistoryService
                     catch (Exception ex)
                     {
                         // 손상 파일은 건너뛴다.
-                        Debug.WriteLine($"[ChatHistoryService] skip corrupt '{file}': {ex.Message}");
+                        AppLog.Warn("ChatHistoryService", $"skip corrupt '{file}'", ex);
                     }
                 }
 
@@ -84,7 +84,7 @@ public sealed class ChatHistoryService : IChatHistoryService
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[ChatHistoryService] LoadAsync failed for '{id}': {ex.Message}");
+                    AppLog.Warn("ChatHistoryService", $"LoadAsync failed for '{id}'", ex);
                     return null;
                 }
             }
@@ -110,7 +110,7 @@ public sealed class ChatHistoryService : IChatHistoryService
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[ChatHistoryService] SaveAsync failed for '{record.Id}': {ex.Message}");
+                    AppLog.Warn("ChatHistoryService", $"SaveAsync failed for '{record.Id}'", ex);
                     throw new AgentException($"세션 저장 실패: {record.Id}", ex);
                 }
             }
@@ -134,7 +134,7 @@ public sealed class ChatHistoryService : IChatHistoryService
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[ChatHistoryService] DeleteAsync failed for '{id}': {ex.Message}");
+                    AppLog.Warn("ChatHistoryService", $"DeleteAsync failed for '{id}'", ex);
                 }
             }
         }, ct).ConfigureAwait(false);

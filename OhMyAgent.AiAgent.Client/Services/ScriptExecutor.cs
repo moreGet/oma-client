@@ -157,7 +157,7 @@ public class ScriptExecutor : IScriptExecutor
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[ScriptExecutor] Kill failed: {ex.Message}");
+            AppLog.Warn("ScriptExecutor", "Kill failed", ex);
         }
     }
 

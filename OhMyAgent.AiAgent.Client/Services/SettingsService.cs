@@ -104,7 +104,7 @@ public class SettingsService : ISettingsService
                 catch (Exception ex)
                 {
                     // 파일 손상/파싱 실패 시 기본값으로 폴백
-                    Debug.WriteLine($"[SettingsService] LoadAsync failed: {ex.Message}");
+                    AppLog.Warn("SettingsService", "LoadAsync failed", ex);
                     Current = new AppSettings();
                     return false;
                 }
@@ -131,7 +131,7 @@ public class SettingsService : ISettingsService
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[SettingsService] SaveAsync failed: {ex.Message}");
+                    AppLog.Warn("SettingsService", "SaveAsync failed", ex);
                 }
             }
         });

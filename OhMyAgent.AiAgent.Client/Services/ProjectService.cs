@@ -55,7 +55,7 @@ public sealed class ProjectService(IChatHistoryService history, IAgentApiClient 
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[ProjectService] skip corrupt '{file}': {ex.Message}");
+                        AppLog.Warn("ProjectService", $"skip corrupt '{file}'", ex);
                     }
                 }
 
@@ -84,7 +84,7 @@ public sealed class ProjectService(IChatHistoryService history, IAgentApiClient 
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[ProjectService] LoadAsync failed for '{id}': {ex.Message}");
+                    AppLog.Warn("ProjectService", $"LoadAsync failed for '{id}'", ex);
                     return null;
                 }
             }
@@ -154,7 +154,7 @@ public sealed class ProjectService(IChatHistoryService history, IAgentApiClient 
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[ProjectService] DeleteAsync failed for '{id}': {ex.Message}");
+                    AppLog.Warn("ProjectService", $"DeleteAsync failed for '{id}'", ex);
                 }
             }
         }, ct).ConfigureAwait(false);
@@ -250,7 +250,7 @@ public sealed class ProjectService(IChatHistoryService history, IAgentApiClient 
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[ProjectService] SaveAsync failed for '{record.Id}': {ex.Message}");
+                    AppLog.Warn("ProjectService", $"SaveAsync failed for '{record.Id}'", ex);
                     throw new AgentException($"프로젝트 저장 실패: {record.Id}", ex);
                 }
             }

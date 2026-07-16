@@ -188,7 +188,7 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
             catch (Exception ex)
             {
                 // 손상 매니페스트는 건너뛰고 손상으로 분류(재생성 유도).
-                Debug.WriteLine($"[BinaryIntegrityService] LoadManifestAsync failed for '{path}': {ex.Message}");
+                AppLog.Warn("BinaryIntegrityService", $"LoadManifestAsync failed for '{path}'", ex);
                 return (ManifestLoadStatus.Corrupted, (IntegrityManifest?)null);
             }
 
@@ -198,7 +198,7 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
             if (!VerifyManifestSignature(manifest))
             {
                 // 서명 부재(구버전) 또는 불일치 = 변조 의심. 손상과 구분되는 분류로 반환.
-                Debug.WriteLine($"[BinaryIntegrityService] manifest signature verification failed for '{path}'.");
+                AppLog.Warn("BinaryIntegrityService", $"manifest signature verification failed for '{path}'.");
                 return (ManifestLoadStatus.SignatureFailed, manifest);
             }
 
@@ -386,7 +386,7 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
             var full = diskMap[rel];
             long? size = null;
             try { size = new FileInfo(full).Length; }
-            catch (Exception ex) { Debug.WriteLine($"[BinaryIntegrityService] size read failed '{full}': {ex.Message}"); }
+            catch (Exception ex) { AppLog.Warn("BinaryIntegrityService", $"size read failed '{full}'", ex); }
 
             results.Add(new FileIntegrityResult
             {
@@ -480,7 +480,7 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[BinaryIntegrityService] signature verify failed '{full}': {ex.Message}");
+            AppLog.Warn("BinaryIntegrityService", $"signature verify failed '{full}'", ex);
             return SignatureStatus.Invalid;
         }
     }
@@ -532,7 +532,7 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[BinaryIntegrityService] enumerate failed '{root}': {ex.Message}");
+            AppLog.Warn("BinaryIntegrityService", $"enumerate failed '{root}'", ex);
             return results;
         }
 
@@ -567,7 +567,7 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[BinaryIntegrityService] GetFullPath failed '{path}': {ex.Message}");
+            AppLog.Warn("BinaryIntegrityService", $"GetFullPath failed '{path}'", ex);
             return null;
         }
     }
@@ -663,7 +663,7 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[BinaryIntegrityService] machine/user identity unavailable: {ex.Message}");
+            AppLog.Warn("BinaryIntegrityService", "machine/user identity unavailable", ex);
             return string.Empty;
         }
     }
@@ -710,7 +710,7 @@ public sealed class BinaryIntegrityService : IBinaryIntegrityService
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[BinaryIntegrityService] SaveManifestAsync failed '{path}': {ex.Message}");
+                AppLog.Warn("BinaryIntegrityService", $"SaveManifestAsync failed '{path}'", ex);
                 throw new AgentException($"매니페스트 저장 실패: {path}", ex);
             }
         }, ct).ConfigureAwait(false);

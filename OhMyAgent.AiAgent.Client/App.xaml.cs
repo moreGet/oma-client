@@ -50,17 +50,67 @@ public partial class App : Application
     // async void — 미관측 예외 시 조용한 시작 크래시를 막도록 본문을 감싸 최상위에서 방어한다.
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // 무엇보다 먼저 — 이 아래 모든 코드의 예외를 남길 수 있어야 한다.
+        AppLog.Initialize();
+        InstallGlobalExceptionHandlers();
+        AppLog.Info("App", $"시작 — v{AppVersion.Full}");
+
         try
         {
             await StartupAsync(e);
         }
         catch (Exception ex)
         {
+            AppLog.Error("App", "StartupAsync 실패 — 앱을 종료합니다.", ex);
             System.Windows.MessageBox.Show(
                 $"앱을 시작하지 못했습니다:\n\n{ex.Message}",
                 "OhMyAgent", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(-1);
         }
+    }
+
+    /// <summary>
+    /// 최후 방어선 3종. 이게 없으면 시작 이후의 미처리 예외는 로그도 대화상자도 없이 앱을 끝낸다.
+    /// </summary>
+    private void InstallGlobalExceptionHandlers()
+    {
+        // 1) UI 스레드 미처리 예외 — 유일하게 복구 가능한 지점.
+        //    트레이 상주 앱이므로 죽이지 않고 살려둔다(사용자 작업/대화 내역 보존이 크래시 종료보다 낫다).
+        DispatcherUnhandledException += (_, e) =>
+        {
+            AppLog.Error("App", "UI 스레드 미처리 예외 — 계속 진행합니다.", e.Exception);
+            e.Handled = true;
+            ShowCrashNotice(e.Exception);
+        };
+
+        // 2) 그 외 스레드 미처리 예외 — CLR이 곧 프로세스를 끝낸다. 막을 수 없으므로 기록만 한다.
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            AppLog.Error("App", $"치명적 미처리 예외 (terminating={e.IsTerminating})",
+                e.ExceptionObject as Exception);
+        };
+
+        // 3) 관측되지 않은 Task 예외 — 이 앱은 `_ = SomethingAsync()` fire-and-forget 이 많아
+        //    여기로 흘러드는 실패가 실제로 존재한다. 관측 처리해 finalizer 크래시를 막고 남긴다.
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            AppLog.Error("App", "미관측 Task 예외", e.Exception);
+            e.SetObserved();
+        };
+    }
+
+    /// <summary>크래시 안내. 대화상자 자체가 실패해도 앱을 죽이지 않는다.</summary>
+    private static void ShowCrashNotice(Exception ex)
+    {
+        try
+        {
+            var log = AppLog.CurrentFilePath;
+            var where = log is null ? string.Empty : $"\n\n로그: {log}";
+            System.Windows.MessageBox.Show(
+                $"오류가 발생했지만 앱은 계속 실행됩니다.\n\n{ex.Message}{where}",
+                "OhMyAgent", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch { /* 대화상자 표시 실패(종료 중 등) → 로그는 이미 남았다. */ }
     }
 
     private async Task StartupAsync(StartupEventArgs e)

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using OhMyAgent.AiAgent.Client.Services;
 using OhMyAgent.AiAgent.Client.ViewModels;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
@@ -101,7 +102,7 @@ public partial class IntegrityWindow : Window
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[IntegrityWindow] 탐색기 열기 실패: {ex.Message}");
+            AppLog.Warn("IntegrityWindow", "탐색기 열기 실패", ex);
         }
     }
 }

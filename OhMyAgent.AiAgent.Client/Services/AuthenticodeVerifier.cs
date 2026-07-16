@@ -46,7 +46,7 @@ public sealed class AuthenticodeVerifier : IAuthenticodeVerifier
         catch (Exception ex)
         {
             // 검증 자체 실패는 무효로 흡수(해시 결과를 대체하지 않음).
-            Debug.WriteLine($"[AuthenticodeVerifier] Verify failed for '{filePath}': {ex.Message}");
+            AppLog.Warn("AuthenticodeVerifier", $"Verify failed for '{filePath}'", ex);
             return SignatureStatus.Invalid;
         }
     }

@@ -46,7 +46,7 @@ public class GlobalHotkeyService : IGlobalHotkeyService
         if (_disposed) throw new ObjectDisposedException(nameof(GlobalHotkeyService));
         if (_windowHandle == IntPtr.Zero)
         {
-            Debug.WriteLine("[GlobalHotkeyService] Register failed: Initialize was not called.");
+            AppLog.Warn("GlobalHotkeyService", "Register failed: Initialize was not called.");
             return false;
         }
 
@@ -66,7 +66,7 @@ public class GlobalHotkeyService : IGlobalHotkeyService
         else
         {
             var error = Marshal.GetLastWin32Error();
-            Debug.WriteLine($"[GlobalHotkeyService] RegisterHotKey failed (Win32 error {error}).");
+            AppLog.Warn("GlobalHotkeyService", $"RegisterHotKey failed (Win32 error {error}).");
         }
 
         return ok;
