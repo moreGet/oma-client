@@ -72,7 +72,6 @@
          ══════════════════════════════════════════════════════════════ -->
     <SolidColorBrush x:Key="ChatAccentBrush"     Color="#388BFD"/>  <!-- 채팅 파랑(주) -->
     <SolidColorBrush x:Key="ChatAccent2Brush"    Color="#6EA8FF"/>  <!-- 멘션·읽음·보낸이·타이핑 -->
-    <SolidColorBrush x:Key="ChatVioletBrush"     Color="#A371F7"/>  <!-- 아바타 그라디언트 끝색 -->
     <SolidColorBrush x:Key="ChatOnlineBrush"     Color="#2EA043"/>  <!-- 온라인 점(초록) -->
     <SolidColorBrush x:Key="ChatOnlineGlowBrush" Color="#4D2EA043"/><!-- 온라인 점 글로우(rgba .30) -->
     <SolidColorBrush x:Key="ChatSurfaceBrush"    Color="#151C28"/>  <!-- 방 카드 배경 -->

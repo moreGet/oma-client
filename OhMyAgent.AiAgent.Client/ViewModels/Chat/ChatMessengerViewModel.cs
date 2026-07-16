@@ -91,14 +91,6 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
 
     // ── 방 열기 ────────────────────────────────────────────────────────
 
-    /// <summary>방 목록 더블클릭/선택 → 해당 방 열기 + 읽음 처리.</summary>
-    [RelayCommand]
-    private async Task OpenRoomAsync(ChatRoomListItemViewModel? item)
-    {
-        if (item is null) return;
-        await OpenRoomByIdAsync(item.Id, item.DisplayName, item.Type).ConfigureAwait(false);
-    }
-
     /// <summary>1:1 방 열기(없으면 생성). userId로 진입(외부 진입점).</summary>
     [RelayCommand]
     private async Task OpenDirectAsync(string? userId)

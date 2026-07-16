@@ -611,22 +611,5 @@ public sealed class ChatRealtimeService(
                 else _online.Remove(memberId);
             }
         }
-
-        /// <summary>안읽음(내 last_read 이후 남이 보낸 비삭제 메시지 수). 전역 배지의 보조 추정.</summary>
-        public int CountUnread(string myId)
-        {
-            lock (_gate)
-            {
-                var myRead = _lastReadByMember.TryGetValue(myId, out var v) ? v : 0;
-                var count = 0;
-                foreach (var m in _messages.Values)
-                {
-                    if (m.SenderId == myId) continue;       // 내가 보낸 것 제외
-                    if (m.Deleted ?? false) continue;       // 삭제 제외
-                    if (m.CreatedAt > myRead) count++;
-                }
-                return count;
-            }
-        }
     }
 }

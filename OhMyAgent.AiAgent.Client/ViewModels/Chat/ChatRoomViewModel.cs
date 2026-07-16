@@ -38,7 +38,6 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
 
     /// <summary>방 식별/표시(헤더 바인딩).</summary>
     public string RoomId => _room.Id;
-    public ChatRoomType RoomType => _room.Type;
 
     /// <summary>헤더 표시이름. group=방이름, 1:1=상대 해석이름(초기 "1:1 대화", InitializeAsync 에서 갱신).</summary>
     [ObservableProperty] private string _displayName;
