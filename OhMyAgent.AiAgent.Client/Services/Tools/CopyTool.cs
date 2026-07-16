@@ -30,8 +30,13 @@ public sealed class CopyTool : ITool
         var src = ctx.Workspace.ResolvePath(source);
         var dst = ctx.Workspace.ResolvePath(destination);
 
+        var skipped = new List<string>();   // 링크/접근 불가 — 조용히 빠뜨리지 않고 보고한다.
+
         if (File.Exists(src))
         {
+            if (SafeFileWalk.IsLink(src))
+                return Task.FromResult(ToolResult.Fail($"source 가 링크입니다(복사 대상에서 제외): {source}"));
+
             var dstDir = Path.GetDirectoryName(dst);
             if (!string.IsNullOrEmpty(dstDir) && !Directory.Exists(dstDir))
                 Directory.CreateDirectory(dstDir);
@@ -39,22 +44,39 @@ public sealed class CopyTool : ITool
         }
         else if (Directory.Exists(src))
         {
-            CopyDirectory(src, dst, overwrite);
+            CopyDirectory(src, dst, overwrite, skipped, ct);
         }
         else
         {
             return Task.FromResult(ToolResult.Fail($"source 가 존재하지 않습니다: {source}"));
         }
 
-        return Task.FromResult(ToolResult.Json(new { source, destination }));
+        return Task.FromResult(ToolResult.Json(new
+        {
+            source,
+            destination,
+            skipped_links = skipped.Count == 0 ? null : skipped
+        }));
     }
 
-    private static void CopyDirectory(string src, string dst, bool overwrite)
+    // 링크를 따라가지 않는다: 종전에는 하위 정션을 그대로 재귀해, 워크스페이스 밖 내용(예: .ssh)을
+    // 워크스페이스 안으로 복사해 넣을 수 있었다. 링크를 따라가지 않으면 하위 트리를 벗어날 수 없다.
+    private static void CopyDirectory(string src, string dst, bool overwrite, ICollection<string> skipped, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         Directory.CreateDirectory(dst);
+
         foreach (var file in Directory.GetFiles(src))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (SafeFileWalk.IsLink(file)) { skipped.Add(file); continue; }
             File.Copy(file, Path.Combine(dst, Path.GetFileName(file)), overwrite);
+        }
+
         foreach (var dir in Directory.GetDirectories(src))
-            CopyDirectory(dir, Path.Combine(dst, Path.GetFileName(dir)), overwrite);
+        {
+            if (SafeFileWalk.IsLink(dir)) { skipped.Add(dir); continue; }
+            CopyDirectory(dir, Path.Combine(dst, Path.GetFileName(dir)), overwrite, skipped, ct);
+        }
     }
 }

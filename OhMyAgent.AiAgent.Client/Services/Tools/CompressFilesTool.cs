@@ -49,6 +49,7 @@ public sealed class CompressFilesTool : ITool
         {
             var added = new List<string>();
             var missing = new List<string>();
+            var skipped = new List<string>();   // 링크/접근 불가 — 조용히 빠뜨리지 않고 보고한다.
 
             var parent = Path.GetDirectoryName(destFull);
             if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
@@ -64,9 +65,11 @@ public sealed class CompressFilesTool : ITool
                     if (Directory.Exists(srcFull))
                     {
                         var baseDir = Path.GetDirectoryName(srcFull.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) ?? srcFull;
-                        foreach (var file in Directory.EnumerateFiles(srcFull, "*", SearchOption.AllDirectories))
+
+                        // SafeFileWalk 을 쓰는 이유: Directory.EnumerateFiles(AllDirectories) 는 정션을 따라가고,
+                        // 그렇게 나온 경로는 아무도 재검증하지 않은 채 zip 에 담겼다(워크스페이스 밖 파일 유출).
+                        foreach (var file in SafeFileWalk.EnumerateFiles(srcFull, skipped, ct))
                         {
-                            ct.ThrowIfCancellationRequested();
                             var entry = Path.GetRelativePath(baseDir, file).Replace('\\', '/');
                             archive.CreateEntryFromFile(file, entry, CompressionLevel.Optimal);
                             added.Add(entry);
@@ -74,6 +77,14 @@ public sealed class CompressFilesTool : ITool
                     }
                     else if (File.Exists(srcFull))
                     {
+                        // 링크 자체를 지목한 경우 — ResolvePath 가 대상 기준으로 이미 막지만,
+                        // 워크스페이스 안을 가리키는 링크라도 압축 대상에서는 제외해 동작을 일관되게 한다.
+                        if (SafeFileWalk.IsLink(srcFull))
+                        {
+                            skipped.Add(src);
+                            continue;
+                        }
+
                         var entry = Path.GetFileName(srcFull);
                         archive.CreateEntryFromFile(srcFull, entry, CompressionLevel.Optimal);
                         added.Add(entry);
@@ -88,7 +99,11 @@ public sealed class CompressFilesTool : ITool
             if (added.Count == 0)
             {
                 if (File.Exists(destFull)) File.Delete(destFull);   // 빈 아카이브 남기지 않음
-                return ToolResult.Fail($"압축할 대상을 찾지 못했습니다: {string.Join(", ", missing)}");
+
+                var reason = missing.Count > 0
+                    ? $"압축할 대상을 찾지 못했습니다: {string.Join(", ", missing)}"
+                    : $"압축할 대상이 모두 링크이거나 접근할 수 없어 제외되었습니다: {string.Join(", ", skipped)}";
+                return ToolResult.Fail(reason);
             }
 
             var size = new FileInfo(destFull).Length;
@@ -97,7 +112,8 @@ public sealed class CompressFilesTool : ITool
                 destination,
                 entries = added.Count,
                 bytes = size,
-                missing = missing.Count == 0 ? null : missing
+                missing = missing.Count == 0 ? null : missing,
+                skipped_links = skipped.Count == 0 ? null : skipped
             });
         }, ct).ConfigureAwait(false);
     }
