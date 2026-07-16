@@ -20,7 +20,7 @@ public sealed partial class RoomMembersViewModel : ObservableObject, IDisposable
 {
     private readonly IChatRealtimeService _realtime;
     private readonly ChatRoom _room;
-    private readonly string _currentUserId;
+    private readonly ChatIdentity _identity;
     private readonly Action _unsubscribe;
 
     /// <summary>멤버 행(presence 포함). 멤버 추가/강퇴/나가기·presence 이벤트로 갱신.</summary>
@@ -37,11 +37,11 @@ public sealed partial class RoomMembersViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(KickCommand))]
     private RoomMemberViewModel? _selectedMember;
 
-    public RoomMembersViewModel(IChatRealtimeService realtime, ChatRoom room, string currentUserId)
+    public RoomMembersViewModel(IChatRealtimeService realtime, ChatRoom room, ChatIdentity identity)
     {
         _realtime = realtime;
         _room = room;
-        _currentUserId = currentUserId;
+        _identity = identity;
 
         _realtime.MemberJoined += OnMemberJoined;
         _realtime.MemberLeft += OnMemberLeft;
@@ -77,7 +77,7 @@ public sealed partial class RoomMembersViewModel : ObservableObject, IDisposable
             Members.Add(new RoomMemberViewModel(
                 id,
                 _realtime.DisplayName(id),
-                isMe: string.Equals(id, _currentUserId, StringComparison.Ordinal),
+                isMe: _identity.IsMine(id),
                 presence: onlineSet.Contains(id) ? RoomMemberPresence.Online : RoomMemberPresence.Offline));
     }
 
@@ -188,7 +188,7 @@ public sealed partial class RoomMembersViewModel : ObservableObject, IDisposable
             Members.Add(new RoomMemberViewModel(
                 p.MemberId,
                 _realtime.DisplayName(p.MemberId),
-                isMe: string.Equals(p.MemberId, _currentUserId, StringComparison.Ordinal),
+                isMe: _identity.IsMine(p.MemberId),
                 presence: RoomMemberPresence.Offline));
         });
     }

@@ -19,7 +19,7 @@ public sealed partial class MentionFeedViewModel : ObservableObject
     private const int FeedLimit = 50;
 
     private readonly IChatRealtimeService _realtime;
-    private readonly string _currentUserId;
+    private readonly ChatIdentity _identity;
 
     /// <summary>멘션된 메시지 카드(최신순 — 서버 순서 유지).</summary>
     public ObservableCollection<ChatMessageViewModel> Items { get; } = [];
@@ -27,10 +27,10 @@ public sealed partial class MentionFeedViewModel : ObservableObject
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private string _statusMessage = string.Empty;
 
-    public MentionFeedViewModel(IChatRealtimeService realtime, string currentUserId)
+    public MentionFeedViewModel(IChatRealtimeService realtime, ChatIdentity identity)
     {
         _realtime = realtime;
-        _currentUserId = currentUserId;
+        _identity = identity;
     }
 
     /// <summary>멘션 피드 로드.</summary>
@@ -58,7 +58,7 @@ public sealed partial class MentionFeedViewModel : ObservableObject
         {
             Items.Clear();
             foreach (var dto in mentions)
-                Items.Add(new ChatMessageViewModel(dto, _currentUserId)
+                Items.Add(new ChatMessageViewModel(dto, _identity)
                 {
                     SenderName = _realtime.DisplayName(dto.SenderId),   // UUID → 표시이름
                 });

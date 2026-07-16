@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using OhMyAgent.AiAgent.Client.Models.Chat;
+using OhMyAgent.AiAgent.Client.Services.Chat;
 
 namespace OhMyAgent.AiAgent.Client.ViewModels.Chat;
 
@@ -39,7 +40,7 @@ public sealed partial class ChatMessageViewModel : ObservableObject
     /// <summary>소프트 삭제 여부. true면 "삭제된 메시지" 표시(멘션/첨부 숨김).</summary>
     [ObservableProperty] private bool _isDeleted;
 
-    /// <summary>내가 보낸 메시지 여부(senderId == currentUserId). 정렬/버블색 결정.</summary>
+    /// <summary>내가 보낸 메시지 여부(senderId 가 현재 신원과 일치). 정렬/버블색 결정.</summary>
     public bool IsMine { get; }
 
     /// <summary>"수정됨" 배지 표시용 계산 프로퍼티(EditedAt != null &amp;&amp; !IsDeleted).</summary>
@@ -58,7 +59,7 @@ public sealed partial class ChatMessageViewModel : ObservableObject
     [ObservableProperty] private int _readByCount;
 
     /// <summary>서버 DTO로부터 구성(이력/실시간 수신분). mentions/attachments는 null 가능(REST 이력 한계).</summary>
-    public ChatMessageViewModel(ChatMessage dto, string currentUserId)
+    public ChatMessageViewModel(ChatMessage dto, ChatIdentity identity)
     {
         Id = dto.Id;
         SenderId = dto.SenderId;
@@ -68,7 +69,7 @@ public sealed partial class ChatMessageViewModel : ObservableObject
         CreatedAt = dto.CreatedAt;
         _editedAt = dto.EditedAt;
         _isDeleted = dto.Deleted ?? false;
-        IsMine = string.Equals(dto.SenderId, currentUserId, StringComparison.Ordinal);
+        IsMine = identity.IsMine(dto.SenderId);
         _segments = BuildSegments(_content, dto.Mentions);
 
         if (dto.Attachments is { Count: > 0 } atts)
@@ -83,7 +84,7 @@ public sealed partial class ChatMessageViewModel : ObservableObject
         string senderId,
         string content,
         long createdAt,
-        string currentUserId,
+        ChatIdentity identity,
         IReadOnlyList<string>? mentions = null,
         IReadOnlyList<ChatAttachment>? attachments = null)
     {
@@ -95,7 +96,7 @@ public sealed partial class ChatMessageViewModel : ObservableObject
         CreatedAt = createdAt;
         _editedAt = null;
         _isDeleted = false;
-        IsMine = string.Equals(senderId, currentUserId, StringComparison.Ordinal);
+        IsMine = identity.IsMine(senderId);
         _segments = BuildSegments(_content, mentions);
         _sendStatus = ChatSendStatus.Pending;
 

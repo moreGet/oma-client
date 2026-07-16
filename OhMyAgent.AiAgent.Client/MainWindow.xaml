@@ -167,7 +167,12 @@
                                         <ItemsControl ItemsSource="{Binding Conversations}" Margin="14,2,0,4">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate DataType="{x:Type models:ChatSessionSummary}">
+                                                    <!-- Tag: 아래 ContextMenu 가 프로젝트 목록에 닿기 위한 통로.
+                                                         ContextMenu 는 별도 PopupRoot 에 있어 비주얼 트리로 Window 조상을 찾지 못하므로
+                                                         (AncestorType=Window 은 항상 null → 메뉴가 빈 채로 뜬다) 트리 안에 있는 이 Grid 가
+                                                         대신 목록을 받아 PlacementTarget.Tag 로 건넨다. -->
                                                     <Grid Background="Transparent"
+                                                          Tag="{Binding DataContext.Projects.Projects, RelativeSource={RelativeSource AncestorType=Window}}"
                                                           PreviewMouseLeftButtonDown="Conversation_PreviewMouseLeftButtonDown"
                                                           PreviewMouseMove="Conversation_PreviewMouseMove"
                                                           ToolTip="끌어서 프로젝트 폴더로 이동할 수 있습니다.">
@@ -197,7 +202,7 @@
                                                         </Button>
                                                         <!-- 대화 편입/해제: 프로젝트 목록을 동적으로 -->
                                                         <Grid.ContextMenu>
-                                                            <ContextMenu ItemsSource="{Binding DataContext.Projects.Projects, RelativeSource={RelativeSource AncestorType=Window}}">
+                                                            <ContextMenu ItemsSource="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
                                                                 <ContextMenu.ItemContainerStyle>
                                                                     <!-- 각 MenuItem DataContext = ProjectItemViewModel (편입 대상).
                                                                          핸들러에서 Tag(대상 ProjectId)와 ContextMenu.PlacementTarget(대화)로 편입 수행. -->

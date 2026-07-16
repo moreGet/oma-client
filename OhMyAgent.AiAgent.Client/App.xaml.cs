@@ -37,6 +37,7 @@ public partial class App : Application
     private IBinaryIntegrityService?  _binaryIntegrity;
 
     // ── 실시간 메신저(사람↔사람) — LLM 채팅과 별개 모듈 ──
+    private ChatIdentity?              _chatIdentity;   // 채팅 VM 트리가 참조로 공유하는 현재 사용자 신원
     private IChatRealtimeService?      _chatRealtime;
     private ChatMessengerViewModel?   _chatMessengerVm;
     private IChatMessengerCoordinator? _chatCoordinator;
@@ -124,12 +125,10 @@ public partial class App : Application
         _settingsService = new SettingsService();
         await _settingsService.LoadAsync();
 
-        // 2) Infra (BaseAddress 는 로드된 설정에서)
-        _httpClient = new HttpClient
-        {
-            BaseAddress = new Uri(_settingsService.Current.ServerBaseUrl),
-            Timeout     = Timeout.InfiniteTimeSpan
-        };
+        // 2) Infra — BaseAddress 를 두지 않는다.
+        //    AgentApiClient 가 요청마다 설정의 ServerBaseUrl 로 절대 URI 를 만든다.
+        //    (BaseAddress 는 첫 요청 후 변경이 불가해, 서버 주소를 바꿔도 재시작 전까지 반영되지 않았다.)
+        _httpClient = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
 
         // 3) Workspace 샌드박스
         var workspace = new WorkspaceContext(_settingsService);
@@ -241,13 +240,15 @@ public partial class App : Application
             _trayNotification);
 
         // 13b) 실시간 메신저(사람↔사람) 조립 — LLM 채팅(ChatWindowCoordinator)과 완전 별개 모듈(설계서 §6).
-        //      currentUserId = JWT(sub) = member UUID. /users/me 엔 id 없음 → 토큰 디코드가 유일 소스.
+        //      신원 = JWT(sub) = member UUID. /users/me 엔 id 없음 → 토큰 디코드가 유일 소스.
+        //      ChatIdentity 를 참조로 공유해, 재로그인 시 MemberId 만 갱신하면 VM 트리 전체가 따라온다
+        //      (문자열로 넘기면 각 VM 이 복사본을 들어 사용자가 바뀌어도 판정 기준이 옛 사용자로 남는다).
         var chatApi   = new ChatApiClient(_httpClient!, _settingsService!);
         var chatSocket = new ChatSocketClient(_settingsService!);
         _chatRealtime = new ChatRealtimeService(chatApi, chatSocket, _settingsService!);
 
-        var currentUserId = JwtIdentity.MemberId(_settingsService!.Current.AuthToken);
-        _chatMessengerVm = new ChatMessengerViewModel(_chatRealtime, currentUserId);
+        _chatIdentity = new ChatIdentity(JwtIdentity.MemberId(_settingsService!.Current.AuthToken));
+        _chatMessengerVm = new ChatMessengerViewModel(_chatRealtime, _chatIdentity);
         _chatMessengerVm.LoginRequested += (_, _) => ReturnToLogin();
 
         // 창은 1회 생성·재사용(coordinator 내부 lazy 캐시). 팩토리는 1회만 호출되도록 보정 캐시.
@@ -275,6 +276,11 @@ public partial class App : Application
                 workspace.SetRoot(s.WorkspaceRoot);
             _globalHotkey!.Unregister();
             _globalHotkey.Register(s.Hotkey);
+
+            // 토큰이 바뀌면(로그인/재로그인) 채팅 신원도 따라가야 한다 — 로그인 흐름이
+            // UpdateServerConfigAsync 로 토큰을 저장하며 이 이벤트를 발생시키는 것이 유일한 공통 지점이다.
+            if (_chatIdentity is { } identity)
+                identity.MemberId = JwtIdentity.MemberId(s.AuthToken);
         };
 
         // 16) 로그인 게이트 — 인증돼 있으면 바로 메인, 아니면 로그인 랜딩부터.
@@ -458,10 +464,16 @@ public partial class App : Application
         _mainVm?.PrepareForLogout();
 
         // 1b) 메신저 WS 정리 — 재로그인 시 토큰이 바뀌므로 stale 연결을 끊고 Start 가드를 리셋한다.
-        //     IsMine 판정은 서버 sender_id 기준이라 currentUserId(VM) 갱신 지연의 실무 영향은 최소.
         _chatStarted = false;
         if (_chatRealtime is { } realtime)
             _ = realtime.StopAsync();
+
+        // 1c) 채팅 신원·방 상태 초기화.
+        //     IsMine 은 서버 sender_id 를 "클라이언트가 아는 내 id"와 비교하는 클라 판정이다.
+        //     이 값을 비우지 않으면 A 로그아웃 → B 로그인 후에도 A 기준으로 판정해
+        //     좌우 말풍선과 읽음 표시가 통째로 뒤바뀐다. 다음 로그인 때 SettingsChanged 가 새 값을 채운다.
+        _chatIdentity?.Clear();
+        _chatMessengerVm?.ResetForUserChange();
 
         // 2) 보조 창(설정·무결성·채팅전용 등)은 닫고, 메인은 숨긴다(재로그인 시 재사용).
         foreach (var w in Windows.OfType<Window>().ToList())

@@ -28,13 +28,33 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     private const string CommandPolicyPath = "/api/v1/security/command-policy";
     private const string AgentSessionsPath = "/api/v1/agent/sessions";
 
+    /// <summary>
+    /// 요청 URI 를 매번 현재 설정의 ServerBaseUrl 기준으로 만든다.
+    ///
+    /// HttpClient.BaseAddress + 상대경로를 쓰지 않는 이유: BaseAddress 는 App 시작 시 한 번 설정되는데
+    /// 첫 요청 이후에는 변경 자체가 InvalidOperationException 이다. 그래서 설정에서 서버 주소를 바꿔도
+    /// 재시작 전까지 모든 요청이 옛 서버로 갔고, 아무 오류도 나지 않아 알아채기 어려웠다.
+    /// 매 요청 절대 URI 를 만들면 BaseAddress 를 건드릴 필요가 없어 그 함정 자체가 사라진다.
+    /// </summary>
+    private Uri Url(string path)
+    {
+        var baseUrl = settings.Current.ServerBaseUrl;
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            throw new AgentException("서버 주소가 설정되지 않았습니다. 설정에서 서버 주소를 입력하세요.");
+
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var root))
+            throw new AgentException($"서버 주소 형식이 올바르지 않습니다: {baseUrl}");
+
+        return new Uri(root, path);
+    }
+
     public async IAsyncEnumerable<AgentStreamEvent> SendAsync(
         AgentRequest request,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         var json = JsonSerializer.Serialize(request, AgentJson.Options);
 
-        using var httpReq = new HttpRequestMessage(HttpMethod.Post, ChatPath)
+        using var httpReq = new HttpRequestMessage(HttpMethod.Post, Url(ChatPath))
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         };
@@ -130,7 +150,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, HealthPath);
+            using var req = new HttpRequestMessage(HttpMethod.Get, Url(HealthPath));
             ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
             return resp.IsSuccessStatusCode;
@@ -146,7 +166,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         // 1) 연결성: Public /health.
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, HealthPath);
+            using var req = new HttpRequestMessage(HttpMethod.Get, Url(HealthPath));
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 return ServerReadiness.Disconnected;
@@ -161,7 +181,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         // 3) 토큰 유효성: 보호된 엔드포인트(/models)가 401/403 이면 만료/무효.
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, ModelsPath);
+            using var req = new HttpRequestMessage(HttpMethod.Get, Url(ModelsPath));
             ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
             return resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
@@ -180,7 +200,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, ModelsPath);
+            using var req = new HttpRequestMessage(HttpMethod.Get, Url(ModelsPath));
             ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
@@ -212,7 +232,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
                 new LoginRequestDto(username, password), AgentJson.Options);
 
             // Public 엔드포인트 — 토큰 발급 전이므로 ApplyAuth 미부착.
-            using var req = new HttpRequestMessage(HttpMethod.Post, LoginPath)
+            using var req = new HttpRequestMessage(HttpMethod.Post, Url(LoginPath))
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/json")
             };
@@ -253,7 +273,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, path);
+            using var req = new HttpRequestMessage(HttpMethod.Get, Url(path));
             ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
@@ -290,7 +310,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, PolicyPath);
+            using var req = new HttpRequestMessage(HttpMethod.Get, Url(PolicyPath));
             ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
 
@@ -326,7 +346,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
             var payload = JsonSerializer.Serialize(
                 new AuthorizeRequestDto(tool, arguments), AgentJson.Options);
 
-            using var req = new HttpRequestMessage(HttpMethod.Post, AuthorizePath)
+            using var req = new HttpRequestMessage(HttpMethod.Post, Url(AuthorizePath))
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/json")
             };
@@ -355,7 +375,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, ProjectsPath);
+            using var req = new HttpRequestMessage(HttpMethod.Get, Url(ProjectsPath));
             ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
@@ -391,7 +411,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         try
         {
             var payload = JsonSerializer.Serialize(body, AgentJson.Options);
-            using var req = new HttpRequestMessage(HttpMethod.Post, ProjectsPath)
+            using var req = new HttpRequestMessage(HttpMethod.Post, Url(ProjectsPath))
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/json")
             };
@@ -430,7 +450,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         {
             var path    = $"{ProjectsPath}/{Uri.EscapeDataString(remoteProjectId)}/conversations";
             var payload = JsonSerializer.Serialize(body, AgentJson.Options);
-            using var req = new HttpRequestMessage(HttpMethod.Post, path)
+            using var req = new HttpRequestMessage(HttpMethod.Post, Url(path))
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/json")
             };
@@ -465,7 +485,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         try
         {
             var path = $"{ProjectsPath}/{Uri.EscapeDataString(remoteProjectId)}";
-            using var req = new HttpRequestMessage(HttpMethod.Delete, path);
+            using var req = new HttpRequestMessage(HttpMethod.Delete, Url(path));
             ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
             // 204/200/404(이미 없음) 모두 성공으로 간주 — 삭제는 멱등. 그 외 상태도 graceful no-op.
@@ -488,7 +508,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         try
         {
             var path = $"{ProjectsPath}/{Uri.EscapeDataString(remoteProjectId)}/conversations/{Uri.EscapeDataString(remoteConversationId)}";
-            using var req = new HttpRequestMessage(HttpMethod.Delete, path);
+            using var req = new HttpRequestMessage(HttpMethod.Delete, Url(path));
             ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
             // 멱등 삭제 — 404 포함 graceful.
@@ -507,7 +527,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, AgentSessionsPath);
+            using var req = new HttpRequestMessage(HttpMethod.Get, Url(AgentSessionsPath));
             ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
@@ -537,7 +557,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         try
         {
             var path = $"{AgentSessionsPath}/{Uri.EscapeDataString(id)}";
-            using var req = new HttpRequestMessage(HttpMethod.Get, path);
+            using var req = new HttpRequestMessage(HttpMethod.Get, Url(path));
             ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
@@ -567,7 +587,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         {
             var path    = $"{AgentSessionsPath}/{Uri.EscapeDataString(id)}";
             var payload = JsonSerializer.Serialize(new SessionUpsertDto(title, data), AgentJson.Options);
-            using var req = new HttpRequestMessage(HttpMethod.Put, path)
+            using var req = new HttpRequestMessage(HttpMethod.Put, Url(path))
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/json")
             };
@@ -594,7 +614,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         try
         {
             var path = $"{AgentSessionsPath}/{Uri.EscapeDataString(id)}";
-            using var req = new HttpRequestMessage(HttpMethod.Delete, path);
+            using var req = new HttpRequestMessage(HttpMethod.Delete, Url(path));
             ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
             // 204/200/404(이미 없음) 모두 성공으로 간주 — 삭제는 멱등. 그 외도 graceful no-op.

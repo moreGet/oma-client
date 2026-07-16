@@ -19,8 +19,8 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
 {
     private readonly IChatRealtimeService _realtime;
 
-    /// <summary>현재 사용자 id. 설계서에 공급원 미명시 → ctor 주입(상위 App이 프로필 /users/me에서 공급).</summary>
-    private readonly string _currentUserId;
+    /// <summary>현재 사용자 신원(참조 공유). 재로그인 시 App 이 이 객체의 MemberId 만 갱신한다.</summary>
+    private readonly ChatIdentity _identity;
 
     private readonly Action _unsubscribe;
 
@@ -45,13 +45,13 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
     /// <summary>403/404/429/5xx 등 상태 메시지(표시만, 로그아웃 금지).</summary>
     [ObservableProperty] private string _statusMessage = string.Empty;
 
-    public ChatMessengerViewModel(IChatRealtimeService realtime, string currentUserId)
+    public ChatMessengerViewModel(IChatRealtimeService realtime, ChatIdentity identity)
     {
         _realtime = realtime;
-        _currentUserId = currentUserId;
+        _identity = identity;
 
         Rooms = new ChatRoomsViewModel(realtime);
-        MentionFeed = new MentionFeedViewModel(realtime, currentUserId);
+        MentionFeed = new MentionFeedViewModel(realtime, identity);
 
         Rooms.RoomOpenRequested += OnRoomOpenRequested;
         MentionFeed.MentionOpenRequested += OnMentionOpenRequested;
@@ -87,6 +87,27 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
         }
 
         await Rooms.LoadRoomsCommand.ExecuteAsync(null).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 로그아웃/사용자 전환 시 호출 — 이전 사용자 기준으로 만들어진 화면 상태를 버린다.
+    ///
+    /// 이게 없으면 남아 있던 방 VM 의 메시지 버블이 이전 사용자 기준으로 계산된 IsMine 을 그대로 들고 있어,
+    /// 새 사용자로 로그인해도 좌우 정렬이 뒤바뀐 채로 보인다(IsMine 은 생성 시점에 확정된다).
+    /// 다음 StartAsync 가 새 신원으로 방과 메시지를 다시 만든다.
+    /// </summary>
+    public void ResetForUserChange()
+    {
+        _ = UiInvokeAsync(() =>
+        {
+            CurrentRoom?.Dispose();
+            CurrentRoom = null;
+            Rooms.Rooms.Clear();
+            MentionFeed.Items.Clear();
+            TotalUnread = 0;
+            IsMentionFeedOpen = false;
+            StatusMessage = string.Empty;
+        });
     }
 
     // ── 방 열기 ────────────────────────────────────────────────────────
@@ -140,7 +161,7 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
         await UiInvokeAsync(() =>
         {
             previous = CurrentRoom;
-            next = new ChatRoomViewModel(_realtime, room, _currentUserId);
+            next = new ChatRoomViewModel(_realtime, room, _identity);
             next.Members.Left += OnRoomLeft;
             CurrentRoom = next;
             IsMentionFeedOpen = false;

@@ -26,7 +26,7 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
 
     private readonly IChatRealtimeService _realtime;
     private readonly ChatRoom _room;
-    private readonly string _currentUserId;
+    private readonly ChatIdentity _identity;
     private readonly Action _unsubscribe;
 
     // typing 디바운스 — Draft 변경 시 start(쓰로틀) + 무입력 N초/전송 시 stop.
@@ -87,13 +87,13 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private string _statusMessage = string.Empty;
 
-    public ChatRoomViewModel(IChatRealtimeService realtime, ChatRoom room, string currentUserId)
+    public ChatRoomViewModel(IChatRealtimeService realtime, ChatRoom room, ChatIdentity identity)
     {
         _realtime = realtime;
         _room = room;
-        _currentUserId = currentUserId;
+        _identity = identity;
         _displayName = string.IsNullOrWhiteSpace(room.Name) ? "1:1 대화" : room.Name!;
-        Members = new RoomMembersViewModel(realtime, room, currentUserId);
+        Members = new RoomMembersViewModel(realtime, room, identity);
 
         _typingTimer = new Timer(TypingDebounceMs) { AutoReset = false };
         _typingTimer.Elapsed += OnTypingTimerElapsed;
@@ -148,7 +148,7 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
         {
             Messages.Clear();
             foreach (var dto in ordered)
-                Messages.Add(new ChatMessageViewModel(dto, _currentUserId));
+                Messages.Add(new ChatMessageViewModel(dto, _identity));
             HasMoreHistory = page.Count >= PageSize;
             IsLoading = false;
         }).ConfigureAwait(false);
@@ -164,13 +164,13 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
             await UiInvokeAsync(() =>
             {
                 Members.ApplyMembers(members, online);                          // 멤버 패널(Flyout)
-                Mentions.SetMembers(members, _currentUserId, _realtime.DisplayName); // 멘션 후보
+                Mentions.SetMembers(members, _identity.MemberId, _realtime.DisplayName); // 멘션 후보
                 OnlinePresence.Clear();                                          // 헤더 "N명 온라인"
                 foreach (var id in online) OnlinePresence.Add(id);
 
                 if (_room.Type == ChatRoomType.Direct)                          // 1:1 헤더 = 상대 이름
                 {
-                    var counterpart = members.FirstOrDefault(m => !string.Equals(m, _currentUserId, StringComparison.Ordinal));
+                    var counterpart = members.FirstOrDefault(m => !_identity.IsMine(m));
                     if (!string.IsNullOrEmpty(counterpart))
                     {
                         _counterpartId = counterpart;
@@ -202,7 +202,7 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         var optimistic = new ChatMessageViewModel(
-            localId, _room.Id, _currentUserId, content, now, _currentUserId,
+            localId, _room.Id, _identity.MemberId, content, now, _identity,
             mentions.Count > 0 ? mentions : null,
             attachments.Count > 0 ? attachments : null);
 
@@ -335,7 +335,7 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
         {
             // 오래된 메시지를 컬렉션 맨 앞에 역순 삽입(시간 오름차순 유지).
             for (var i = older.Count - 1; i >= 0; i--)
-                Messages.Insert(0, new ChatMessageViewModel(older[i], _currentUserId));
+                Messages.Insert(0, new ChatMessageViewModel(older[i], _identity));
             HasMoreHistory = page.Count >= PageSize;
             IsLoadingMore = false;
         }).ConfigureAwait(false);
@@ -475,7 +475,7 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
             }
 
             // 2) 내 낙관 메시지의 echo면 치환(중복 방지). 가장 오래된 Pending 매칭.
-            if (string.Equals(e.Message.SenderId, _currentUserId, StringComparison.Ordinal) && !e.IsEdited && !e.IsDeleted)
+            if (_identity.IsMine(e.Message.SenderId) && !e.IsEdited && !e.IsDeleted)
             {
                 var pending = _pendingLocal.Values
                     .FirstOrDefault(p => p.SendStatus == ChatSendStatus.Pending
@@ -494,14 +494,14 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
 
             // 3) 신규 메시지 append(삭제/수정 이벤트인데 대상 부재 시 무시).
             if (!e.IsDeleted && !e.IsEdited)
-                Messages.Add(new ChatMessageViewModel(e.Message, _currentUserId));
+                Messages.Add(new ChatMessageViewModel(e.Message, _identity));
         });
     }
 
     private void OnReadChanged(object? sender, WsReadPayload p)
     {
         if (!string.Equals(p.RoomId, _room.Id, StringComparison.Ordinal)) return;
-        if (string.Equals(p.MemberId, _currentUserId, StringComparison.Ordinal)) return;   // 내 읽음은 표시 대상 아님
+        if (_identity.IsMine(p.MemberId)) return;   // 내 읽음은 표시 대상 아님
 
         _ = UiInvokeAsync(() =>
         {
@@ -514,7 +514,7 @@ public sealed partial class ChatRoomViewModel : ObservableObject, IDisposable
     private void OnTypingChanged(object? sender, WsTypingPayload p)
     {
         if (!string.Equals(p.RoomId, _room.Id, StringComparison.Ordinal)) return;
-        if (string.Equals(p.MemberId, _currentUserId, StringComparison.Ordinal)) return;
+        if (_identity.IsMine(p.MemberId)) return;
 
         _ = UiInvokeAsync(() =>
         {
