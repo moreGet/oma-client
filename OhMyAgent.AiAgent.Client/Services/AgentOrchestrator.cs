@@ -141,7 +141,67 @@ public sealed class AgentOrchestrator(
                 yield break;
             }
 
-            // f) 각 도구 실행.
+            // f) 도구 실행 — 배치가 전부 ReadOnly 면 병렬, 아니면 순차.
+            //
+            // 병렬 조건을 ReadOnly 전용으로 좁힌 근거(둘 다 코드로 확인된 사실이다):
+            //  - 승인: PermissionService.RequestAsync 는 ReadOnly 를 모드와 무관하게 항상 자동 허용한다.
+            //    즉 승인 핸들러(_handler, UI 대화상자)를 아예 타지 않으므로 동시 승인 요청이 겹칠 수 없다.
+            //    쓰기 도구가 섞이면 승인 대화상자가 동시에 여러 개 뜨거나 서로를 덮어쓴다.
+            //  - 부작용: ReadOnly 는 상태를 바꾸지 않으므로 같은 파일에 대한 쓰기-쓰기/쓰기-읽기 경합이 없다.
+            // 하나라도 쓰기/실행이 섞이면 배치 전체를 순차로 돌린다 — 부분 병렬은 모델이 의도한
+            // 호출 순서를 뒤집을 수 있어 이득보다 위험이 크다.
+            var parallelizable = pendingCalls.Count > 1
+                && pendingCalls.All(c => tools.TryGet(c.Name, out var t) && t.Risk == ToolRisk.ReadOnly);
+
+            if (parallelizable)
+            {
+                // 시작 이벤트는 순서대로 한 번에 — UI 가 N개가 동시에 도는 것을 보여준다.
+                foreach (var call in pendingCalls)
+                    yield return new AgentToolCallStarted(call.Id, call.Name, call.Arguments, ToolRisk.ReadOnly);
+
+                var results = new ToolResult[pendingCalls.Count];
+                var cancelledByUser = false;
+                var running = new List<Task<ParallelCallOutcome>>(pendingCalls.Count);
+
+                using var slots = new SemaphoreSlim(MaxParallelToolCalls);
+                for (var i = 0; i < pendingCalls.Count; i++)
+                    running.Add(RunCallAsync(i, pendingCalls[i], slots, ct));
+
+                // 완료되는 대로 결과를 방출한다(느린 하나가 나머지 표시를 막지 않게).
+                while (running.Count > 0)
+                {
+                    var finished = await Task.WhenAny(running).ConfigureAwait(false);
+                    running.Remove(finished);
+
+                    var outcome = await finished.ConfigureAwait(false);   // RunCallAsync 는 던지지 않는다
+                    if (outcome.Cancelled)
+                    {
+                        cancelledByUser = true;
+                        continue;   // 같은 ct 를 공유하므로 나머지도 곧 취소된다
+                    }
+
+                    results[outcome.Index] = outcome.Result;
+                    var call = pendingCalls[outcome.Index];
+                    yield return new AgentToolCallResult(call.Id, call.Name, outcome.Result);
+                }
+
+                if (cancelledByUser)
+                {
+                    yield return new AgentError("cancelled", "사용자가 중지했습니다.");
+                    yield break;
+                }
+
+                // 이력에는 "완료 순서"가 아니라 "모델이 호출한 순서"로 넣는다.
+                // tool_result 는 assistant 의 tool_use 순서와 짝을 이뤄야 하고, 완료 순서로 쓰면
+                // 매 실행마다 대화 이력이 달라져 프롬프트 캐시도 무의미해진다.
+                for (var i = 0; i < pendingCalls.Count; i++)
+                    session.Messages.Add(AgentMessage.ToolResultMsg(
+                        pendingCalls[i].Id, results[i].Content, results[i].IsError));
+
+                iteration++;
+                continue;
+            }
+
             foreach (var call in pendingCalls)
             {
                 if (ct.IsCancellationRequested)
@@ -201,6 +261,60 @@ public sealed class AgentOrchestrator(
 
         if (iteration >= max)
             yield return new AgentError("max_iterations", "최대 반복 횟수에 도달했습니다.");
+    }
+
+    /// <summary>병렬 도구 호출 동시 실행 상한. task(서브에이전트) 배치는 하나하나가 LLM 루프라 무제한은 위험하다.</summary>
+    private const int MaxParallelToolCalls = 8;
+
+    /// <summary>병렬 실행 결과 — 호출 순서(<see cref="Index"/>)를 들고 다녀야 이력을 원래 순서로 되돌릴 수 있다.</summary>
+    private readonly record struct ParallelCallOutcome(int Index, ToolResult Result, bool Cancelled);
+
+    /// <summary>
+    /// 도구 하나를 실행한다(병렬 경로 전용). <b>절대 예외를 던지지 않는다</b> —
+    /// 던지면 Task.WhenAny 로 회수할 때 이터레이터 밖으로 튀어 루프 전체가 죽는다.
+    /// </summary>
+    private async Task<ParallelCallOutcome> RunCallAsync(int index, ToolCall call, SemaphoreSlim slots, CancellationToken ct)
+    {
+        try
+        {
+            await slots.WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return new ParallelCallOutcome(index, ToolResult.Fail("사용자가 중지했습니다."), true);
+        }
+
+        try
+        {
+            // 서버 도구 정책 게이트 — 순차 경로와 동일하게 실행 직전에 평가한다.
+            var gate = await policy.EvaluateAsync(call.Name, call.Arguments, ct).ConfigureAwait(false);
+            if (!gate.Allowed)
+            {
+                return new ParallelCallOutcome(index,
+                    ToolResult.Fail($"서버 도구 정책에 의해 차단됨: {gate.Reason ?? call.Name}"), false);
+            }
+
+            if (!tools.TryGet(call.Name, out var tool))
+                return new ParallelCallOutcome(index, ToolResult.Fail($"Unknown tool: {call.Name}"), false);
+
+            var ctx = new ToolContext(workspace, settings.Current.PermissionMode);
+            var (result, cancelled) = await ExecuteCallAsync(tool, call, tool.Risk, ctx, ct).ConfigureAwait(false);
+            return new ParallelCallOutcome(index, result, cancelled);
+        }
+        catch (OperationCanceledException)
+        {
+            return new ParallelCallOutcome(index, ToolResult.Fail("사용자가 중지했습니다."), true);
+        }
+        catch (Exception ex)
+        {
+            // ExecuteCallAsync 가 도구 예외를 이미 흡수하므로 여기 오는 건 정책 게이트 등 그 바깥이다.
+            AppLog.Warn("AgentOrchestrator", $"병렬 도구 실행 실패: {call.Name}", ex);
+            return new ParallelCallOutcome(index, ToolResult.Fail($"도구 실행 오류: {ex.Message}"), false);
+        }
+        finally
+        {
+            slots.Release();
+        }
     }
 
     private AgentRequest BuildRequest(AgentSession session)

@@ -51,29 +51,19 @@ internal sealed class FakeSettingsService : ISettingsService
 }
 
 /// <summary>
-/// 도구 정책 조회만 구현한 API 스텁. 나머지 멤버는 호출되면 테스트를 실패시킨다 —
-/// 조용히 기본값을 돌려주면 테스트가 의도치 않은 경로를 통과해도 눈치채지 못한다.
+/// IAgentApiClient 스텁 베이스. 파생 클래스가 필요한 멤버만 override 하고, 나머지는 호출되는 순간
+/// 테스트를 실패시킨다 — 조용히 기본값을 돌려주면 테스트가 의도치 않은 경로를 통과해도 눈치채지 못한다.
+///
+/// (인터페이스 멤버가 20개라 스텁마다 전부 나열하면 실제 테스트 의도가 보일러플레이트에 묻힌다.)
 /// </summary>
-internal sealed class FakePolicyApiClient(Func<ToolPolicyFetch> policy) : IAgentApiClient
+internal abstract class StubAgentApi : IAgentApiClient
 {
-    /// <summary>GetToolPolicyAsync 호출 횟수 — 재시도 동작 검증용.</summary>
-    public int PolicyCallCount { get; private set; }
+    protected static T NotUsed<T>() => throw new NotSupportedException("이 테스트에서 호출될 리 없는 멤버입니다.");
 
-    /// <summary>AuthorizeToolAsync 가 돌려줄 값(realtime 모드 테스트용).</summary>
-    public ToolAuthorization? Authorization { get; set; }
+    public virtual IAsyncEnumerable<AgentStreamEvent> SendAsync(AgentRequest request, CancellationToken ct = default) => NotUsed<IAsyncEnumerable<AgentStreamEvent>>();
+    public virtual Task<ToolPolicyFetch> GetToolPolicyAsync(CancellationToken ct = default) => NotUsed<Task<ToolPolicyFetch>>();
+    public virtual Task<ToolAuthorization?> AuthorizeToolAsync(string tool, JsonElement arguments, CancellationToken ct = default) => NotUsed<Task<ToolAuthorization?>>();
 
-    public Task<ToolPolicyFetch> GetToolPolicyAsync(CancellationToken ct = default)
-    {
-        PolicyCallCount++;
-        return Task.FromResult(policy());
-    }
-
-    public Task<ToolAuthorization?> AuthorizeToolAsync(string tool, JsonElement arguments, CancellationToken ct = default)
-        => Task.FromResult(Authorization);
-
-    private static T NotUsed<T>() => throw new NotSupportedException("이 테스트에서 호출될 리 없는 멤버입니다.");
-
-    public IAsyncEnumerable<AgentStreamEvent> SendAsync(AgentRequest request, CancellationToken ct = default) => NotUsed<IAsyncEnumerable<AgentStreamEvent>>();
     public Task<bool> CheckHealthAsync(CancellationToken ct = default) => NotUsed<Task<bool>>();
     public Task<ServerReadiness> CheckReadinessAsync(CancellationToken ct = default) => NotUsed<Task<ServerReadiness>>();
     public Task<IReadOnlyList<ModelInfo>> GetModelsAsync(CancellationToken ct = default) => NotUsed<Task<IReadOnlyList<ModelInfo>>>();
@@ -91,4 +81,35 @@ internal sealed class FakePolicyApiClient(Func<ToolPolicyFetch> policy) : IAgent
     public Task<RemoteSession?> GetRemoteSessionAsync(string id, CancellationToken ct = default) => NotUsed<Task<RemoteSession?>>();
     public Task<bool> PutRemoteSessionAsync(string id, string title, JsonElement data, CancellationToken ct = default) => NotUsed<Task<bool>>();
     public Task DeleteRemoteSessionAsync(string id, CancellationToken ct = default) => NotUsed<Task>();
+}
+
+/// <summary>도구 정책 조회만 구현한 API 스텁.</summary>
+internal sealed class FakePolicyApiClient(Func<ToolPolicyFetch> policy) : StubAgentApi
+{
+    /// <summary>GetToolPolicyAsync 호출 횟수 — 재시도 동작 검증용.</summary>
+    public int PolicyCallCount { get; private set; }
+
+    /// <summary>AuthorizeToolAsync 가 돌려줄 값(realtime 모드 테스트용).</summary>
+    public ToolAuthorization? Authorization { get; set; }
+
+    public override Task<ToolPolicyFetch> GetToolPolicyAsync(CancellationToken ct = default)
+    {
+        PolicyCallCount++;
+        return Task.FromResult(policy());
+    }
+
+    public override Task<ToolAuthorization?> AuthorizeToolAsync(string tool, JsonElement arguments, CancellationToken ct = default)
+        => Task.FromResult(Authorization);
+}
+
+/// <summary>모든 도구를 허용하는 정책 스텁(정책이 관심사가 아닌 테스트용).</summary>
+internal sealed class AllowAllPolicy : IToolPolicyService
+{
+    public ToolPolicyMode Mode => ToolPolicyMode.Cached;
+    public bool IsLoaded => true;
+    public bool IsUnavailable => false;
+    public Task LoadAsync(CancellationToken ct = default) => Task.CompletedTask;
+    public Task<ToolGateDecision> EvaluateAsync(string toolName, JsonElement args, CancellationToken ct = default)
+        => Task.FromResult(ToolGateDecision.Allow());
+    public bool IsExposed(string toolName) => true;
 }

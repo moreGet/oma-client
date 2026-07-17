@@ -277,7 +277,7 @@ public class ContextCompactorTests
 }
 
 /// <summary>요약 응답만 흉내내는 API 스텁.</summary>
-internal sealed class FakeSummarizerApi : IAgentApiClient
+internal sealed class FakeSummarizerApi : StubAgentApi
 {
     private readonly string _summary;
     private readonly bool _throws;
@@ -292,7 +292,7 @@ internal sealed class FakeSummarizerApi : IAgentApiClient
         _throws = throws;
     }
 
-    public async IAsyncEnumerable<AgentStreamEvent> SendAsync(
+    public override async IAsyncEnumerable<AgentStreamEvent> SendAsync(
         AgentRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
         CallCount++;
@@ -306,26 +306,4 @@ internal sealed class FakeSummarizerApi : IAgentApiClient
         yield return new MessageStop("end_turn", new Usage(0, 0, 0));
         await Task.CompletedTask;
     }
-
-    private static T NotUsed<T>() => throw new NotSupportedException("이 테스트에서 호출될 리 없는 멤버입니다.");
-
-    public Task<bool> CheckHealthAsync(CancellationToken ct = default) => NotUsed<Task<bool>>();
-    public Task<ServerReadiness> CheckReadinessAsync(CancellationToken ct = default) => NotUsed<Task<ServerReadiness>>();
-    public Task<IReadOnlyList<ModelInfo>> GetModelsAsync(CancellationToken ct = default) => NotUsed<Task<IReadOnlyList<ModelInfo>>>();
-    public Task<LoginResult> LoginAsync(string u, string p, CancellationToken ct = default) => NotUsed<Task<LoginResult>>();
-    public Task<UserProfile?> GetProfileAsync(CancellationToken ct = default) => NotUsed<Task<UserProfile?>>();
-    public Task<ClientVersionInfo?> GetClientVersionAsync(CancellationToken ct = default) => NotUsed<Task<ClientVersionInfo?>>();
-    public Task<QuotaResponse?> GetQuotaAsync(CancellationToken ct = default) => NotUsed<Task<QuotaResponse?>>();
-    public Task<ToolPolicyFetch> GetToolPolicyAsync(CancellationToken ct = default) => NotUsed<Task<ToolPolicyFetch>>();
-    public Task<ToolAuthorization?> AuthorizeToolAsync(string t, JsonElement a, CancellationToken ct = default) => NotUsed<Task<ToolAuthorization?>>();
-    public Task<CommandSecurityPolicyResponse?> GetCommandSecurityPolicyAsync(CancellationToken ct = default) => NotUsed<Task<CommandSecurityPolicyResponse?>>();
-    public Task<IReadOnlyList<RemoteProject>> ListRemoteProjectsAsync(CancellationToken ct = default) => NotUsed<Task<IReadOnlyList<RemoteProject>>>();
-    public Task<RemoteProject> UpsertRemoteProjectAsync(RemoteProjectUpsert b, CancellationToken ct = default) => NotUsed<Task<RemoteProject>>();
-    public Task UpsertRemoteConversationAsync(string p, RemoteConversation b, CancellationToken ct = default) => NotUsed<Task>();
-    public Task DeleteRemoteProjectAsync(string p, CancellationToken ct = default) => NotUsed<Task>();
-    public Task DeleteRemoteConversationAsync(string p, string c, CancellationToken ct = default) => NotUsed<Task>();
-    public Task<IReadOnlyList<RemoteSessionSummary>?> ListRemoteSessionsAsync(CancellationToken ct = default) => NotUsed<Task<IReadOnlyList<RemoteSessionSummary>?>>();
-    public Task<RemoteSession?> GetRemoteSessionAsync(string id, CancellationToken ct = default) => NotUsed<Task<RemoteSession?>>();
-    public Task<bool> PutRemoteSessionAsync(string id, string t, JsonElement d, CancellationToken ct = default) => NotUsed<Task<bool>>();
-    public Task DeleteRemoteSessionAsync(string id, CancellationToken ct = default) => NotUsed<Task>();
 }
