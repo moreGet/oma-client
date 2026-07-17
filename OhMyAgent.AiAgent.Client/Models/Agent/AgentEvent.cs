@@ -31,3 +31,12 @@ public sealed record AgentDone(string FinalText, Usage? LastUsage) : AgentEvent;
 
 /// <summary>오류 (서버/취소/최대 반복 등).</summary>
 public sealed record AgentError(string Code, string Message) : AgentEvent;
+
+/// <summary>
+/// 정보성 알림 — 오류가 아니다. 전사에만 남고 오류 배너/재시도 버튼을 띄우지 않는다.
+///
+/// AgentError 로 보내면 안 되는 이유: VM 의 분류기가 모르는 코드를 전부 Other 로 보고
+/// "오류" 배너 + "다시 시도" 를 띄운다. 컨텍스트 압축이나 응답 잘림은 정상적인 살림살이라
+/// 사용자에게 알릴 가치는 있지만 실패가 아니며, "다시 시도" 는 엉뚱한 안내다.
+/// </summary>
+public sealed record AgentNotice(string Text) : AgentEvent;

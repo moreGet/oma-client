@@ -17,6 +17,18 @@ public sealed class AgentSession
 
     public Usage? LastUsage { get; set; }
 
+    // ── 컨텍스트 컴팩션 상태 ──
+    //
+    // Messages 는 항상 온전하다(디스크 영속·서버 동기화·UI 가 원본을 본다). 컴팩션은 "서버로 보낼
+    // 투영"에만 적용되며, 그 결과를 여기 캐시한다 — 매 턴 다시 요약하면 요약 비용이 절약분을 넘는다.
+    // 자세한 근거는 ContextCompactor 참조.
+
+    /// <summary>생략된 앞 구간의 요약(없으면 null). 누적 — 재컴팩션 시 이전 요약을 포함해 다시 요약한다.</summary>
+    public string? CompactionSummary { get; set; }
+
+    /// <summary>요약이 대체한 구간의 끝(exclusive). Messages[1..CompactedThrough) 가 요약으로 대체된다.</summary>
+    public int CompactedThrough { get; set; }
+
     /// <summary>새 빈 세션. (기존 경로 보존)</summary>
     public AgentSession() { }
 

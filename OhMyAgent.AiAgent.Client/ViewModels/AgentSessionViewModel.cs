@@ -1091,6 +1091,11 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 }
                 break;
 
+            case AgentNotice notice:
+                // 오류가 아니다 — 전사에만 남긴다. HasError/ErrorTitle/"다시 시도"를 건드리지 않는다.
+                Transcript.Add(new SystemNoticeViewModel { Text = notice.Text });
+                break;
+
             case AgentError err:
                 // API-SPEC §클라이언트 처리 가이드: HTTP 상태(코드)로 분기. 401에서만 재로그인,
                 // 403/429/404/5xx는 메시지만 표시하고 로그아웃하지 않는다.

@@ -173,6 +173,21 @@ public class TaskToolTests
     }
 
     [Fact]
+    public async Task Notice_IsNotMistakenForFailure()
+    {
+        // 하위 루프가 길어져 컴팩션 알림이 뜰 수 있다. 알림은 오류가 아니므로 결과에 섞이거나
+        // 실패로 처리되면 안 된다.
+        var result = await Make(
+                new AgentNotice("대화가 길어져 앞부분을 요약해 압축했습니다."),
+                new AgentDone("결론: A", null))
+            .ExecuteAsync(Args("""{"description":"d","prompt":"임무"}"""), Ctx());
+
+        Assert.False(result.IsError);
+        Assert.Equal("결론: A", result.Content);
+        Assert.DoesNotContain("압축", result.Content);
+    }
+
+    [Fact]
     public async Task EmptyPrompt_IsRejected()
     {
         var result = await Make(new AgentDone("x", null))
