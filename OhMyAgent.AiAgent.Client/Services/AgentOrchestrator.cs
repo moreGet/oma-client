@@ -39,11 +39,13 @@ public sealed class AgentOrchestrator(
         string userGoal,
         AgentSession session,
         IReadOnlyList<Attachment>? attachments = null,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default,
+        int? maxIterations = null)
     {
         var mode = settings.Current.PermissionMode;
 
-        // 1) 시스템 프롬프트 시드.
+        // 1) 시스템 프롬프트 시드 — 비어 있을 때만.
+        //    호출자가 미리 넣어 둔 프롬프트(서브에이전트 전용 등)나 복원된 세션을 덮어쓰지 않는다.
         if (session.Messages.Count == 0)
             session.Messages.Add(AgentMessage.System(
                 AgentSession.DefaultSystemPrompt(workspace.Root, mode, workspace.Roots)));
@@ -51,7 +53,7 @@ public sealed class AgentOrchestrator(
         // 2) 사용자 목표 추가(첨부가 있으면 함께 싣는다).
         session.Messages.Add(AgentMessage.User(userGoal, attachments));
 
-        var max = settings.Current.MaxIterations;
+        var max = maxIterations ?? settings.Current.MaxIterations;
         var iteration = 0;
 
         while (iteration < max && !ct.IsCancellationRequested)

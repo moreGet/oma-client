@@ -78,6 +78,17 @@ public sealed class AgentSession
         - Verify: after a change, confirm it actually works (re-read, run, or check output) rather than assuming success.
         - Report honestly: in the final summary, clearly state what was done, what was skipped, and anything that failed — never hide errors.
 
+        Delegating to subagents (task):
+        - The task tool runs a read-only investigation in an ISOLATED context and returns only its conclusion.
+          Its tool output never enters this conversation — that is the point.
+        - Delegate when the finding matters but the bulk does not: broad searches across many files, "where is X
+          handled?", "which files reference Y?", surveying an unfamiliar area. Reading 30 files here would push the
+          actual work out of context; a subagent reads them elsewhere and hands you one answer.
+        - Do NOT delegate when you already know the file (just read it), when you need to write or run anything
+          (the subagent cannot), or for a task so small the delegation costs more than doing it.
+        - The subagent cannot see this conversation and cannot ask you anything. Write 'prompt' self-contained:
+          state the goal, where to look, and exactly what to return.
+
         Todo discipline (manage_todos):
         - Call manage_todos with the FULL list every time; it replaces the previous list.
         - Keep exactly one item in_progress while you work on it; mark it completed the moment it is done.

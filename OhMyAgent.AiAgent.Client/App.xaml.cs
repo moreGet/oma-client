@@ -184,19 +184,29 @@ public partial class App : Application
             new ExtractArchiveTool(),
         };
 
-        // 6) 도구 레지스트리
-        var registry = new ToolRegistry(tools);
-
-        // 7) 권한 게이트
+        // 6) 권한 게이트
         var permissions = new PermissionService(_settingsService);
 
-        // 8) API 클라이언트
+        // 7) API 클라이언트
         _api = new AgentApiClient(_httpClient, _settingsService);
 
-        // 8a) 서버 도구 정책 게이트(싱글톤 1개) — 오케스트레이터·VM가 동일 인스턴스를 공유한다.
+        // 7a) 서버 도구 정책 게이트(싱글톤 1개) — 오케스트레이터·VM가 동일 인스턴스를 공유한다.
         _toolPolicy = new ToolPolicyService(_api);
 
-        // 9) 오케스트레이터 (에이전트 루프) — 정책 게이트를 가장 앞단에 끼운다.
+        // 8) 서브에이전트 배선 — task 도구가 메인 레지스트리에 들어가기 "전에" 만든다.
+        //    이 순서 덕분에 순환 의존이 없다(서브 오케스트레이터는 자기 레지스트리만 알면 되고,
+        //    그 레지스트리에는 task 가 없다 → 재귀 불가).
+        //
+        //    허용목록으로 거른다. Risk==ReadOnly 로 거르면 manage_todos(부모 할 일 목록을 덮어씀)와
+        //    task 자신(무한 재귀)이 딸려 들어간다 — 근거는 TaskTool.AllowedToolNames 주석 참조.
+        var subagentTools = tools.Where(t => TaskTool.AllowedToolNames.Contains(t.Name)).ToArray();
+        var subOrchestrator = new AgentOrchestrator(
+            _api, new ToolRegistry(subagentTools), permissions, workspace, _settingsService, _toolPolicy);
+
+        // 9) 도구 레지스트리 = 기본 도구 + task
+        var registry = new ToolRegistry([.. tools, new TaskTool(subOrchestrator, workspace)]);
+
+        // 10) 오케스트레이터 (에이전트 루프) — 정책 게이트를 가장 앞단에 끼운다.
         var orchestrator = new AgentOrchestrator(_api, registry, permissions, workspace, _settingsService, _toolPolicy);
 
         // 9a) 바이너리 무결성 검사 서비스 (설치 디렉토리 SHA256 검증, Windows 전용)
