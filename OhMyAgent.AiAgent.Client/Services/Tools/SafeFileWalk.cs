@@ -26,8 +26,13 @@ internal static class SafeFileWalk
     /// <paramref name="root"/> 하위의 파일을 열거한다. 링크(파일/디렉토리 모두)와 읽을 수 없는 디렉토리는
     /// 건너뛰고 <paramref name="skipped"/> 에 담는다 — 호출자는 이를 사용자에게 보고해야 한다.
     /// 조용히 빠뜨리면 "전부 압축됐다"고 오해하게 된다.
+    ///
+    /// <paramref name="skipIgnoredDirs"/> 는 .git/bin/obj/node_modules 등을 순회에서 제외한다.
+    /// 기본값이 false 인 이유: compress_files/copy 는 사용자가 그 폴더를 담으라고 지시했을 수 있어
+    /// 임의로 빼면 안 된다. 탐색(후보 찾기) 용도에서만 켠다.
     /// </summary>
-    public static IEnumerable<string> EnumerateFiles(string root, ICollection<string> skipped, CancellationToken ct)
+    public static IEnumerable<string> EnumerateFiles(
+        string root, ICollection<string> skipped, CancellationToken ct, bool skipIgnoredDirs = false)
     {
         var pending = new Stack<string>();
         pending.Push(root);
@@ -63,6 +68,7 @@ internal static class SafeFileWalk
             foreach (var sub in subDirs)
             {
                 if (IsLink(sub)) { skipped.Add(sub); continue; }
+                if (skipIgnoredDirs && PathIgnore.IsIgnoredDir(sub)) continue;   // 조용히 제외(노이즈라 보고 대상 아님)
                 pending.Push(sub);
             }
         }

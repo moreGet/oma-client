@@ -32,7 +32,10 @@ public sealed class ReadFileTool : ITool
 
         var full = ctx.Workspace.ResolvePath(path);
         if (!File.Exists(full))
-            return ToolResult.Fail($"파일이 존재하지 않습니다: {path}");
+        {
+            // 단순히 "없습니다"로 끝내면 모델에게 다음 수가 없다 — 닮은 이름 후보와 대안을 함께 준다.
+            return ToolResult.Fail(NotFoundHelp.ForFile(ctx.Workspace, path, ct));
+        }
 
         var startLine = ToolSchemas.GetInt(args, "start_line");
         var endLine = ToolSchemas.GetInt(args, "end_line");

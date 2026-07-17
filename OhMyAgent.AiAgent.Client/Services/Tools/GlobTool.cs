@@ -34,6 +34,18 @@ public sealed class GlobTool : ITool
             return Task.FromResult(ToolResult.Fail($"디렉토리가 존재하지 않습니다: {(string.IsNullOrEmpty(path) ? "." : path)}"));
 
         var files = GlobMatcher.EnumerateFiles(baseDir, pattern, Cap).ToList();
+
+        // 0건은 오류가 아니지만 막다른 길이다 — 닮은 이름 후보와 대안(내용 검색/되묻기)을 힌트로 싣는다.
+        if (files.Count == 0)
+        {
+            return Task.FromResult(ToolResult.Json(new
+            {
+                files,
+                truncated = false,
+                hint = NotFoundHelp.ForGlob(ctx.Workspace, pattern, ct)
+            }));
+        }
+
         return Task.FromResult(ToolResult.Json(new { files, truncated = files.Count >= Cap }));
     }
 }

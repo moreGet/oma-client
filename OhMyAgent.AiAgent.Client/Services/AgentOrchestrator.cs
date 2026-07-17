@@ -20,8 +20,20 @@ public sealed class AgentOrchestrator(
     // 서버엔 깔끔한 SemVer 를 전송한다(빌드 메타·해시 제외).
     private static readonly string ClientVersion = AppVersion.Semantic;
 
-    // MaxTokens 설정 제거 후 와이어 필드(max_tokens)는 서버 제어 전제의 상수 기본값으로 전송.
-    private const int DefaultMaxTokens = 4096;
+    /// <summary>
+    /// turn 당 모델 출력 상한(와이어 max_tokens).
+    ///
+    /// v5 에서 사용자 설정을 없애며 "서버 제어" 전제로 상수를 보내기로 했으나, 확인해 보니
+    /// 서버는 이 값에 상한을 두지 않고 그대로 전달만 한다(어댑터는 미지정 시에만 자체 기본값 사용).
+    /// 즉 실질적으로 이 상수가 유일한 통제점이므로, 4096 → 8192 로 올린다.
+    /// 4096 은 긴 최종 요약이 잘리기 쉬운 값이었고, 잘려도 조용히 완료 처리돼 사용자가 알 수 없었다
+    /// (아래 max_tokens stop_reason 처리 참조).
+    ///
+    /// 주의: 서버의 기본 모델(claude-3-5-sonnet-latest)은 8192 를 지원하지만, 출력 상한이 4096 인
+    /// 모델(구 GPT-4 등)로 프로바이더를 바꾸면 프로바이더가 요청을 거부할 수 있다.
+    /// 모델별 상한을 알아서 맞추려면 서버가 clamp 하는 편이 옳다(별도 과제).
+    /// </summary>
+    private const int DefaultMaxTokens = 8192;
 
     public async IAsyncEnumerable<AgentEvent> RunAsync(
         string userGoal,
@@ -108,6 +120,13 @@ public sealed class AgentOrchestrator(
                             || calls is not null;
             if (!isToolUse)
             {
+                // max_tokens 로 끊긴 응답도 여기로 온다. 조용히 완료 처리하면 사용자는 답이 잘린 줄
+                // 모른 채 불완전한 내용을 신뢰하게 된다 — 완료 전에 사실을 알린다.
+                if (string.Equals(stopReason, "max_tokens", StringComparison.OrdinalIgnoreCase))
+                    yield return new AgentError("max_tokens",
+                        $"모델 응답이 turn 당 최대 길이({DefaultMaxTokens} 토큰)에 도달해 잘렸습니다. " +
+                        "이어서 작성해 달라고 요청하거나, 작업을 더 작게 나눠 주세요.");
+
                 yield return new AgentDone(text, session.LastUsage);
                 yield break;
             }

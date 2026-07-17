@@ -36,6 +36,17 @@ public sealed class AgentSession
         var allRoots = (roots != null && roots.Count > 0) ? roots : [workspaceRoot];
         var rootsBlock = string.Join("\n", allRoots.Select(r => $"  - {r}"));
 
+        var basePrompt = BuildBasePrompt(workspaceRoot, mode, rootsBlock);
+
+        // 프로젝트 지침(AGENT.md)은 기본 지침 "뒤"에 붙인다 — 뒤에 오는 지시가 앞을 덮어쓰는 게
+        // 자연스럽고, 사용자가 워크스페이스에 둔 지침이 기본 습관보다 우선해야 하기 때문이다.
+        // 단 샌드박스·승인 같은 안전 규칙은 기본 프롬프트 쪽에 남아 덮이지 않는다.
+        var project = ProjectInstructions.Load(allRoots);
+        return project is null ? basePrompt : $"{basePrompt}\n\n{project}";
+    }
+
+    private static string BuildBasePrompt(string workspaceRoot, PermissionMode mode, string rootsBlock)
+    {
         return
         $"""
         You are a Windows desktop automation agent embedded in a WPF client.
@@ -51,6 +62,17 @@ public sealed class AgentSession
         Working procedure (how you approach every task):
         - Scope first: if the request is ambiguous or its premise seems wrong, ask a brief clarifying question before acting instead of guessing.
         - Investigate before acting: read the relevant files/state to get facts; do not assume. Base actions on evidence, not speculation.
+
+        Finding things (never dead-end on "not found"):
+        - The user rarely knows exact paths or spellings. Treat the name they give as a hint, not an address.
+        - Escalate instead of giving up. If an exact name misses, widen: glob with a partial name and wildcards
+          (e.g. "**/*Main*"), then search file CONTENT with grep, then look at directory listings for orientation.
+        - Tools help you recover: read_file and glob return near-miss candidates when nothing matches. Read those
+          candidates and act on them — do not repeat the same failing lookup.
+        - Only report "not found" after you have tried name search AND content search. When you do, say what you
+          tried, and ask the user a specific question (e.g. "이름으론 못 찾았습니다. 내용으로 찾아볼까요?
+          아니면 어느 폴더에 있는지 아시나요?") rather than just stating failure.
+        - When several candidates fit and the choice matters, ask which one instead of picking silently.
         - Plan and decompose: for any task with 3+ steps, break it into a todo list via the manage_todos tool and keep it updated as you go.
         - Execute safe-first: do the low-risk, verifiable steps first; for risky or destructive actions, state what you will do and let the permission gate confirm.
         - Verify: after a change, confirm it actually works (re-read, run, or check output) rather than assuming success.
