@@ -11,6 +11,12 @@ public abstract record AgentEvent;
 /// <summary>assistant 프로즈 토큰.</summary>
 public sealed record AgentTextDelta(string Text) : AgentEvent;
 
+/// <summary>확장 사고 토큰 — 별도 흐릿한 사고 블록으로 렌더된다(모델이 사고를 켠 경우에만).</summary>
+public sealed record AgentThinkingDelta(string Text) : AgentEvent;
+
+/// <summary>하나의 사고 블록이 닫힘(assistant 프로즈/도구 시작 전 전환).</summary>
+public sealed record AgentThinkingComplete : AgentEvent;
+
 /// <summary>하나의 assistant 턴이 닫힘.</summary>
 public sealed record AgentAssistantMessageComplete(string Text) : AgentEvent;
 

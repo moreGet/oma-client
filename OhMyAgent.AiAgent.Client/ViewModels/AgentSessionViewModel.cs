@@ -44,6 +44,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
     // Current open streaming assistant turn (null between turns).
     private AssistantTurnViewModel? _currentAssistant;
+    private ThinkingViewModel? _currentThinking;
 
     // Guards re-entrant settings writes when seeding properties from settings.
     private bool _suppressPersist;
@@ -534,7 +535,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         InputText = string.Empty;
         HasError = false;
         ErrorMessage = string.Empty;
-        _currentAssistant = null;
+        _currentAssistant = null; _currentThinking = null;
         _toolCards.Clear();
         _todos.Clear();   // 새 목표 — 이전 작업 계획 리셋(에이전트가 manage_todos로 다시 채운다).
 
@@ -634,7 +635,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
         Transcript.Clear();
         _toolCards.Clear();
-        _currentAssistant = null;
+        _currentAssistant = null; _currentThinking = null;
         _session = new AgentSession();
         Attachments.Clear();
         _permissions.ClearSessionRules();
@@ -726,7 +727,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         {
             Transcript.Clear();
             _toolCards.Clear();
-            _currentAssistant = null;
+            _currentAssistant = null; _currentThinking = null;
             _session = new AgentSession();
             Attachments.Clear();
             _permissions.ClearSessionRules();
@@ -778,7 +779,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
             {
                 Transcript.Clear();
                 _toolCards.Clear();
-                _currentAssistant = null;
+                _currentAssistant = null; _currentThinking = null;
                 _session = new AgentSession();
                 Attachments.Clear();
                 _permissions.ClearSessionRules();
@@ -941,7 +942,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
         Transcript.Clear();
         _toolCards.Clear();
-        _currentAssistant = null;
+        _currentAssistant = null; _currentThinking = null;
         Attachments.Clear();
         HasError = false;
         ErrorMessage = string.Empty;
@@ -1030,11 +1031,24 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 EnsureAssistant().Text += d.Text;
                 break;
 
+            case AgentThinkingDelta td:
+                EnsureThinking().Text += td.Text;
+                break;
+
+            case AgentThinkingComplete:
+                if (_currentThinking is { } tvm)
+                {
+                    tvm.IsStreaming = false;
+                    tvm.IsExpanded = false;   // 사고가 끝나면 접어 최종 답변을 가리지 않는다.
+                    _currentThinking = null;
+                }
+                break;
+
             case AgentAssistantMessageComplete:
                 if (_currentAssistant is { } a)
                 {
                     a.IsStreaming = false;
-                    _currentAssistant = null;
+                    _currentAssistant = null; _currentThinking = null;
                 }
                 break;
 
@@ -1079,7 +1093,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
                 if (_currentAssistant is { } finalAssistant)
                 {
                     finalAssistant.IsStreaming = false;
-                    _currentAssistant = null;
+                    _currentAssistant = null; _currentThinking = null;
                 }
                 StatusText = "완료";
                 if (done.LastUsage is { } usage)
@@ -1164,6 +1178,17 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         _currentAssistant = a;
         Transcript.Add(a);
         return a;
+    }
+
+    private ThinkingViewModel EnsureThinking()
+    {
+        if (_currentThinking is { IsStreaming: true } existing)
+            return existing;
+
+        var t = new ThinkingViewModel { IsStreaming = true };
+        _currentThinking = t;
+        Transcript.Add(t);
+        return t;
     }
 
     // ── Helpers ────────────────────────────────────────────────────────

@@ -74,6 +74,10 @@ public sealed class AgentOrchestrator(
             var pendingCalls = new List<ToolCall>();
             string? stopReason = null;
             ErrorEvent? streamError = null;
+            // 확장 사고: 서명은 스트림 델타로 오지 않고 message_stop 에만 있으므로 그때 확정한다.
+            var thinkingText = new StringBuilder();
+            string? thinkingSignature = null;
+            var thinkingOpen = false;
 
             // a) 모델 응답 스트리밍.
             await foreach (var signal in SafeStream(request, ct).ConfigureAwait(false))
@@ -87,17 +91,34 @@ public sealed class AgentOrchestrator(
                 var evt = ((StreamItem)signal).Event;
                 if (evt is ContentDelta cd)
                 {
+                    // 사고 다음에 프로즈가 시작되면 사고 블록을 먼저 닫는다(UI 전환).
+                    if (thinkingOpen) { thinkingOpen = false; yield return new AgentThinkingComplete(); }
                     assistantText.Append(cd.Text);
                     yield return new AgentTextDelta(cd.Text);
                 }
+                else if (evt is ThinkingDelta td)
+                {
+                    thinkingOpen = true;
+                    thinkingText.Append(td.Text);
+                    yield return new AgentThinkingDelta(td.Text);
+                }
                 else if (evt is ToolCallEvent tce)
                 {
+                    if (thinkingOpen) { thinkingOpen = false; yield return new AgentThinkingComplete(); }
                     pendingCalls.Add(new ToolCall(tce.Id, tce.Name, tce.Args));
                 }
                 else if (evt is MessageStop ms)
                 {
                     stopReason = ms.StopReason;
                     session.LastUsage = ms.Usage;
+                    if (!string.IsNullOrEmpty(ms.ThinkingSignature))
+                        thinkingSignature = ms.ThinkingSignature;
+                    // 서버가 사고 원문을 확정본으로 준다면 그것을 신뢰한다(델타 누적과 미세하게 다를 수 있음).
+                    if (!string.IsNullOrEmpty(ms.Thinking))
+                    {
+                        thinkingText.Clear();
+                        thinkingText.Append(ms.Thinking);
+                    }
                 }
                 else if (evt is ErrorEvent ee)
                 {
@@ -106,6 +127,9 @@ public sealed class AgentOrchestrator(
                 }
                 // MessageStart 무시.
             }
+
+            if (thinkingOpen)
+                yield return new AgentThinkingComplete();
 
             if (streamError is not null)
             {
@@ -119,10 +143,13 @@ public sealed class AgentOrchestrator(
                 yield break;
             }
 
-            // d) assistant 턴 기록.
+            // d) assistant 턴 기록. 사고 블록(서명 포함)을 함께 저장해야 다음 요청에서 재생돼 400 을 피한다.
             var calls = pendingCalls.Count > 0 ? pendingCalls : null;
             var text = assistantText.ToString();
-            session.Messages.Add(AgentMessage.Assistant(text, calls));
+            session.Messages.Add(AgentMessage.Assistant(
+                text, calls,
+                thinkingText.Length > 0 ? thinkingText.ToString() : null,
+                thinkingSignature));
             yield return new AgentAssistantMessageComplete(text);
 
             // e) tool_use 가 아니면 완료.
@@ -323,13 +350,19 @@ public sealed class AgentOrchestrator(
         // 서버 정책상 노출(exposed) 도구만 모델에 전달한다(비활성 도구는 모델이 아예 못 봄).
         // 미로드/realtime이면 IsExposed가 전체 true → 현행과 동일.
         var exposedTools = tools.ToSchemas().Where(t => policy.IsExposed(t.Name)).ToList();
+
+        // 확장 사고: 설정이 켜졌을 때만 요청에 실어 사고 스트림을 받는다. adaptive 형식은 최신 모델(4.x/5)용이며,
+        // 서버 기본 모델(3.5-sonnet)에선 400 이 나므로 기본값은 false 다(AppSettings.ShowThinking 주석 참조).
+        var thinking = s.ShowThinking ? new ThinkingRequest("adaptive") : null;
+
         return new AgentRequest(
             Model: s.ModelId,
             Stream: true,
             MaxTokens: DefaultMaxTokens,
             Messages: ContextCompactor.BuildWireMessages(session),
             Tools: exposedTools,
-            Metadata: new RequestMetadata("windows", workspace.Root, ClientVersion));
+            Metadata: new RequestMetadata("windows", workspace.Root, ClientVersion),
+            Thinking: thinking);
     }
 
     // R3(설계 의도): 도구 예외는 여기서 중앙집중으로 ToolResult.Fail(is_error) 변환 — 모든 도구가

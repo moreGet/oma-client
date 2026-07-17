@@ -14,6 +14,7 @@ public sealed class TranscriptItemTemplateSelector : DataTemplateSelector
     public DataTemplate? AssistantTemplate { get; set; }
     public DataTemplate? SystemTemplate { get; set; }
     public DataTemplate? ToolCallTemplate { get; set; }
+    public DataTemplate? ThinkingTemplate { get; set; }
 
     public override DataTemplate? SelectTemplate(object? item, DependencyObject container)
         => item switch
@@ -22,6 +23,7 @@ public sealed class TranscriptItemTemplateSelector : DataTemplateSelector
             AssistantTurnViewModel => AssistantTemplate,
             SystemNoticeViewModel  => SystemTemplate,
             ToolCallViewModel      => ToolCallTemplate,
+            ThinkingViewModel      => ThinkingTemplate,
             _                      => base.SelectTemplate(item, container),
         };
 }

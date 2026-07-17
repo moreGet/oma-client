@@ -54,4 +54,8 @@ public class AppSettings
     public string QuotaChipWindow { get; set; } = "auto";   // "auto"|"day"|"week"|"month" — 상단 쿼터 칩 표시 기준
     public bool SidebarCollapsed { get; set; } = false;     // 좌측 사이드바 접힘 상태(세션 간 유지)
     public double UiScale { get; set; } = 1.0;              // 0.9~1.6 — UI 전체 배율(접근성)
+
+    // 확장 사고 표시. 기본 false — 서버 기본 모델(3.5-sonnet)은 확장 사고를 지원하지 않으므로
+    // 켜면 그 모델에선 400 이 난다. 사고 지원 모델(4.x/5)로 설정된 경우에만 켠다.
+    public bool ShowThinking { get; set; } = false;
 }

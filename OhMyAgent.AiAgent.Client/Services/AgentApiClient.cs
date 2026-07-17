@@ -657,6 +657,9 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
                 case "content_delta":
                     return new ContentDelta(GetString(root, "delta"));
 
+                case "thinking_delta":
+                    return new ThinkingDelta(GetString(root, "delta"));
+
                 case "tool_call":
                     JsonElement args;
                     if (root.TryGetProperty("arguments", out var argsEl))
@@ -703,7 +706,8 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
                     var usage = root.TryGetProperty("usage", out var usageEl)
                         ? usageEl.Deserialize<Usage>(AgentJson.Options) ?? new Usage(0, 0)
                         : new Usage(0, 0);
-                    return new MessageStop(stopReason, usage);
+                    return new MessageStop(stopReason, usage,
+                        GetString(root, "thinking"), GetString(root, "thinking_signature"));
 
                 case "error":
                     // 서버는 스트리밍 error 를 중첩 envelope 로 전달: {"error":{"code","message"}}.

@@ -28,6 +28,19 @@ public sealed record AgentMessage
     public bool? IsError { get; init; }
 
     /// <summary>
+    /// assistant 턴의 확장 사고 원문(사고 미사용 시 null). 재생용 — 사고가 켜진 채 도구를 쓴 턴은
+    /// 다음 요청에 이 사고 블록을 되돌려 보내야 서버가 400 을 내지 않는다. null 이면 직렬화 생략.
+    /// </summary>
+    [JsonPropertyName("thinking")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Thinking { get; init; }
+
+    /// <summary>그 사고 블록의 서명(변조 검증용). 서버가 바이트 그대로 요구하므로 손대지 않는다.</summary>
+    [JsonPropertyName("thinking_signature")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ThinkingSignature { get; init; }
+
+    /// <summary>
     /// 예약 필드 — 클라이언트 첨부 메타. 서버 소비는 미래(API_CONTRACT §8). null이면 직렬화 생략.
     /// AgentJson.Options(WhenWritingNull)이므로 첨부 없으면 바이트 단위로 기존 요청 불변.
     /// </summary>
@@ -40,8 +53,17 @@ public sealed record AgentMessage
     public static AgentMessage User(string content, IReadOnlyList<Attachment>? attachments = null) =>
         new() { Role = MessageRole.User, Content = content, Attachments = attachments };
 
-    public static AgentMessage Assistant(string? content, IReadOnlyList<ToolCall>? toolCalls = null) =>
-        new() { Role = MessageRole.Assistant, Content = content, ToolCalls = toolCalls };
+    public static AgentMessage Assistant(string? content, IReadOnlyList<ToolCall>? toolCalls = null,
+        string? thinking = null, string? thinkingSignature = null) =>
+        new()
+        {
+            Role = MessageRole.Assistant,
+            Content = content,
+            ToolCalls = toolCalls,
+            // 서명 없는 사고는 재생 불가라 서버가 거부한다 → 둘 다 있을 때만 싣는다.
+            Thinking = string.IsNullOrEmpty(thinkingSignature) ? null : thinking,
+            ThinkingSignature = string.IsNullOrEmpty(thinkingSignature) ? null : thinkingSignature,
+        };
 
     public static AgentMessage ToolResultMsg(string toolCallId, string content, bool isError) =>
         new() { Role = MessageRole.Tool, ToolCallId = toolCallId, Content = content, IsError = isError };

@@ -271,12 +271,63 @@
         </Border>
     </DataTemplate>
 
+    <!-- ══ 확장 사고 블록 (접이식 · 흐릿 · 최종 답변과 구분) ═════════════ -->
+    <DataTemplate x:Key="ThinkingTemplate" DataType="{x:Type tvm:ThinkingViewModel}">
+        <Border Margin="14,4,84,4"
+                Padding="12,8"
+                CornerRadius="{StaticResource RadiusLg}"
+                Background="{StaticResource Surface2Bg}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1">
+            <StackPanel>
+                <!-- 헤더: 클릭하면 접힘/펼침 토글 -->
+                <ToggleButton IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                              Cursor="Hand"
+                              HorizontalAlignment="Left"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Padding="0">
+                    <ToggleButton.Template>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="💭" FontSize="{StaticResource FontSizeSmall}" Margin="0,0,6,0"/>
+                                <TextBlock Text="사고 과정"
+                                           Foreground="{StaticResource TextMuted}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="{StaticResource FontSizeSmall}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <!-- 스트리밍 중 표시 -->
+                                <TextBlock Text=" · 생각 중…"
+                                           Foreground="{StaticResource TextMuted}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="{StaticResource FontSizeSmall}"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding IsStreaming, Converter={StaticResource BoolToVisibility}}"/>
+                            </StackPanel>
+                        </ControlTemplate>
+                    </ToggleButton.Template>
+                </ToggleButton>
+
+                <!-- 본문: 흐릿한 회색, 접힘 상태면 숨김 -->
+                <TextBlock Text="{Binding Text}"
+                           Margin="2,6,0,0"
+                           Foreground="{StaticResource TextMuted}"
+                           FontFamily="{StaticResource AppFont}"
+                           FontSize="{StaticResource FontSizeSmall}"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+        </Border>
+    </DataTemplate>
+
     <!-- ══ 셀렉터 ══════════════════════════════════════════════════════ -->
     <views:TranscriptItemTemplateSelector x:Key="TranscriptSelector"
         UserTemplate="{StaticResource UserTurnTemplate}"
         AssistantTemplate="{StaticResource AssistantTurnTemplate}"
         SystemTemplate="{StaticResource SystemNoticeTemplate}"
-        ToolCallTemplate="{StaticResource ToolCallTemplate}"/>
+        ToolCallTemplate="{StaticResource ToolCallTemplate}"
+        ThinkingTemplate="{StaticResource ThinkingTemplate}"/>
 
     <!-- ══ 인라인 승인 카드 (PendingApproval) ══════════════════════════ -->
     <!-- DataContext = ApprovalRequestViewModel -->
