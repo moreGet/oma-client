@@ -1,7 +1,9 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using OhMyAgent.AiAgent.Client.ViewModels;
+using OhMyAgent.AiAgent.Client.ViewModels.Transcript;
 using OhMyAgent.AiAgent.Client.Views;
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
@@ -10,12 +12,16 @@ namespace OhMyAgent.AiAgent.Client;
 
 public partial class MainWindow : Window
 {
+    // 자동 스크롤 추종 여부. 사용자가 위로 스크롤하면 꺼지고, 바닥으로 돌아오거나 새 메시지를 보내면 켜진다.
+    private bool _autoScroll = true;
+
     public MainWindow(AgentSessionViewModel vm)
     {
         InitializeComponent();
         DataContext = vm;
 
         vm.Transcript.CollectionChanged += Transcript_CollectionChanged;
+        ChatScrollViewer.ScrollChanged += ChatScrollViewer_ScrollChanged;
     }
 
     // Enter → 전송 / Shift+Enter → 줄바꿈
@@ -29,11 +35,33 @@ public partial class MainWindow : Window
             vm.SendCommand.Execute(null);
     }
 
-    // 새 항목 도착 시 자동 스크롤
+    // 새 항목 도착 시 — 사용자가 방금 보낸 메시지면 추종을 다시 켜고 바닥으로. 그 외엔 추종 중일 때만.
     private void Transcript_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (e.Action == NotifyCollectionChangedAction.Add)
+        if (e.Action != NotifyCollectionChangedAction.Add) return;
+
+        if (e.NewItems?.Count > 0 && e.NewItems[0] is UserTurnViewModel)
+            _autoScroll = true;   // 사용자가 보낸 새 턴 → 항상 따라간다(위로 봤더라도 재개).
+
+        if (_autoScroll)
             ChatScrollViewer.ScrollToEnd();
+    }
+
+    // 스트리밍으로 콘텐츠가 자라거나 사용자가 직접 스크롤할 때 — 추종/잠금을 갱신한다.
+    // CollectionChanged 는 항목 "추가"만 잡으므로, 스트리밍 중 텍스트가 늘어나는(ExtentHeight 증가) 경우는 여기서 처리.
+    private void ChatScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.ExtentHeightChange > 0)
+        {
+            // 콘텐츠가 자랐다(스트리밍/새 블록) — 추종 중이면 바닥 유지.
+            if (_autoScroll)
+                ChatScrollViewer.ScrollToEnd();
+        }
+        else if (e.VerticalChange != 0)
+        {
+            // 사용자가 직접 스크롤 — 바닥 근처면 추종 재개, 위로 올렸으면 잠근다(스트리밍 중 강제로 끌어내리지 않게).
+            _autoScroll = ChatScrollViewer.ScrollableHeight - ChatScrollViewer.VerticalOffset < 12;
+        }
     }
 
     // + 버튼 → 파일 첨부 다이얼로그 (MVVM 안전: 선택 경로를 VM 진입점으로 전달)
