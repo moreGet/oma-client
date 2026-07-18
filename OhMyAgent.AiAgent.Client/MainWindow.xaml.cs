@@ -24,15 +24,32 @@ public partial class MainWindow : Window
         ChatScrollViewer.ScrollChanged += ChatScrollViewer_ScrollChanged;
     }
 
-    // Enter → 전송 / Shift+Enter → 줄바꿈
+    // Enter → 전송 / Shift+Enter → 줄바꿈 / Esc → 실행 중이면 중지 / 빈 입력에서 ↑ → 마지막 메시지 되불러오기
     private void InputBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (e.Key != System.Windows.Input.Key.Enter) return;
-        if (System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift)) return;
+        if (DataContext is not AgentSessionViewModel vm) return;
 
-        e.Handled = true;
-        if (DataContext is AgentSessionViewModel vm && vm.SendCommand.CanExecute(null))
-            vm.SendCommand.Execute(null);
+        switch (e.Key)
+        {
+            case System.Windows.Input.Key.Enter
+                when !System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift):
+                e.Handled = true;
+                if (vm.SendCommand.CanExecute(null)) vm.SendCommand.Execute(null);
+                break;
+
+            case System.Windows.Input.Key.Escape when vm.StopCommand.CanExecute(null):
+                // 실행 중일 때만 중지. 그 외엔 기본 동작(포커스 등)을 막지 않는다.
+                e.Handled = true;
+                vm.StopCommand.Execute(null);
+                break;
+
+            case System.Windows.Input.Key.Up
+                when string.IsNullOrEmpty(vm.InputText) && !string.IsNullOrEmpty(vm.LastSentMessage):
+                // 셸 히스토리처럼 — 빈 입력창에서 위 화살표는 마지막 메시지를 되불러 편집.
+                e.Handled = true;
+                vm.InputText = vm.LastSentMessage;
+                break;
+        }
     }
 
     // 새 항목 도착 시 — 사용자가 방금 보낸 메시지면 추종을 다시 켜고 바닥으로. 그 외엔 추종 중일 때만.

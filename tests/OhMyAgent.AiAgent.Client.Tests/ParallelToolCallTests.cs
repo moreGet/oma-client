@@ -229,12 +229,14 @@ public class ParallelToolCallTests
     {
         using var cts = new CancellationTokenSource();
         var tracker = new ConcurrencyTracker();
+        // 도구 실행이 "시작되는 순간" 취소한다 — assistant(tool_use)는 이미 이력에 있고 실행은 진행 중.
+        // 이렇게 해야 스트리밍 단계 취소(오염 자체가 없는 경우)와 레이스하지 않고 결정적으로 검증된다.
         var tools = Enumerable.Range(0, 3)
-            .Select(i => (ITool)new DelayTool($"read{i}", ToolRisk.ReadOnly, TimeSpan.FromSeconds(5), tracker))
+            .Select(i => (ITool)new DelayTool($"read{i}", ToolRisk.ReadOnly, TimeSpan.FromSeconds(5), tracker,
+                onEnter: cts.Cancel))
             .ToArray();
 
         var session = new AgentSession();
-        cts.CancelAfter(TimeSpan.FromMilliseconds(100));
         await RunAsync(Build(ApiCalling("read0", "read1", "read2"), tools), session, cts.Token);
 
         AssertEveryToolUsePaired(session);
@@ -245,21 +247,20 @@ public class ParallelToolCallTests
     {
         using var cts = new CancellationTokenSource();
         var tracker = new ConcurrencyTracker();
-        // 쓰기 도구가 섞여 순차 경로를 타게 한다.
+        // 쓰기 도구가 섞여 순차 경로를 타게 한다. 첫 도구 실행 시작 시 취소.
         ITool[] tools =
         [
-            new DelayTool("write0", ToolRisk.Write, TimeSpan.FromSeconds(5), tracker),
+            new DelayTool("write0", ToolRisk.Write, TimeSpan.FromSeconds(5), tracker, onEnter: cts.Cancel),
             new DelayTool("write1", ToolRisk.Write, TimeSpan.FromSeconds(5), tracker),
         ];
 
         var session = new AgentSession();
-        cts.CancelAfter(TimeSpan.FromMilliseconds(100));
         await RunAsync(Build(ApiCalling("write0", "write1"), tools), session, cts.Token);
 
         AssertEveryToolUsePaired(session);
     }
 
-    /// <summary>이력의 모든 tool_use 에 대응하는 tool_result 가 있는지 — Anthropic 이 요구하는 불변식.</summary>
+    /// <summary>이력의 모든 tool_use 에 대응하는 tool_result 가 있는지 — Anthropic 이 요구하는 불변식(오염 방지).</summary>
     private static void AssertEveryToolUsePaired(AgentSession session)
     {
         var toolUseIds = session.Messages
@@ -267,6 +268,7 @@ public class ParallelToolCallTests
         var resultIds = session.Messages
             .Where(m => m.Role == MessageRole.Tool).Select(m => m.ToolCallId!).ToHashSet();
 
+        // 실행 시작 시 취소했으므로 tool_use 는 반드시 기록돼 있어야 하고, 전부 짝이 맞아야 한다.
         Assert.NotEmpty(toolUseIds);
         foreach (var id in toolUseIds)
             Assert.Contains(id, resultIds);
@@ -295,7 +297,8 @@ internal sealed class ConcurrencyTracker
 }
 
 internal sealed class DelayTool(
-    string name, ToolRisk risk, TimeSpan delay, ConcurrencyTracker tracker, string? result = null) : ITool
+    string name, ToolRisk risk, TimeSpan delay, ConcurrencyTracker tracker,
+    string? result = null, Action? onEnter = null) : ITool
 {
     public string Name => name;
     public string Description => "테스트 도구";
@@ -307,6 +310,7 @@ internal sealed class DelayTool(
         tracker.Enter();
         try
         {
+            onEnter?.Invoke();   // 실행 시작 시점 훅(취소 트리거 등)
             if (delay > TimeSpan.Zero)
                 await Task.Delay(delay, ct).ConfigureAwait(false);
             return ToolResult.Ok(result ?? name);

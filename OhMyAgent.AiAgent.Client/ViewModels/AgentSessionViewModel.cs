@@ -526,12 +526,24 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
     private bool CanSend() => !IsBusy && !string.IsNullOrWhiteSpace(InputText);
 
+    /// <summary>마지막으로 보낸 사용자 메시지(위 화살표/‎/retry 로 되불러 편집). 셸 히스토리처럼 단순 1개.</summary>
+    public string LastSentMessage { get; private set; } = string.Empty;
+
     [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendAsync()
     {
         var goal = InputText.Trim();
         if (string.IsNullOrEmpty(goal)) return;
 
+        // 슬래시 커맨드는 모델에 보내지 않고 클라이언트가 직접 처리한다.
+        var slash = SlashCommands.Parse(goal);
+        if (slash.Kind != SlashCommandKind.None)
+        {
+            await HandleSlashCommandAsync(slash).ConfigureAwait(true);
+            return;
+        }
+
+        LastSentMessage = goal;
         InputText = string.Empty;
         HasError = false;
         ErrorMessage = string.Empty;
@@ -617,6 +629,32 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
             // 턴 완료로 사용량이 변동 — best-effort 쿼터 재조회(턴당 1회).
             _ = RefreshQuotaAsync();
+        }
+    }
+
+    /// <summary>슬래시 커맨드 실행. 모델 호출 없이 클라이언트가 직접 처리한다.</summary>
+    private async Task HandleSlashCommandAsync(SlashCommand cmd)
+    {
+        switch (cmd.Kind)
+        {
+            case SlashCommandKind.Clear:
+                InputText = string.Empty;
+                await ClearAsync().ConfigureAwait(true);
+                break;
+
+            case SlashCommandKind.Retry:
+                // 마지막 메시지를 입력창으로 되불러 편집·재전송하게 한다(기존 이력은 건드리지 않는다).
+                InputText = string.IsNullOrEmpty(LastSentMessage) ? InputText : LastSentMessage;
+                break;
+
+            case SlashCommandKind.Help:
+                InputText = string.Empty;
+                Transcript.Add(new SystemNoticeViewModel { Text = SlashCommands.HelpText });
+                break;
+
+            case SlashCommandKind.Unknown:
+                Transcript.Add(new SystemNoticeViewModel { Text = SlashCommands.UnknownText(cmd.Raw) });
+                break;
         }
     }
 

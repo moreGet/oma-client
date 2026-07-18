@@ -42,6 +42,21 @@
                                FontSize="{StaticResource FontSizeXSmall}"
                                FontWeight="SemiBold"
                                VerticalAlignment="Center"/>
+                    <!-- 복사: 렌더된 응답은 통째로 선택이 안 되므로 원문 복사 버튼을 제공. 스트리밍 끝나면 표시. -->
+                    <Button Command="{Binding CopyCommand}"
+                            Cursor="Hand"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="4,0"
+                            Margin="8,0,0,0"
+                            ToolTip="응답 복사"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding IsStreaming, Converter={StaticResource InverseBoolToVisibility}}">
+                        <TextBlock Text="⧉ 복사"
+                                   Foreground="{StaticResource TextMuted}"
+                                   FontFamily="{StaticResource AppFont}"
+                                   FontSize="{StaticResource FontSizeCaption}"/>
+                    </Button>
                 </StackPanel>
                 <Border Background="{StaticResource AgentBubble}"
                         BorderBrush="{StaticResource BorderBrush}"
