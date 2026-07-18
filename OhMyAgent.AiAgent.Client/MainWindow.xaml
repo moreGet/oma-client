@@ -779,7 +779,45 @@
                                      MaxLines="6" MinHeight="40" MaxHeight="140"
                                      VerticalScrollBarVisibility="Auto"
                                      IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}"
-                                     KeyDown="InputBox_KeyDown"/>
+                                     KeyDown="InputBox_KeyDown"
+                                     TextChanged="InputBox_TextChanged"
+                                     SelectionChanged="InputBox_SelectionChanged"/>
+
+                            <!-- @파일 자동완성 팝업 (입력창 위에 뜬다) -->
+                            <Popup IsOpen="{Binding FileMention.IsActive, Mode=OneWay}"
+                                   PlacementTarget="{Binding ElementName=InputBox}"
+                                   Placement="Top"
+                                   AllowsTransparency="True"
+                                   PopupAnimation="Fade"
+                                   StaysOpen="True">
+                                <Border Background="{StaticResource SurfaceBg}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="{StaticResource RadiusLg}"
+                                        Padding="4"
+                                        MaxWidth="520"
+                                        Effect="{StaticResource CardShadow}">
+                                    <ListBox x:Name="MentionList"
+                                             ItemsSource="{Binding FileMention.Candidates}"
+                                             SelectedIndex="{Binding FileMention.SelectedIndex, Mode=TwoWay}"
+                                             Background="Transparent" BorderThickness="0"
+                                             MaxHeight="220"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             MouseLeftButtonUp="MentionList_MouseLeftButtonUp">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" Margin="4,2">
+                                                    <TextBlock Text="📄" FontSize="{StaticResource FontSizeSmall}" Margin="0,0,7,0"/>
+                                                    <TextBlock Text="{Binding}"
+                                                               Foreground="{StaticResource TextPrimary}"
+                                                               FontFamily="{StaticResource MonoFont}"
+                                                               FontSize="{StaticResource FontSizeSmall}"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Border>
+                            </Popup>
                             <!-- Placeholder -->
                             <TextBlock Text="작업을 입력하세요 (Enter 전송 · Shift+Enter 줄바꿈)" IsHitTestVisible="False"
                                        Foreground="{StaticResource TextMuted}" FontSize="{StaticResource FontSizeBodyLarge}"

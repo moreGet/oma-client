@@ -24,10 +24,57 @@ public partial class MainWindow : Window
         ChatScrollViewer.ScrollChanged += ChatScrollViewer_ScrollChanged;
     }
 
+    // @파일 자동완성: 텍스트/caret 변화 → 후보 갱신.
+    private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (DataContext is AgentSessionViewModel vm)
+            vm.FileMention.UpdateFromInput(InputBox.Text, InputBox.CaretIndex);
+    }
+
+    private void InputBox_SelectionChanged(object sender, RoutedEventArgs e)
+    {
+        // caret 만 움직여도(텍스트 변화 없이) 토큰 문맥이 바뀔 수 있다.
+        if (DataContext is AgentSessionViewModel vm)
+            vm.FileMention.UpdateFromInput(InputBox.Text, InputBox.CaretIndex);
+    }
+
+    // 후보 클릭 → 삽입.
+    private void MentionList_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => AcceptMention();
+
+    // 선택된 후보를 입력창에 삽입(토큰을 "@경로 "로 대체하고 caret 이동).
+    private void AcceptMention()
+    {
+        if (DataContext is not AgentSessionViewModel vm) return;
+        var applied = vm.FileMention.Accept(InputBox.Text);
+        if (applied is not { } r) return;
+
+        InputBox.Text = r.Text;          // 양방향 바인딩으로 InputText 도 갱신.
+        InputBox.CaretIndex = r.Caret;
+        InputBox.Focus();
+    }
+
     // Enter → 전송 / Shift+Enter → 줄바꿈 / Esc → 실행 중이면 중지 / 빈 입력에서 ↑ → 마지막 메시지 되불러오기
     private void InputBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (DataContext is not AgentSessionViewModel vm) return;
+
+        // @자동완성이 열려 있으면 방향/확정/취소 키를 팝업이 먼저 가져간다.
+        if (vm.FileMention.IsActive)
+        {
+            switch (e.Key)
+            {
+                case System.Windows.Input.Key.Down:
+                    e.Handled = true; vm.FileMention.MoveSelection(+1); return;
+                case System.Windows.Input.Key.Up:
+                    e.Handled = true; vm.FileMention.MoveSelection(-1); return;
+                case System.Windows.Input.Key.Enter:
+                case System.Windows.Input.Key.Tab:
+                    e.Handled = true; AcceptMention(); return;
+                case System.Windows.Input.Key.Escape:
+                    e.Handled = true; vm.FileMention.Close(); return;
+            }
+        }
 
         switch (e.Key)
         {

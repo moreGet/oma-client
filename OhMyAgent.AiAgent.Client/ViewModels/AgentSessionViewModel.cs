@@ -202,6 +202,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
         _policy = policy;
         _sessionSync = sessionSync;
         _todos = todos;
+        FileMention = new FileMentionViewModel(workspace);
 
         // 도구(manage_todos)가 백그라운드 스레드에서 갱신 → UI 디스패처로 마샬해 Todos 컬렉션 재구성.
         _todos.TodosChanged += OnTodosChanged;
@@ -529,6 +530,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     /// <summary>마지막으로 보낸 사용자 메시지(위 화살표/‎/retry 로 되불러 편집). 셸 히스토리처럼 단순 1개.</summary>
     public string LastSentMessage { get; private set; } = string.Empty;
 
+    /// <summary>입력창의 @파일 자동완성(코드비하인드가 caret 과 함께 구동).</summary>
+    public FileMentionViewModel FileMention { get; }
+
     [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendAsync()
     {
@@ -545,6 +549,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
         LastSentMessage = goal;
         InputText = string.Empty;
+        FileMention.Close();   // 전송 시 열려 있던 @자동완성 닫기
         HasError = false;
         ErrorMessage = string.Empty;
         _currentAssistant = null; _currentThinking = null;

@@ -85,6 +85,11 @@ public sealed class AgentSession
         - Scope first: if the request is ambiguous or its premise seems wrong, ask a brief clarifying question before acting instead of guessing.
         - Investigate before acting: read the relevant files/state to get facts; do not assume. Base actions on evidence, not speculation.
 
+        File references (@path):
+        - The user may point you at a workspace file by writing @ followed by its path, e.g. "@src/Main.cs 이거 고쳐줘".
+          Treat @path as an explicit pointer to that exact file — read it with read_file before acting on it.
+        - Multiple @paths in one message mean all of them are relevant; read each.
+
         Finding things (never dead-end on "not found"):
         - The user rarely knows exact paths or spellings. Treat the name they give as a hint, not an address.
         - Escalate instead of giving up. If an exact name misses, widen: glob with a partial name and wildcards
