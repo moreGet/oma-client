@@ -1009,7 +1009,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject
     private async Task<PermissionDecision> RequestApprovalAsync(
         ToolCall call, ToolRisk risk, CancellationToken ct)
     {
-        var vm = new ApprovalRequestViewModel(call.Name, risk, RenderArgs(call.Arguments));
+        var vm = new ApprovalRequestViewModel(call.Name, risk, RenderArgs(call.Arguments), call.Arguments);
         await UiInvokeAsync(() => PendingApproval = vm).ConfigureAwait(false);
         try
         {

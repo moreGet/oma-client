@@ -82,6 +82,12 @@
     <SolidColorBrush x:Key="ChatMutedBrush"      Color="#93A1B5"/>  <!-- presence/부제 -->
     <SolidColorBrush x:Key="ChatDimBrush"        Color="#5D6B7E"/>  <!-- 메타(시각) -->
 
+    <!-- diff 색(edit_file 승인 카드) — 추가=녹색, 삭제=적색, 배경은 옅게 -->
+    <SolidColorBrush x:Key="DiffAddText"    Color="#3FB950"/>
+    <SolidColorBrush x:Key="DiffAddBg"      Color="#1A2E1F"/>
+    <SolidColorBrush x:Key="DiffRemoveText" Color="#F85149"/>
+    <SolidColorBrush x:Key="DiffRemoveBg"   Color="#2E1A1D"/>
+
     <!-- 아바타 그라디언트 (CSS 135° : accent → violet) -->
     <LinearGradientBrush x:Key="ChatAvatarGradient" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="#388BFD" Offset="0"/>

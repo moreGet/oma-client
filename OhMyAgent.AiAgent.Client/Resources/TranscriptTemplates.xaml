@@ -2,7 +2,8 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:tvm="clr-namespace:OhMyAgent.AiAgent.Client.ViewModels.Transcript"
                     xmlns:views="clr-namespace:OhMyAgent.AiAgent.Client.Views"
-                    xmlns:md="clr-namespace:OhMyAgent.AiAgent.Client.Views.Markdown">
+                    xmlns:md="clr-namespace:OhMyAgent.AiAgent.Client.Views.Markdown"
+                    xmlns:diff="clr-namespace:OhMyAgent.AiAgent.Client.Services.Diff">
 
     <!-- ══ 사용자 메시지 버블 (accent 그라데이션) ════════════════════════ -->
     <DataTemplate x:Key="UserTurnTemplate" DataType="{x:Type tvm:UserTurnViewModel}">
@@ -366,13 +367,85 @@
                            FontFamily="{StaticResource MonoFont}"
                            Margin="0,0,0,8"/>
 
+                <!-- edit_file: 실제 변경을 diff 로. 사용자가 무엇이 지워지고 추가되는지 보고 승인한다. -->
+                <Border Background="{StaticResource WindowBg}"
+                        BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource RadiusMd}"
+                        Padding="0"
+                        Margin="0,0,0,14"
+                        Visibility="{Binding HasDiff, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding DiffPath}"
+                                   Foreground="{StaticResource TextMuted}"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="{StaticResource FontSizeCaption}"
+                                   Padding="10,6,10,4"/>
+                        <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Diff}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type diff:DiffLine}">
+                                        <Border Padding="10,0">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Added">
+                                                            <Setter Property="Background" Value="{StaticResource DiffAddBg}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Removed">
+                                                            <Setter Property="Background" Value="{StaticResource DiffRemoveBg}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock FontFamily="{StaticResource MonoFont}"
+                                                       FontSize="{StaticResource FontSizeSmall}"
+                                                       TextWrapping="NoWrap">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                                                        <Setter Property="Text" Value="{Binding Text}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="Added">
+                                                                <Setter Property="Foreground" Value="{StaticResource DiffAddText}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="Removed">
+                                                                <Setter Property="Foreground" Value="{StaticResource DiffRemoveText}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
+
+                <!-- 그 외 도구: 생 JSON 인자. diff 가 있으면 숨긴다(중복). -->
                 <Border Background="{StaticResource WindowBg}"
                         BorderBrush="{StaticResource BorderBrush}"
                         BorderThickness="1"
                         CornerRadius="{StaticResource RadiusMd}"
                         Padding="10,8"
-                        Margin="0,0,0,14"
-                        Visibility="{Binding ArgsPreview, Converter={StaticResource StringToVisibility}}">
+                        Margin="0,0,0,14">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <!-- ArgsPreview 가 있고 diff 는 없을 때만 표시 -->
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding HasDiff}" Value="False"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility"
+                                            Value="{Binding ArgsPreview, Converter={StaticResource StringToVisibility}}"/>
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
                     <TextBox Text="{Binding ArgsPreview, Mode=OneWay}"
                              IsReadOnly="True"
                              BorderThickness="0"
