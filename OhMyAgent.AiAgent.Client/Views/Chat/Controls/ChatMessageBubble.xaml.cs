@@ -2,11 +2,12 @@ using System;
 using System.IO;
 using System.Windows;
 using OhMyAgent.AiAgent.Client.Models.Chat;
+using OhMyAgent.AiAgent.Client.Services;
 using OhMyAgent.AiAgent.Client.ViewModels.Chat;
 using OhMyAgent.AiAgent.Client.Views.Chat;
+using Application = System.Windows.Application;
 using ContextMenu = System.Windows.Controls.ContextMenu;
 using MenuItem = System.Windows.Controls.MenuItem;
-using MessageBox = System.Windows.MessageBox;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using UserControl = System.Windows.Controls.UserControl;
 
@@ -73,7 +74,7 @@ public partial class ChatMessageBubble : UserControl
         if (sender is not FrameworkElement fe || fe.DataContext is not ChatAttachment att) return;
         if (string.IsNullOrEmpty(att.Id))
         {
-            MessageBox.Show("이 첨부는 다운로드할 수 없습니다(식별자 없음).", "첨부", MessageBoxButton.OK, MessageBoxImage.Information);
+            ((App)Application.Current).Dialogs.ShowMessage("첨부", "이 첨부는 다운로드할 수 없습니다(식별자 없음).");
             return;
         }
 
@@ -95,7 +96,7 @@ public partial class ChatMessageBubble : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"다운로드에 실패했습니다.\n{ex.Message}", "첨부", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ((App)Application.Current).Dialogs.ShowMessage("첨부", $"다운로드에 실패했습니다.\n{ex.Message}", DialogSeverity.Warning);
         }
     }
 }

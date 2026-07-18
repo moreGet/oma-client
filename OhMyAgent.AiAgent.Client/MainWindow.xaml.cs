@@ -256,7 +256,7 @@ public partial class MainWindow : Window
     {
         if (ProjectsVm is not { } projects) return;
 
-        var name = PromptText("새 프로젝트", "프로젝트 이름을 입력하세요:", "새 프로젝트");
+        var name = ((App)Application.Current).Dialogs.PromptText("새 프로젝트", "프로젝트 이름을 입력하세요:", "새 프로젝트");
         if (name is null) return; // 취소
 
         projects.CreateProjectCommand.Execute(name);
@@ -269,7 +269,7 @@ public partial class MainWindow : Window
         if (((FrameworkElement)sender).DataContext is not ProjectItemViewModel item || item.IsUnassigned) return;
 
         projects.SelectedProject = item;
-        var name = PromptText("이름 변경", "새 프로젝트 이름:", item.Name);
+        var name = ((App)Application.Current).Dialogs.PromptText("이름 변경", "새 프로젝트 이름:", item.Name);
         if (string.IsNullOrWhiteSpace(name)) return;
 
         projects.RenameCommand.Execute(name);
@@ -365,76 +365,5 @@ public partial class MainWindow : Window
         // 대상 프로젝트(또는 미분류 그룹)로 편입/해제. ProjectsViewModel이 LoadAsync로 갱신.
         projects.AssignConversationCommand.Execute((session.Id, target.Id));
         e.Handled = true;
-    }
-
-    // 간단한 텍스트 입력 다이얼로그 (BCL/WPF only). 취소 시 null 반환.
-    private string? PromptText(string title, string message, string defaultValue)
-    {
-        var dialog = new Window
-        {
-            Title = title,
-            Width = 360,
-            Height = 170,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Owner = this,
-            ResizeMode = ResizeMode.NoResize,
-            Background = (System.Windows.Media.Brush)FindResource("WindowBg"),
-        };
-
-        var root = new System.Windows.Controls.StackPanel { Margin = new Thickness(18) };
-        root.Children.Add(new System.Windows.Controls.TextBlock
-        {
-            Text = message,
-            Foreground = (System.Windows.Media.Brush)FindResource("TextSecondary"),
-            FontSize = 12,
-            Margin = new Thickness(0, 0, 0, 8),
-        });
-
-        var input = new System.Windows.Controls.TextBox
-        {
-            Text = defaultValue,
-            Style = (Style)FindResource("DarkTextBox"),
-            MinHeight = 34,
-            FontSize = 13,
-            VerticalContentAlignment = System.Windows.VerticalAlignment.Center,
-        };
-        root.Children.Add(input);
-
-        var buttons = new System.Windows.Controls.StackPanel
-        {
-            Orientation = System.Windows.Controls.Orientation.Horizontal,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
-            Margin = new Thickness(0, 14, 0, 0),
-        };
-        var ok = new System.Windows.Controls.Button
-        {
-            Content = "확인",
-            Style = (Style)FindResource("PrimaryButton"),
-            Padding = new Thickness(16, 6, 16, 6),
-            FontSize = 12,
-            IsDefault = true,
-            Margin = new Thickness(0, 0, 8, 0),
-        };
-        var cancel = new System.Windows.Controls.Button
-        {
-            Content = "취소",
-            Style = (Style)FindResource("OutlineButton"),
-            Padding = new Thickness(16, 6, 16, 6),
-            FontSize = 12,
-            IsCancel = true,
-        };
-        buttons.Children.Add(ok);
-        buttons.Children.Add(cancel);
-        root.Children.Add(buttons);
-
-        dialog.Content = root;
-
-        bool confirmed = false;
-        ok.Click += (_, _) => { confirmed = true; dialog.DialogResult = true; };
-        input.Focus();
-        input.SelectAll();
-
-        dialog.ShowDialog();
-        return confirmed ? input.Text : null;
     }
 }

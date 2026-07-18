@@ -22,7 +22,7 @@ namespace OhMyAgent.AiAgent.Client.ViewModels;
 /// its <c>AgentEvent</c> stream onto a transcript of <see cref="ITranscriptItem"/>s,
 /// marshalling all UI mutations onto the WPF dispatcher.
 /// </summary>
-public sealed partial class AgentSessionViewModel : ObservableObject
+public sealed partial class AgentSessionViewModel : ObservableObject, IDisposable
 {
     private readonly IAgentOrchestrator _orchestrator;
     private readonly IAgentApiClient _api;
@@ -38,6 +38,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
     private AgentSession _session = new();
     private CancellationTokenSource? _cts;
+
+    // 앱 수명 싱글턴 서비스 이벤트 구독 해제 경로(Dispose에서 호출). 형제 Chat VM들과 동일 관례.
+    private readonly Action _unsubscribe;
 
     // Fast lookup from tool CallId -> its transcript card.
     private readonly Dictionary<string, ToolCallViewModel> _toolCards = new();
@@ -222,6 +225,15 @@ public sealed partial class AgentSessionViewModel : ObservableObject
 
         // D — mirror attachment count onto HasAttachments.
         Attachments.CollectionChanged += (_, _) => HasAttachments = Attachments.Count > 0;
+
+        // 앱 수명 싱글턴(_todos/_settings) 이벤트만 해제 대상 — VM보다 오래 살아 누수를 만든다.
+        // Transcript/Attachments.CollectionChanged 는 VM 소유 컬렉션(수명 동일)이라 제외.
+        // _permissions.SetApprovalHandler 도 싱글턴↔싱글턴(App 수명 동일)이며 clear API가 없어 제외.
+        _unsubscribe = () =>
+        {
+            _todos.TodosChanged -= OnTodosChanged;
+            _settings.SettingsChanged -= OnSettingsChanged;
+        };
 
         SeedFromSettings();
     }
@@ -1288,4 +1300,19 @@ public sealed partial class AgentSessionViewModel : ObservableObject
             foreach (var t in items) Todos.Add(t);
             HasTodos = Todos.Count > 0;
         });
+
+    /// <summary>
+    /// 앱 종료 시(App.DisposeAll) 1회 정리 — 싱글턴 서비스 이벤트 구독을 해제하고 마지막
+    /// <see cref="_cts"/> 를 반납한다. 재로그인 경로에서는 이 VM이 재사용되므로 호출하지 않는다
+    /// (PrepareForLogout 만 실행 중 작업을 취소). DisposeAll 이 종료 경로에서 두 번 호출될 수
+    /// 있으나, <c>-=</c> 와 <see cref="CancellationTokenSource.Dispose"/> 는 모두 멱등이라 안전하다.
+    /// </summary>
+    public void Dispose()
+    {
+        _unsubscribe();
+
+        // 실행 중 취소 흐름(Stop/PrepareForLogout 의 _cts?.Cancel())은 그대로 두고,
+        // 마지막으로 남은 CTS 인스턴스만 반납한다. 종료 중 경합/이미-dispose는 무시.
+        try { _cts?.Dispose(); } catch { /* 종료 중 — 무시 */ }
+    }
 }

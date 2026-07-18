@@ -35,6 +35,7 @@ public partial class App : Application
     private bool                      _loginShowing;
     private IProjectService?          _projectService;
     private IBinaryIntegrityService?  _binaryIntegrity;
+    private IDialogService?           _dialogService;
 
     // ── 실시간 메신저(사람↔사람) — LLM 채팅과 별개 모듈 ──
     private ChatIdentity?              _chatIdentity;   // 채팅 VM 트리가 참조로 공유하는 현재 사용자 신원
@@ -45,6 +46,8 @@ public partial class App : Application
 
     internal ISettingsService SettingsService => _settingsService!;
     internal IAgentApiClient? Api => _api;
+    /// <summary>코드비하인드(창·컨트롤)가 알림/입력 다이얼로그를 얻는 단일 진입점.</summary>
+    internal IDialogService Dialogs => _dialogService!;
     /// <summary>MainWindow 사이드바 배지 중계용 — 메신저 VM 노출(없으면 null).</summary>
     internal ChatMessengerViewModel? ChatMessengerVm => _chatMessengerVm;
 
@@ -129,6 +132,9 @@ public partial class App : Application
         //    AgentApiClient 가 요청마다 설정의 ServerBaseUrl 로 절대 URI 를 만든다.
         //    (BaseAddress 는 첫 요청 후 변경이 불가해, 서버 주소를 바꿔도 재시작 전까지 반영되지 않았다.)
         _httpClient = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+
+        // 2b) 다이얼로그 서비스 — 코드비하인드의 직접 MessageBox/절차적 입력창을 대체(의존성 없음).
+        _dialogService = new DialogService();
 
         // 3) Workspace 샌드박스
         var workspace = new WorkspaceContext(_settingsService);
@@ -520,6 +526,10 @@ public partial class App : Application
         try { _ = _chatRealtime?.StopAsync(); }   catch { /* ignore */ }
         try { _chatMessengerVm?.Dispose(); }      catch { /* ignore */ }
         try { _ = _chatRealtime?.DisposeAsync(); } catch { /* ignore */ }
+
+        // 루트 VM 정리 — 싱글턴 서비스(todo/settings) 이벤트 구독 해제 + 마지막 CTS 반납.
+        // 종료 경로에서만 호출한다(재로그인 ReturnToLogin 은 PrepareForLogout 만 쓰고 VM 재사용).
+        try { _mainVm?.Dispose(); } catch { /* ignore */ }
 
         try { _globalHotkey?.Dispose(); } catch { /* ignore */ }
         try
