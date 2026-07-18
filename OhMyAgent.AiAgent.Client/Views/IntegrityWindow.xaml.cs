@@ -28,8 +28,19 @@ public partial class IntegrityWindow : Window
         Loaded += IntegrityWindow_Loaded;
     }
 
+    // async void 프레임워크 핸들러 — 예외가 밖으로 새어나가면 전역 크래시 다이얼로그로 표출되므로
+    // 반드시 잡는다. 초기화 실패는 ViewModel이 배너 상태로 변환하지만, 여기서도 방어적으로 처리.
     private async void IntegrityWindow_Loaded(object sender, RoutedEventArgs e)
-        => await _vm.InitializeAsync();
+    {
+        try
+        {
+            await _vm.InitializeAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("IntegrityWindow", "초기화 실패", ex);
+        }
+    }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         => DragMove();

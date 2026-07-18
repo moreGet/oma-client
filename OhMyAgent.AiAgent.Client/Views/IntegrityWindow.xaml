@@ -30,6 +30,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="40"/>          <!-- 타이틀바 -->
+                <RowDefinition Height="Auto"/>        <!-- 오류 배너 -->
                 <RowDefinition Height="Auto"/>        <!-- 대상/옵션 -->
                 <RowDefinition Height="Auto"/>        <!-- 액션 바 -->
                 <RowDefinition Height="Auto"/>        <!-- 진행률 -->
@@ -67,8 +68,30 @@
                 </Grid>
             </Border>
 
+            <!-- ── 오류 배너 (초기화 실패 등) ──────────────────── -->
+            <Border Grid.Row="1" Margin="22,16,22,0"
+                    Background="{StaticResource SurfaceBg}"
+                    BorderBrush="{StaticResource ErrorDot}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource RadiusLg}"
+                    Padding="16,12"
+                    Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="⚠️"
+                               FontSize="{StaticResource FontSizeBodyLarge}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,10,0"/>
+                    <TextBlock Text="{Binding ErrorMessage}"
+                               Foreground="{StaticResource ErrorDot}"
+                               FontSize="{StaticResource FontSizeSmall}"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
             <!-- ── 대상/옵션 영역 ──────────────────────────────── -->
-            <Border Grid.Row="1" Style="{StaticResource FloatingCard}" Margin="22,18,22,0">
+            <Border Grid.Row="2" Style="{StaticResource FloatingCard}" Margin="22,18,22,0">
                 <StackPanel IsEnabled="{Binding IsScanning, Converter={StaticResource InverseBool}}">
                     <TextBlock Text="검사 대상 디렉토리"
                                Foreground="{StaticResource AccentSoftBrush}"
@@ -140,7 +163,7 @@
             </Border>
 
             <!-- ── 액션 바 ─────────────────────────────────────── -->
-            <StackPanel Grid.Row="2" Orientation="Horizontal"
+            <StackPanel Grid.Row="3" Orientation="Horizontal"
                         Margin="22,16,22,0">
                 <Button Content="검사 시작"
                         Command="{Binding ScanCommand}"
@@ -161,7 +184,7 @@
             </StackPanel>
 
             <!-- ── 진행률 ──────────────────────────────────────── -->
-            <Border Grid.Row="3" Margin="22,14,22,0"
+            <Border Grid.Row="4" Margin="22,14,22,0"
                     Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibility}}">
                 <StackPanel>
                     <ProgressBar Height="6"
@@ -178,7 +201,7 @@
             </Border>
 
             <!-- ── 요약 배지 영역 ──────────────────────────────── -->
-            <Grid Grid.Row="4" Margin="22,16,22,0"
+            <Grid Grid.Row="5" Margin="22,16,22,0"
                   Visibility="{Binding HasResult, Converter={StaticResource BoolToVisibility}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -264,7 +287,7 @@
             </Grid>
 
             <!-- ── 결과 그리드 ─────────────────────────────────── -->
-            <Border Grid.Row="5" Style="{StaticResource FloatingCard}" Margin="22,16,22,0"
+            <Border Grid.Row="6" Style="{StaticResource FloatingCard}" Margin="22,16,22,0"
                     Padding="2">
                 <DataGrid ItemsSource="{Binding Files}"
                           AutoGenerateColumns="False"
@@ -436,7 +459,7 @@
             </Border>
 
             <!-- ── 상태표시줄 ──────────────────────────────────── -->
-            <Border Grid.Row="6"
+            <Border Grid.Row="7"
                     Background="{StaticResource SurfaceBg}"
                     BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="0,1,0,0"

@@ -47,6 +47,11 @@ public sealed partial class IntegrityViewModel : ObservableObject
     [ObservableProperty] private string? _currentFile;
     [ObservableProperty] private string _statusMessage = string.Empty;
 
+    // ── 오류 배너 (초기화 실패 등) ─────────────────────────────────────
+    // AgentSessionViewModel 관례: HasError + ErrorMessage 로 배너 상태를 노출.
+    [ObservableProperty] private bool _hasError;
+    [ObservableProperty] private string _errorMessage = string.Empty;
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ScanCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenManifestLocationCommand))]
@@ -104,10 +109,26 @@ public sealed partial class IntegrityViewModel : ObservableObject
     /// <summary>
     /// View의 Loaded에서 await 호출(SettingsViewModel.InitializeAsync 패턴).
     /// 대상 디렉토리 기준 매니페스트 존재 여부를 갱신한다.
+    /// 매니페스트 로드/파일 스캔 중 발생하는 예외는 여기서 흡수해
+    /// <see cref="HasError"/>/<see cref="ErrorMessage"/> 배너 상태로 변환한다
+    /// (async void Loaded 핸들러로 예외가 새어나가 전역 크래시 다이얼로그가 뜨지 않도록).
     /// </summary>
     public Task InitializeAsync()
     {
-        RefreshManifestState();
+        try
+        {
+            HasError = false;
+            ErrorMessage = string.Empty;
+            RefreshManifestState();
+        }
+        catch (Exception ex)
+        {
+            HasError = true;
+            ErrorMessage = "무결성 검사 화면을 초기화하지 못했습니다. 대상 디렉토리 접근 권한을 확인한 뒤 다시 시도해 주세요.";
+            StatusMessage = "초기화 오류";
+            AppLog.Warn("IntegrityViewModel", "InitializeAsync 실패", ex);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -236,6 +257,8 @@ public sealed partial class IntegrityViewModel : ObservableObject
         var token = _cts.Token;
 
         IsScanning = true;
+        HasError = false;
+        ErrorMessage = string.Empty;
         Files.Clear();
         Result = null;
         ProgressFraction = 0d;
