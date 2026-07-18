@@ -122,6 +122,13 @@ public sealed class ContextCompactor(IAgentApiClient api, ISettingsService setti
                 session.CompactionSummary));
 
         var start = Math.Max(1, session.CompactedThrough);
+
+        // Anthropic 은 system 다음 첫 메시지가 user 이길 요구한다. 절단이 assistant 턴 경계에 떨어지면
+        // 남은 첫 원문이 assistant 라 그대로면 400 이므로, 합성 user 를 끼워 user-first 를 지킨다.
+        // (단일 목표 세션은 user 메시지가 하나뿐이라 assistant 경계 절단이 필수 — FindCutIndex 참조.)
+        if (start < all.Count && all[start].Role == MessageRole.Assistant)
+            wire.Add(AgentMessage.User("(이전 대화 요약에 이어서 계속합니다.)"));
+
         for (var i = start; i < all.Count; i++)
             wire.Add(all[i]);
 
@@ -147,7 +154,7 @@ public sealed class ContextCompactor(IAgentApiClient api, ISettingsService setti
         for (var i = wire.Count - 1; i >= 0; i--)
         {
             var m = wire[i];
-            running += m.Content?.Length ?? 0;
+            running += Measure(m);   // Content 뿐 아니라 사고·도구인자까지 — 사고가 켜지면 이게 지배적이다.
             if (!elide && running > HistoryCharBudget) elide = true;
 
             result[i] = (elide && m.Role == MessageRole.Tool && (m.Content?.Length ?? 0) > ElidedToolResult.Length)
@@ -172,6 +179,9 @@ public sealed class ContextCompactor(IAgentApiClient api, ISettingsService setti
     private static int Measure(AgentMessage m)
     {
         var n = m.Content?.Length ?? 0;
+        // 사고 블록은 매 요청에 재생돼 실제 와이어 크기를 지배할 수 있는데(사고가 켜진 긴 세션),
+        // 이걸 빼면 컴팩션 트리거·생략 예산이 실제보다 작다고 오판해 컨텍스트가 넘쳐도 손을 놓는다.
+        n += m.Thinking?.Length ?? 0;
         if (m.ToolCalls is { } calls)
             foreach (var c in calls)
                 n += c.Name.Length + c.Arguments.GetRawText().Length;
@@ -180,8 +190,12 @@ public sealed class ContextCompactor(IAgentApiClient api, ISettingsService setti
 
     /// <summary>
     /// 최근 <see cref="KeepCharTarget"/> 만큼을 원문으로 남기는 절단 지점을 찾는다.
-    /// user 메시지 경계만 허용한다 — assistant(tool_calls)/tool 결과 사이를 자르면 짝이 깨진다.
-    /// 자를 곳이 없으면 null.
+    ///
+    /// 절단 지점은 user 또는 assistant 경계만 허용한다(tool 결과는 불가 — tool_use 와 짝이 깨진다).
+    /// user 경계만 허용하면 단일 목표 세션(user 메시지 1개)은 영영 압축되지 않는다 — 그게 가장 압축이
+    /// 필요한 세션이다. assistant 경계로 잘라도 안전한 이유: assistant 앞 메시지는 결코 짝 없는 tool_use 가
+    /// 아니고(그 뒤엔 tool 결과가 오지 tool 결과 뒤에 assistant 가 온다), user-first 는 BuildWireMessages 가
+    /// 합성 user 로 보정한다. 자를 곳이 없으면 null.
     /// </summary>
     private static int? FindCutIndex(IReadOnlyList<AgentMessage> messages, int currentCut)
     {
@@ -192,8 +206,8 @@ public sealed class ContextCompactor(IAgentApiClient api, ISettingsService setti
         {
             kept += Measure(messages[i]);
 
-            // 최근 구간을 충분히 확보한 뒤 처음 만나는 user 경계에서 자른다.
-            if (kept >= KeepCharTarget && messages[i].Role == MessageRole.User)
+            // 최근 구간을 충분히 확보한 뒤 처음 만나는 user/assistant 경계에서 자른다.
+            if (kept >= KeepCharTarget && messages[i].Role != MessageRole.Tool)
             {
                 candidate = i;
                 break;

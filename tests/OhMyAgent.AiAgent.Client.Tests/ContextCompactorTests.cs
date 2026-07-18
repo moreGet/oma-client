@@ -181,15 +181,57 @@ public class ContextCompactorTests
     }
 
     [Fact]
-    public async Task Compact_CutLandsOnUserBoundary()
+    public async Task Compact_CutLandsOnNonToolBoundary()
     {
         var api = new FakeSummarizerApi("요약");
         var s = LongSession(8, 60_000);
 
         await new ContextCompactor(api, new FakeSettingsService()).MaybeCompactAsync(s);
 
-        // 절단 지점이 user 가 아니면 assistant/tool 짝을 반토막 낸 것이다.
-        Assert.Equal(MessageRole.User, s.Messages[s.CompactedThrough].Role);
+        // 절단 지점이 tool 이면 tool_use/tool_result 짝을 반토막 낸 것이다(user/assistant 는 안전).
+        Assert.NotEqual(MessageRole.Tool, s.Messages[s.CompactedThrough].Role);
+    }
+
+    [Fact]
+    public async Task Compact_ProducesValidUserFirstWire()
+    {
+        var api = new FakeSummarizerApi("요약");
+        var s = LongSession(8, 60_000);
+        await new ContextCompactor(api, new FakeSettingsService()).MaybeCompactAsync(s);
+
+        var wire = ContextCompactor.BuildWireMessages(s);
+
+        // system 프롬프트·요약 뒤 첫 비-system 메시지는 반드시 user 여야 한다(Anthropic 계약).
+        var firstNonSystem = wire.First(m => m.Role != MessageRole.System);
+        Assert.Equal(MessageRole.User, firstNonSystem.Role);
+
+        // tool_result 는 모두 같은 와이어의 tool_use 와 짝이 맞아야 한다.
+        var emitted = wire.Where(m => m.ToolCalls is not null).SelectMany(m => m.ToolCalls!).Select(c => c.Id).ToHashSet();
+        foreach (var toolMsg in wire.Where(m => m.Role == MessageRole.Tool))
+            Assert.Contains(toolMsg.ToolCallId!, emitted);
+    }
+
+    [Fact]
+    public async Task Compact_SingleGoalSessionCanCompact()
+    {
+        // 단일 목표 세션(user 메시지 1개, 도구 왕복 다수) — 가장 압축이 필요한데 종전엔 영영 안 됐다.
+        var s = new AgentSession();
+        s.Messages.Add(AgentMessage.System("시스템 프롬프트"));
+        s.Messages.Add(AgentMessage.User("큰 작업 하나"));   // user 는 이 하나뿐
+        for (var i = 0; i < 10; i++)
+        {
+            s.Messages.Add(AgentMessage.Assistant(null, [new ToolCall($"c{i}", "read_file", EmptyArgs)]));
+            s.Messages.Add(AgentMessage.ToolResultMsg($"c{i}", Big(60_000), isError: false));
+        }
+
+        var outcome = await new ContextCompactor(new FakeSummarizerApi("요약"), new FakeSettingsService())
+            .MaybeCompactAsync(s);
+
+        Assert.Equal(CompactionOutcome.Compacted, outcome);
+
+        // 압축 후 와이어도 user-first + 짝 유지여야 한다(합성 user 삽입).
+        var wire = ContextCompactor.BuildWireMessages(s);
+        Assert.Equal(MessageRole.User, wire.First(m => m.Role != MessageRole.System).Role);
     }
 
     [Fact]

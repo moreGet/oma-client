@@ -204,7 +204,8 @@ public partial class App : Application
         //    task 자신(무한 재귀)이 딸려 들어간다 — 근거는 TaskTool.AllowedToolNames 주석 참조.
         var subagentTools = tools.Where(t => TaskTool.AllowedToolNames.Contains(t.Name)).ToArray();
         var subOrchestrator = new AgentOrchestrator(
-            _api, new ToolRegistry(subagentTools), permissions, workspace, _settingsService, _toolPolicy, compactor);
+            _api, new ToolRegistry(subagentTools), permissions, workspace, _settingsService, _toolPolicy, compactor,
+            suppressThinking: true);
 
         // 9) 도구 레지스트리 = 기본 도구 + task
         var registry = new ToolRegistry([.. tools, new TaskTool(subOrchestrator, workspace)]);

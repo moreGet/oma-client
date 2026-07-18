@@ -218,6 +218,59 @@ public class ParallelToolCallTests
 
         Assert.Contains(events, e => e is AgentError { Code: "cancelled" });
     }
+
+    // ── 세션 무결성: 취소 후에도 이력이 유효해야 한다(가장 심각했던 버그) ──
+    //
+    // assistant(tool_use)는 실행 전에 이력에 들어가는데, 취소로 tool_result 를 안 채우면
+    // 세션 저장·복원 후 모든 요청이 400 이 된다(tool_use 에 짝 없음).
+
+    [Fact]
+    public async Task ParallelBatch_CancellationLeavesEveryToolUsePaired()
+    {
+        using var cts = new CancellationTokenSource();
+        var tracker = new ConcurrencyTracker();
+        var tools = Enumerable.Range(0, 3)
+            .Select(i => (ITool)new DelayTool($"read{i}", ToolRisk.ReadOnly, TimeSpan.FromSeconds(5), tracker))
+            .ToArray();
+
+        var session = new AgentSession();
+        cts.CancelAfter(TimeSpan.FromMilliseconds(100));
+        await RunAsync(Build(ApiCalling("read0", "read1", "read2"), tools), session, cts.Token);
+
+        AssertEveryToolUsePaired(session);
+    }
+
+    [Fact]
+    public async Task SequentialBatch_CancellationLeavesEveryToolUsePaired()
+    {
+        using var cts = new CancellationTokenSource();
+        var tracker = new ConcurrencyTracker();
+        // 쓰기 도구가 섞여 순차 경로를 타게 한다.
+        ITool[] tools =
+        [
+            new DelayTool("write0", ToolRisk.Write, TimeSpan.FromSeconds(5), tracker),
+            new DelayTool("write1", ToolRisk.Write, TimeSpan.FromSeconds(5), tracker),
+        ];
+
+        var session = new AgentSession();
+        cts.CancelAfter(TimeSpan.FromMilliseconds(100));
+        await RunAsync(Build(ApiCalling("write0", "write1"), tools), session, cts.Token);
+
+        AssertEveryToolUsePaired(session);
+    }
+
+    /// <summary>이력의 모든 tool_use 에 대응하는 tool_result 가 있는지 — Anthropic 이 요구하는 불변식.</summary>
+    private static void AssertEveryToolUsePaired(AgentSession session)
+    {
+        var toolUseIds = session.Messages
+            .Where(m => m.ToolCalls is not null).SelectMany(m => m.ToolCalls!).Select(c => c.Id).ToList();
+        var resultIds = session.Messages
+            .Where(m => m.Role == MessageRole.Tool).Select(m => m.ToolCallId!).ToHashSet();
+
+        Assert.NotEmpty(toolUseIds);
+        foreach (var id in toolUseIds)
+            Assert.Contains(id, resultIds);
+    }
 }
 
 // ── 테스트용 도구/스텁 ──

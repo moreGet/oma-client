@@ -16,8 +16,12 @@ public sealed class AgentOrchestrator(
     IWorkspaceContext workspace,
     ISettingsService settings,
     IToolPolicyService policy,
-    ContextCompactor compactor) : IAgentOrchestrator
+    ContextCompactor compactor,
+    bool suppressThinking = false) : IAgentOrchestrator
 {
+    // 서브에이전트 오케스트레이터는 이 값을 true 로 받는다. 서브에이전트의 사고는 TaskTool 이
+    // 어차피 버리므로(최종 텍스트만 회수) 요청하면 토큰만 낭비다. 메인은 false(설정을 따른다).
+    private readonly bool _suppressThinking = suppressThinking;
     // 서버엔 깔끔한 SemVer 를 전송한다(빌드 메타·해시 제외).
     private static readonly string ClientVersion = AppVersion.Semantic;
 
@@ -152,18 +156,19 @@ public sealed class AgentOrchestrator(
                 thinkingSignature));
             yield return new AgentAssistantMessageComplete(text);
 
+            // max_tokens 로 끊긴 응답을 알린다. 도구 호출이 있는 턴도 max_tokens 로 잘릴 수 있으므로
+            // (특히 병렬 배치 + 사고가 8192 를 나눠 쓰는 경우) isToolUse 분기 밖에서 검사한다.
+            // 종전에는 !isToolUse 안에만 있어, 도구가 있는 잘린 배치는 조용히 부분 실행됐다.
+            if (string.Equals(stopReason, "max_tokens", StringComparison.OrdinalIgnoreCase))
+                yield return new AgentNotice(
+                    $"⚠ 모델 응답이 turn 당 최대 길이({DefaultMaxTokens} 토큰)에 도달해 잘렸습니다. " +
+                    "이어서 작성해 달라고 요청하거나, 작업을 더 작게 나눠 주세요.");
+
             // e) tool_use 가 아니면 완료.
             var isToolUse = string.Equals(stopReason, "tool_use", StringComparison.OrdinalIgnoreCase)
                             || calls is not null;
             if (!isToolUse)
             {
-                // max_tokens 로 끊긴 응답도 여기로 온다. 조용히 완료 처리하면 사용자는 답이 잘린 줄
-                // 모른 채 불완전한 내용을 신뢰하게 된다 — 완료 전에 사실을 알린다.
-                if (string.Equals(stopReason, "max_tokens", StringComparison.OrdinalIgnoreCase))
-                    yield return new AgentNotice(
-                        $"⚠ 모델 응답이 turn 당 최대 길이({DefaultMaxTokens} 토큰)에 도달해 잘렸습니다. " +
-                        "이어서 작성해 달라고 요청하거나, 작업을 더 작게 나눠 주세요.");
-
                 yield return new AgentDone(text, session.LastUsage);
                 yield break;
             }
@@ -214,6 +219,10 @@ public sealed class AgentOrchestrator(
 
                 if (cancelledByUser)
                 {
+                    // 중요: assistant(tool_use)는 이미 이력에 있는데(149행) tool_result 를 안 넣고 끝내면,
+                    // 세션이 저장·복원돼 재사용될 때 tool_use 에 짝 없는 tool_result 부재로 이후 모든 요청이 400 이 된다.
+                    // 실행 못 한 호출들에 취소 결과를 채워 이력을 유효하게 유지한다.
+                    FillMissingToolResults(session, pendingCalls);
                     yield return new AgentError("cancelled", "사용자가 중지했습니다.");
                     yield break;
                 }
@@ -233,6 +242,7 @@ public sealed class AgentOrchestrator(
             {
                 if (ct.IsCancellationRequested)
                 {
+                    FillMissingToolResults(session, pendingCalls);
                     yield return new AgentError("cancelled", "사용자가 중지했습니다.");
                     yield break;
                 }
@@ -269,6 +279,8 @@ public sealed class AgentOrchestrator(
 
                 if (cancelled)
                 {
+                    // 이 호출의 결과는 아직 이력에 없다 — 이것과 남은 호출들에 취소 결과를 채운다(위 병렬 경로와 동일 이유).
+                    FillMissingToolResults(session, pendingCalls);
                     yield return new AgentError("cancelled", "사용자가 중지했습니다.");
                     yield break;
                 }
@@ -288,6 +300,28 @@ public sealed class AgentOrchestrator(
 
         if (iteration >= max)
             yield return new AgentError("max_iterations", "최대 반복 횟수에 도달했습니다.");
+    }
+
+    /// <summary>
+    /// assistant(tool_use)에 짝이 없는 tool_use 가 남지 않도록, 아직 결과가 없는 호출들에 취소 결과를 채운다.
+    ///
+    /// 왜 필요한가: assistant(tool_calls)는 실행 "전에" 이력에 추가되는데(설계상 스트림 순서 보존),
+    /// 도구 실행 중 취소되면 일부 tool_use 에 tool_result 가 없는 채로 세션이 저장·복원된다. 그 상태로
+    /// 다음 요청을 보내면 Anthropic 은 "tool_use 뒤엔 tool_result 가 와야 한다"며 400 을 내고, 그 세션은
+    /// 영구히 망가진다. 여기서 미완 호출을 취소 결과로 메워 이력을 항상 유효하게 유지한다. 멱등적이다.
+    /// </summary>
+    private static void FillMissingToolResults(AgentSession session, IReadOnlyList<ToolCall> calls)
+    {
+        var resolved = session.Messages
+            .Where(m => m.Role == MessageRole.Tool && m.ToolCallId is not null)
+            .Select(m => m.ToolCallId!)
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var call in calls)
+        {
+            if (resolved.Contains(call.Id)) continue;
+            session.Messages.Add(AgentMessage.ToolResultMsg(call.Id, "사용자가 중지했습니다.", isError: true));
+        }
     }
 
     /// <summary>병렬 도구 호출 동시 실행 상한. task(서브에이전트) 배치는 하나하나가 LLM 루프라 무제한은 위험하다.</summary>
@@ -340,7 +374,10 @@ public sealed class AgentOrchestrator(
         }
         finally
         {
-            slots.Release();
+            // 이터레이터가 yield 지점에서 버려지면(예: 소비자 쪽 예외) using var slots 가 먼저 dispose 될 수 있다.
+            // 그 뒤 여기서 Release 하면 ObjectDisposedException 이 미관측 Task 예외로 뜬다 — 무해하므로 삼킨다.
+            try { slots.Release(); }
+            catch (ObjectDisposedException) { /* 배치가 이미 정리됨 */ }
         }
     }
 
@@ -353,7 +390,8 @@ public sealed class AgentOrchestrator(
 
         // 확장 사고: 설정이 켜졌을 때만 요청에 실어 사고 스트림을 받는다. adaptive 형식은 최신 모델(4.x/5)용이며,
         // 서버 기본 모델(3.5-sonnet)에선 400 이 나므로 기본값은 false 다(AppSettings.ShowThinking 주석 참조).
-        var thinking = s.ShowThinking ? new ThinkingRequest("adaptive") : null;
+        // 서브에이전트(_suppressThinking)는 사고를 버리므로 아예 요청하지 않는다.
+        var thinking = (!_suppressThinking && s.ShowThinking) ? new ThinkingRequest("adaptive") : null;
 
         return new AgentRequest(
             Model: s.ModelId,
