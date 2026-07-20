@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +17,36 @@ public class ScriptExecutor : IScriptExecutor
     private const int MaxConcurrency = 4;
     private readonly SemaphoreSlim _concurrencyLimit = new(MaxConcurrency, MaxConcurrency);
 
+    /// <summary>
+    /// 리다이렉트된 셸 출력을 디코딩할 인코딩 — 시스템 <b>OEM 코드페이지</b>(한국어 Windows = 949).
+    ///
+    /// 왜 UTF-8 이 아닌가: cmd/PowerShell 의 내장 명령은 콘솔 OEM 코드페이지로 바이트를 쓴다.
+    /// 이를 UTF-8 로 해석하면 한글이 전부 깨진다("C 드라이브의 볼륨" → "C ����̺��� ����").
+    ///
+    /// <c>chcp 65001</c> 접두사로 해결되지 않는다 — 실측 결과 출력이 리다이렉트된 경우
+    /// 코드페이지 전환이 내장 명령의 출력에 반영되지 않아 깨짐이 그대로였다(디코딩 실패 51자 동일).
+    /// 고칠 지점은 생산자가 아니라 <b>소비자(디코딩)</b> 쪽이다.
+    ///
+    /// 한계: UTF-8 로 출력하는 프로그램(일부 최신 CLI)은 반대로 깨질 수 있다. 자동 판별 수단이 없어
+    /// OS 기본값인 OEM 을 택했다 — 셸 내장 명령과 대다수 Windows 도구가 이쪽이다.
+    /// </summary>
+    private static readonly Encoding ConsoleEncoding = ResolveConsoleEncoding();
+
+    private static Encoding ResolveConsoleEncoding()
+    {
+        try
+        {
+            // .NET Core 이상은 949 같은 레거시 코드페이지가 기본 제공되지 않는다 — 공급자 등록 필요.
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            return Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+        }
+        catch
+        {
+            // 코드페이지를 얻지 못하면 UTF-8 로 폴백한다(영문 환경에서는 사실상 동일).
+            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        }
+    }
+
     public async Task<ScriptResult> ExecutePowerShellAsync(string script, int timeoutMs = 30000, string? workingDirectory = null, CancellationToken ct = default)
     {
         var psi = new ProcessStartInfo
@@ -26,8 +57,8 @@ public class ScriptExecutor : IScriptExecutor
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
+            StandardOutputEncoding = ConsoleEncoding,
+            StandardErrorEncoding = ConsoleEncoding,
         };
         if (!string.IsNullOrEmpty(workingDirectory))
             psi.WorkingDirectory = workingDirectory;
@@ -45,8 +76,8 @@ public class ScriptExecutor : IScriptExecutor
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
+            StandardOutputEncoding = ConsoleEncoding,
+            StandardErrorEncoding = ConsoleEncoding,
         };
         if (!string.IsNullOrEmpty(workingDirectory))
             psi.WorkingDirectory = workingDirectory;

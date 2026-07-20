@@ -95,6 +95,19 @@ public sealed class ToolPolicyService(IAgentApiClient api) : IToolPolicyService
         if (state.State == Availability.Absent)
             return ToolGateDecision.Allow();
 
+        // 목록 판정은 mode 와 무관하게 "먼저" 적용한다(disabled 가 enabled 보다 우선).
+        //
+        // realtime 이라고 이 단계를 건너뛰면, 서버가 스스로 내려준 disabled 목록을 클라가 들고 있으면서도
+        // 매 호출 인가 응답에만 의존하게 된다. 인가 엔드포인트가 목록과 어긋나게 allowed:true 를 주면
+        // (서버 버그·배포 불일치) 차단해야 할 도구가 실행된다.
+        // 명령 정책과 같은 원칙 — 서버는 더 조일 수만 있고, 받은 제약은 로컬에서도 바닥으로 깔린다.
+        if (state.Disabled is { } disabled && disabled.Contains(toolName))
+            return ToolGateDecision.Deny("서버 정책에서 비활성화됨");
+
+        if (state.Enabled is { } enabled && !enabled.Contains(toolName))
+            return ToolGateDecision.Deny("서버 정책에서 허용되지 않음");
+
+        // realtime: 목록을 통과했더라도 매 호출 서버 인가를 한 번 더 받는다(추가 제약).
         if (state.Mode == ToolPolicyMode.Realtime)
         {
             var a = await api.AuthorizeToolAsync(toolName, args, ct).ConfigureAwait(false);
@@ -104,13 +117,6 @@ public sealed class ToolPolicyService(IAgentApiClient api) : IToolPolicyService
                 ? ToolGateDecision.Allow()
                 : ToolGateDecision.Deny(a.Reason ?? "서버에서 거부됨");
         }
-
-        // Cached: disabled가 enabled보다 우선.
-        if (state.Disabled is { } disabled && disabled.Contains(toolName))
-            return ToolGateDecision.Deny("서버 정책에서 비활성화됨");
-
-        if (state.Enabled is { } enabled && !enabled.Contains(toolName))
-            return ToolGateDecision.Deny("서버 정책에서 허용되지 않음");
 
         return ToolGateDecision.Allow();
     }
