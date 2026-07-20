@@ -29,10 +29,19 @@ public static class SecurityValidator
         (Rx(@"\brmdir\s+/s\b"), "재귀 디렉토리 삭제 금지"),
         (Rx(@"\brd\s+/s\b"), "재귀 디렉토리 삭제 금지"),
         (Rx(@"\bformat\s+[a-z]:"), "디스크 포맷 명령 금지"),
-        (Rx(@"\bdel\s+/[fqs]"), "강제 파일 삭제 금지"),
-        (Rx(@"\berase\s+/[fqs]"), "강제 파일 삭제 금지"),
-        (Rx(@"\breg\s+(delete|add)\b.*HKLM\\SYSTEM"), "시스템 레지스트리 변조 금지"),
+        // 플래그는 인자 어디에나 올 수 있다 — `del *.* /q` 처럼 대상 뒤에 붙는 형태도 잡아야 한다.
+        (Rx(@"\bdel\b(?=[^\r\n]*\s/[fqs]\b)"), "강제 파일 삭제 금지"),
+        (Rx(@"\berase\b(?=[^\r\n]*\s/[fqs]\b)"), "강제 파일 삭제 금지"),
+        (Rx(@"\breg\s+(delete|add)\b.*HKLM[\\/]SYSTEM"), "시스템 레지스트리 변조 금지"),
         (Rx(@"\bshutdown\b"), "시스템 종료 명령 금지"),
+
+        // 셸 갈아타기로 다른 셸의 블랙리스트를 통째로 우회하는 것을 막는다.
+        // 예: shell="cmd" 로 `powershell -enc <base64>` 를 던지면 PowerShell 패턴이 전혀 적용되지 않았다.
+        (Rx(@"\b(powershell|pwsh)(\.exe)?\b[^\r\n]*\s-(e|en|enc|enco|encod|encode|encoded|encodedcommand)\b"),
+            "인코딩된 PowerShell 명령 실행 금지(우회 방지)"),
+        (Rx(@"\b(powershell|pwsh)(\.exe)?\b[^\r\n]*\s-(c|com|comm|comma|comman|command)\b"),
+            "중첩 셸로 명령 실행 금지(우회 방지)"),
+        (Rx(@"\bcmd(\.exe)?\b[^\r\n]*\s/(c|k)\b"), "중첩 셸로 명령 실행 금지(우회 방지)"),
     };
 
     /// <summary>PowerShell 전용 차단 패턴.</summary>
@@ -40,11 +49,14 @@ public static class SecurityValidator
     {
         (Rx(@"\bStop-Computer\b"), "시스템 종료 금지"),
         (Rx(@"\bRestart-Computer\b"), "재부팅 금지"),
-        (Rx(@"\bRemove-Item\b.*-Recurse\b.*-Force\b"), "재귀 강제 삭제 금지"),
-        (Rx(@"\bRemove-Item\b.*-Force\b.*-Recurse\b"), "재귀 강제 삭제 금지"),
+        // Remove-Item 은 별칭이 많다(rm/ri/del/erase/rd/rmdir) — 이름만 막으면 `rm -r -force` 로 그대로 통과했다.
+        // 플래그 순서도 자유라 순열을 나열하는 대신 선행 탐색으로 둘 다 있는지 본다.
+        (Rx(@"\b(Remove-Item|rm|ri|rd|rmdir)\b(?=[^\r\n]*\s-r(ecurse)?\b)(?=[^\r\n]*\s-f(orce)?\b)"),
+            "재귀 강제 삭제 금지"),
         (Rx(@"\bInvoke-Expression\b"), "동적 코드 실행 금지"),
         (Rx(@"\biex\s"), "Invoke-Expression 별칭 금지"),
         (Rx(@"\bSet-ExecutionPolicy\b"), "실행 정책 변조 금지"),
+        (Rx(@"\bFromBase64String\b"), "인코딩된 페이로드 실행 금지(우회 방지)"),
     };
 
     /// <summary>CMD 전용 차단 패턴 (현재는 비어 있음, CommonBlacklist만 적용).</summary>
@@ -52,15 +64,20 @@ public static class SecurityValidator
     {
     };
 
-    /// <summary>차단 디렉토리 (절대 경로 인자).</summary>
+    /// <summary>
+    /// 차단 디렉토리 (절대 경로 인자).
+    /// Windows 는 <c>/</c> 도 경로 구분자로 받아들이므로 <c>[\\/]</c> 로 둘 다 잡는다 —
+    /// 역슬래시만 보면 <c>C:/Windows/System32</c> 가 그대로 통과했다.
+    /// PowerShell 의 <c>$env:SystemRoot</c> 형태도 <c>%SystemRoot%</c> 와 함께 막는다.
+    /// </summary>
     private static readonly (Regex Regex, string Reason)[] BlockedPaths =
     {
-        (Rx(@"C:\\Windows\\System32"), "시스템 디렉토리 접근 금지"),
-        (Rx(@"C:\\Windows\\SysWOW64"), "시스템 디렉토리 접근 금지"),
-        (Rx(@"C:\\Program Files"), "프로그램 디렉토리 접근 금지"),
-        (Rx(@"C:\\ProgramData"), "프로그램 데이터 접근 금지"),
-        (Rx(@"%SystemRoot%"), "시스템 환경변수 경로 접근 금지"),
-        (Rx(@"%WinDir%"), "Windows 경로 접근 금지"),
+        (Rx(@"C:[\\/]Windows[\\/]System32"), "시스템 디렉토리 접근 금지"),
+        (Rx(@"C:[\\/]Windows[\\/]SysWOW64"), "시스템 디렉토리 접근 금지"),
+        (Rx(@"C:[\\/]Program Files"), "프로그램 디렉토리 접근 금지"),
+        (Rx(@"C:[\\/]ProgramData"), "프로그램 데이터 접근 금지"),
+        (Rx(@"(%SystemRoot%|\$env:SystemRoot)"), "시스템 환경변수 경로 접근 금지"),
+        (Rx(@"(%WinDir%|\$env:WinDir)"), "Windows 경로 접근 금지"),
     };
 
     /// <summary>내장 패턴 매치. 타임아웃(ReDoS 의심 입력)은 차단으로 간주한다.</summary>

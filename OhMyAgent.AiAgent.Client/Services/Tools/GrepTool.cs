@@ -55,7 +55,11 @@ public sealed class GrepTool : ITool
         var matches = new List<object>();
         var truncated = false;
 
-        foreach (var file in EnumerateFiles(baseDir))
+        // 정션/심볼릭 링크를 따라가지 않는 열거 — 링크를 따라가면 워크스페이스 밖 파일 내용이
+        // 검색 결과로 새어 나온다(에이전트가 mklink /j 로 링크를 스스로 만들 수 있다).
+        var skippedLinks = new List<string>();
+
+        foreach (var file in SafeFileWalk.EnumerateFiles(baseDir, skippedLinks, ct, skipIgnoredDirs: true))
         {
             ct.ThrowIfCancellationRequested();
 
@@ -95,29 +99,10 @@ public sealed class GrepTool : ITool
             if (truncated) break;
         }
 
-        return ToolResult.Json(new { matches, truncated });
-    }
-
-    private static IEnumerable<string> EnumerateFiles(string baseDir)
-    {
-        var pending = new Stack<string>();
-        pending.Push(baseDir);
-        while (pending.Count > 0)
-        {
-            var dir = pending.Pop();
-            string[] subDirs;
-            string[] files;
-            try
-            {
-                subDirs = Directory.GetDirectories(dir);
-                files = Directory.GetFiles(dir);
-            }
-            catch { continue; }
-
-            foreach (var f in files) yield return f;
-            foreach (var d in subDirs)
-                if (!PathIgnore.IsIgnoredDir(d)) pending.Push(d);   // .git/bin/obj/node_modules 등 제외
-        }
+        // 링크로 건너뛴 항목이 있으면 조용히 빠뜨리지 않고 알린다 — "검색했는데 안 나왔다"는 오해 방지.
+        return skippedLinks.Count > 0
+            ? ToolResult.Json(new { matches, truncated, skipped_links = skippedLinks.Count })
+            : ToolResult.Json(new { matches, truncated });
     }
 
     private static string Truncate(string s) => s.Length > 500 ? s[..500] + "…" : s;

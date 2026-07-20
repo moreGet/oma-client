@@ -103,7 +103,6 @@ public class SettingsService : ISettingsService
                     Current.AuthToken = TokenProtector.Unprotect(Current.AuthTokenProtected);
 
                     // v5 -> v6: 평문 AuthToken 을 DPAPI 로 옮긴다.
-                    // LegacyAuthToken 을 비워야 저장 시 파일에서 평문 키가 사라진다.
                     if (Current.SchemaVersion < 6)
                     {
                         if (!string.IsNullOrEmpty(Current.LegacyAuthToken))
@@ -111,9 +110,18 @@ public class SettingsService : ISettingsService
                             Current.AuthToken = Current.LegacyAuthToken;
                             AppLog.Info("SettingsService", "평문 인증 토큰을 발견해 DPAPI 로 이전합니다(v6).");
                         }
-                        Current.LegacyAuthToken = null;
                         Current.SchemaVersion = 6;
                         migrated = true;   // 아래에서 SaveAsync → 암호문으로 다시 기록됨
+                    }
+
+                    // 평문 키 제거는 버전 분기 "밖" 이어야 한다.
+                    // 안에 두면 SchemaVersion 이 이미 6 인데 평문 AuthToken 키가 남아 있는 파일
+                    // (손으로 편집·백업 복원·다운그레이드 후 재실행)에서 LegacyAuthToken 이 non-null 로 남고,
+                    // 다음 SaveAsync 가 그대로 평문으로 다시 기록한다.
+                    if (Current.LegacyAuthToken is not null)
+                    {
+                        Current.LegacyAuthToken = null;
+                        migrated = true;   // 평문 키가 파일에서 사라지도록 저장을 유도
                     }
 
                     return migrated;

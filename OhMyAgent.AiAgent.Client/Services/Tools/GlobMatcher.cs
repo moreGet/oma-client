@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace OhMyAgent.AiAgent.Client.Services.Tools;
 
@@ -11,12 +12,14 @@ namespace OhMyAgent.AiAgent.Client.Services.Tools;
 /// </summary>
 internal static class GlobMatcher
 {
-    public static IEnumerable<string> EnumerateFiles(string baseDir, string pattern, int cap = 1000)
+    public static IEnumerable<string> EnumerateFiles(
+        string baseDir, string pattern, int cap = 1000, ICollection<string>? skippedLinks = null)
     {
         var regex = Compile(pattern);
         var results = new List<string>();
+        var skipped = skippedLinks ?? new List<string>();
 
-        foreach (var file in SafeEnumerate(baseDir))
+        foreach (var file in SafeEnumerate(baseDir, skipped))
         {
             var rel = Path.GetRelativePath(baseDir, file).Replace('\\', '/');
             if (regex.IsMatch(rel))
@@ -30,32 +33,12 @@ internal static class GlobMatcher
         return results;
     }
 
-    private static IEnumerable<string> SafeEnumerate(string baseDir)
-    {
-        var pending = new Stack<string>();
-        pending.Push(baseDir);
-
-        while (pending.Count > 0)
-        {
-            var dir = pending.Pop();
-            string[] subDirs;
-            string[] files;
-            try
-            {
-                subDirs = Directory.GetDirectories(dir);
-                files = Directory.GetFiles(dir);
-            }
-            catch
-            {
-                continue;
-            }
-
-            foreach (var f in files)
-                yield return f;
-            foreach (var d in subDirs)
-                if (!PathIgnore.IsIgnoredDir(d)) pending.Push(d);   // .git/bin/obj/node_modules 등 제외
-        }
-    }
+    /// <summary>
+    /// 정션/심볼릭 링크를 따라가지 않는 열거로 위임한다.
+    /// 직접 순회하면 링크를 타고 워크스페이스 밖 경로가 결과에 섞인다(ResolvePath 는 baseDir 하나만 검증).
+    /// </summary>
+    private static IEnumerable<string> SafeEnumerate(string baseDir, ICollection<string> skipped)
+        => SafeFileWalk.EnumerateFiles(baseDir, skipped, CancellationToken.None, skipIgnoredDirs: true);
 
     public static Regex Compile(string glob)
     {

