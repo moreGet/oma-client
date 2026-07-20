@@ -59,6 +59,9 @@ public sealed class ChatSocketClient(ISettingsService settings) : IChatSocketCli
             return Task.CompletedTask;   // 이미 연결/연결중
 
         _intentionalClose = false;
+
+        // 직전 CTS 를 반드시 해제한다 — 로그인/로그아웃을 반복하면 CTS 와 연결된 등록이 매번 새로 쌓였다.
+        _lifecycleCts?.Dispose();
         _lifecycleCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _pumpTask = Task.Run(() => RunConnectionLoopAsync(_lifecycleCts.Token));
         return Task.CompletedTask;
@@ -108,7 +111,12 @@ public sealed class ChatSocketClient(ISettingsService settings) : IChatSocketCli
         await DisconnectAsync().ConfigureAwait(false);
         _ws?.Dispose();
         _lifecycleCts?.Dispose();
-        _sendLock.Dispose();
+        _lifecycleCts = null;
+
+        // _sendLock 은 해제하지 않는다. DisconnectAsync 로 펌프는 멈췄지만, 그 시점에
+        // _sendLock.WaitAsync 에서 대기 중이던 전송이 남아 있으면 Dispose 가
+        // ObjectDisposedException 을 던진다(종료 경로에서 나는 예외라 원인 추적도 어렵다).
+        // SemaphoreSlim 은 관리 자원만 쓰므로 GC 에 맡기는 편이 안전하다.
     }
 
     // ── 연결 루프 + 수신 펌프 + 자동재연결 ────────────────────────

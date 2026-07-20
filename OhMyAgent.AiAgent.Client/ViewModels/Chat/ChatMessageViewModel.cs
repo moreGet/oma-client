@@ -38,7 +38,9 @@ public sealed partial class ChatMessageViewModel : ObservableObject
     private long? _editedAt;
 
     /// <summary>소프트 삭제 여부. true면 "삭제된 메시지" 표시(멘션/첨부 숨김).</summary>
-    [ObservableProperty] private bool _isDeleted;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEdited))]   // 삭제 시 "수정됨" 배지가 남지 않도록 함께 재평가
+    private bool _isDeleted;
 
     /// <summary>내가 보낸 메시지 여부(senderId 가 현재 신원과 일치). 정렬/버블색 결정.</summary>
     public bool IsMine { get; }

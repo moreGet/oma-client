@@ -42,7 +42,13 @@ public sealed class ChatRealtimeService(
     private const long MarkReadDebounceMs = 2500;
 
     private bool _socketHooked;
-    private ChatConnectionState _connectionState = ChatConnectionState.Disconnected;
+
+    // WS 펌프 스레드에서 쓰고 호출자 스레드에서 읽는다 — 바로 아래 _activeRoomId 와 동일하게 volatile.
+    private volatile ChatConnectionState _connectionState = ChatConnectionState.Disconnected;
+
+    // 재동기화 직렬화(0=유휴, 1=진행 중) + 서비스 수명 취소원.
+    private int _resyncRunning;
+    private CancellationTokenSource? _lifetimeCts;
 
     public ChatConnectionState ConnectionState => _connectionState;
 
@@ -63,6 +69,10 @@ public sealed class ChatRealtimeService(
 
     public async Task StartAsync(CancellationToken ct = default)
     {
+        // 이번 세션(로그인~로그아웃) 동안의 백그라운드 작업 수명. StopAsync 에서 취소·해제한다.
+        _lifetimeCts?.Dispose();
+        _lifetimeCts = new CancellationTokenSource();
+
         HookSocket();
 
         // 1) 초기 전역 안읽음 배지 로드(REST). 방 목록은 셸 VM 의 LoadRoomsCommand 가 단독으로 로드한다
@@ -137,6 +147,15 @@ public sealed class ChatRealtimeService(
     public async Task StopAsync()
     {
         UnhookSocket();
+
+        // 진행 중인 재동기화를 먼저 끊는다 — 안 그러면 로그아웃 후에도 다음 사용자 토큰으로 요청이 계속된다.
+        if (_lifetimeCts is { } cts)
+        {
+            _lifetimeCts = null;
+            try { await cts.CancelAsync().ConfigureAwait(false); } catch { /* 이미 정리됨 */ }
+            cts.Dispose();
+        }
+
         await socket.DisconnectAsync().ConfigureAwait(false);
         _rooms.Clear();
         _unread.Clear();
@@ -379,7 +398,30 @@ public sealed class ChatRealtimeService(
     }
 
     private void OnReconnected(object? sender, EventArgs e)
-        => _ = ResyncAsync();
+        => _ = ResyncGuardedAsync();
+
+    /// <summary>
+    /// 재동기화를 1건으로 직렬화하고 서비스 수명에 묶는다.
+    ///
+    /// 가드가 없으면 연결이 깜빡일 때마다 Reconnected 가 발화해 재동기화가 겹치고
+    /// (방 수 × N배 요청), StopAsync 로 로그아웃한 뒤에도 진행 중이던 재동기화가
+    /// 스냅샷한 방 목록으로 요청을 계속 보낸다 — 그 시점엔 <b>다음 사용자의 토큰</b>이 실린다.
+    /// </summary>
+    private async Task ResyncGuardedAsync()
+    {
+        if (Interlocked.CompareExchange(ref _resyncRunning, 1, 0) != 0)
+            return;   // 이미 진행 중 — 겹쳐 돌리지 않는다.
+
+        try
+        {
+            await ResyncAsync(_lifetimeCts?.Token ?? CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { /* 로그아웃/종료 — 정상 */ }
+        finally
+        {
+            Interlocked.Exchange(ref _resyncRunning, 0);
+        }
+    }
 
     private void OnMessageReceived(object? sender, ChatMessage m)
         => ApplyIncomingMessage(m, isEdited: false, isDeleted: false);
@@ -472,12 +514,12 @@ public sealed class ChatRealtimeService(
     /// 끊김 후 재동기화(Reconnected/Start): 보유 방 각각 최신 메시지 page + 전체 unread + 각 방 reads 재조회 후 병합.
     /// id dedup 으로 중복 방지. 누락분만 상위로 발화.
     /// </summary>
-    private async Task ResyncAsync()
+    private async Task ResyncAsync(CancellationToken ct)
     {
         // 1) 전역 안읽음 재조회(권위 재동기화).
         try
         {
-            var unread = await api.GetUnreadAsync().ConfigureAwait(false);
+            var unread = await api.GetUnreadAsync(ct).ConfigureAwait(false);
             SeedUnread(unread);
             await RaiseAsync(() => UnreadChanged?.Invoke(this, unread)).ConfigureAwait(false);
         }
@@ -486,9 +528,10 @@ public sealed class ChatRealtimeService(
         // 2) 보유 방별 최신 메시지 + 읽음 재동기화.
         foreach (var roomId in _rooms.Keys.ToArray())
         {
+            ct.ThrowIfCancellationRequested();
             try
             {
-                var messages = await api.GetMessagesAsync(roomId).ConfigureAwait(false);
+                var messages = await api.GetMessagesAsync(roomId, ct: ct).ConfigureAwait(false);
                 var state = GetOrAddRoom(roomId);
                 foreach (var m in messages)
                 {
@@ -502,7 +545,7 @@ public sealed class ChatRealtimeService(
                     }
                 }
 
-                var reads = await api.GetReadsAsync(roomId).ConfigureAwait(false);
+                var reads = await api.GetReadsAsync(roomId, ct).ConfigureAwait(false);
                 foreach (var r in reads)
                 {
                     state.AdvanceRead(r.MemberId, r.LastReadAt);

@@ -15,7 +15,8 @@ namespace OhMyAgent.AiAgent.Client.Services.Chat;
 
 /// <summary>
 /// Chat REST 클라이언트. AgentApiClient 헬퍼 패턴 미러(ApplyAuth/ReadErrorAsync/const Path/ChatJson.Options).
-/// App 의 메인 <see cref="HttpClient"/>(BaseAddress=ServerBaseUrl)를 공유 주입받는다. AgentApiClient 는 미수정.
+/// App 의 메인 <see cref="HttpClient"/>(BaseAddress 없음)를 공유 주입받아, 요청마다
+/// 설정의 ServerBaseUrl 로 절대 URI 를 만든다(<see cref="Url"/>).
 /// 에러는 <see cref="ChatApiException"/>(상태코드 보존)로 throw → 호출자가 401 분기.
 /// </summary>
 public sealed class ChatApiClient(HttpClient httpClient, ISettingsService settings) : IChatApiClient
@@ -30,6 +31,40 @@ public sealed class ChatApiClient(HttpClient httpClient, ISettingsService settin
     private const string MembersPath = "/api/v1/members";        // admin 전용 — 비admin 은 403(graceful)
 
     private const long MaxAttachmentBytes = 10 * 1024 * 1024;   // 10 MiB
+
+    /// <summary>REST 요청 1건의 상한(초). 공유 HttpClient 는 Timeout.InfiniteTimeSpan 이라 여기서 걸어야 한다.</summary>
+    private const int RequestTimeoutSeconds = 30;
+
+    /// <summary>
+    /// 요청별 타임아웃을 건 전송. 주입받는 HttpClient 는 무한 타임아웃(SSE 스트리밍용)이므로,
+    /// 이걸 걸지 않으면 서버가 TCP 는 받고 응답하지 않는 상태(절전/VPN 끊김 후 반열림 소켓)에서
+    /// 메신저가 "연결 중" 으로 영원히 멈춘다. AgentApiClient.SendControlAsync 와 같은 규약.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendWithTimeoutAsync(HttpRequestMessage req, CancellationToken ct)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(RequestTimeoutSeconds));
+        return await httpClient.SendAsync(req, timeoutCts.Token).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 요청 URI 를 매번 현재 설정의 ServerBaseUrl 기준 절대 URI 로 만든다(AgentApiClient.Url 과 동일 규약).
+    ///
+    /// 주입받는 HttpClient 에는 BaseAddress 가 없다(App.xaml.cs — 첫 요청 후 변경 불가 함정 회피).
+    /// 여기서 상대 경로를 그대로 넘기면 HttpClient 가 InvalidOperationException 을 던지고,
+    /// 그것이 blanket catch 에서 "network_error" 로 뭉개져 서버 다운과 구분되지 않는다.
+    /// </summary>
+    private Uri Url(string path)
+    {
+        var baseUrl = settings.Current.ServerBaseUrl;
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            throw new ChatApiException(0, "config_error", "서버 주소가 설정되지 않았습니다. 설정에서 서버 주소를 입력하세요.");
+
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var root))
+            throw new ChatApiException(0, "config_error", $"서버 주소 형식이 올바르지 않습니다: {baseUrl}");
+
+        return new Uri(root, path);
+    }
 
     // ── 이름 디렉터리(memberId → 표시이름) 소스 ──
 
@@ -192,10 +227,10 @@ public sealed class ChatApiClient(HttpClient httpClient, ISettingsService settin
             streamContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
             content.Add(streamContent, "file", info.Name);   // part 명 = "file"
 
-            using var req = new HttpRequestMessage(HttpMethod.Post, AttachmentsPath) { Content = content };
+            using var req = new HttpRequestMessage(HttpMethod.Post, Url(AttachmentsPath)) { Content = content };
             ApplyAuth(req);
 
-            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendWithTimeoutAsync(req, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 throw await CreateExceptionAsync(resp, ct).ConfigureAwait(false);
 
@@ -216,7 +251,7 @@ public sealed class ChatApiClient(HttpClient httpClient, ISettingsService settin
         try
         {
             var path = $"{AttachmentsPath}/{Uri.EscapeDataString(attachmentId)}";
-            using var req = new HttpRequestMessage(HttpMethod.Get, path);
+            using var req = new HttpRequestMessage(HttpMethod.Get, Url(path));
             ApplyAuth(req);
 
             // 응답 헤더만 먼저 받고 바이너리 스트림은 호출자가 소비/Dispose 한다.
@@ -253,7 +288,7 @@ public sealed class ChatApiClient(HttpClient httpClient, ISettingsService settin
         try
         {
             using var req = BuildJsonRequest(method, path, body);
-            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendWithTimeoutAsync(req, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 throw await CreateExceptionAsync(resp, ct).ConfigureAwait(false);
 
@@ -275,7 +310,7 @@ public sealed class ChatApiClient(HttpClient httpClient, ISettingsService settin
         try
         {
             using var req = BuildJsonRequest(method, path, body);
-            using var resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendWithTimeoutAsync(req, ct).ConfigureAwait(false);
 
             // DELETE 멱등: 404(이미 없음)는 성공으로 간주.
             if (method == HttpMethod.Delete && resp.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -294,7 +329,7 @@ public sealed class ChatApiClient(HttpClient httpClient, ISettingsService settin
 
     private HttpRequestMessage BuildJsonRequest(HttpMethod method, string path, object? body)
     {
-        var req = new HttpRequestMessage(method, path);
+        var req = new HttpRequestMessage(method, Url(path));
         if (body is not null)
         {
             var json = JsonSerializer.Serialize(body, ChatJson.Options);
