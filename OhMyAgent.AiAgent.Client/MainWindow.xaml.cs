@@ -55,7 +55,11 @@ public partial class MainWindow : Window
     }
 
     // Enter → 전송 / Shift+Enter → 줄바꿈 / Esc → 실행 중이면 중지 / 빈 입력에서 ↑ → 마지막 메시지 되불러오기
-    private void InputBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    //
+    // KeyDown 이 아니라 PreviewKeyDown(터널링) 이어야 한다. TextBox 의 클래스 핸들러가
+    // ↑/↓ 를 캐럿 이동으로 먼저 소비하며 Handled=true 로 표시하므로, 버블링 KeyDown 에 붙이면
+    // @자동완성의 방향키 이동과 빈 입력창 ↑ 되불러오기가 아예 호출되지 않는다.
+    private void InputBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (DataContext is not AgentSessionViewModel vm) return;
 
