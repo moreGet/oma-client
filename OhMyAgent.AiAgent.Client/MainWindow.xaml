@@ -779,7 +779,7 @@
                                      MaxLines="6" MinHeight="40" MaxHeight="140"
                                      VerticalScrollBarVisibility="Auto"
                                      IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}"
-                                     KeyDown="InputBox_KeyDown"
+                                     PreviewKeyDown="InputBox_PreviewKeyDown"
                                      TextChanged="InputBox_TextChanged"
                                      SelectionChanged="InputBox_SelectionChanged"/>
 
@@ -804,9 +804,38 @@
                                              MaxHeight="220"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                              MouseLeftButtonUp="MentionList_MouseLeftButtonUp">
+                                        <!-- 기본 ListBoxItem 은 선택 시 시스템 파란색 하이라이트라 다크 테마에서 튄다.
+                                             선택 항목을 액센트 배경 + 좌측 바로 표시(리눅스 자동완성 느낌). -->
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="Padding" Value="0"/>
+                                                <Setter Property="Margin" Value="0,1"/>
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ListBoxItem">
+                                                            <Border x:Name="Root" Background="Transparent"
+                                                                    CornerRadius="{StaticResource RadiusMd}"
+                                                                    BorderThickness="2,0,0,0" BorderBrush="Transparent">
+                                                                <ContentPresenter/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface2Bg}"/>
+                                                                </Trigger>
+                                                                <Trigger Property="IsSelected" Value="True">
+                                                                    <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface2Bg}"/>
+                                                                    <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
-                                                <StackPanel Orientation="Horizontal" Margin="4,2">
+                                                <StackPanel Orientation="Horizontal" Margin="8,4">
                                                     <TextBlock Text="📄" FontSize="{StaticResource FontSizeSmall}" Margin="0,0,7,0"/>
                                                     <TextBlock Text="{Binding}"
                                                                Foreground="{StaticResource TextPrimary}"

@@ -146,18 +146,25 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         return await httpClient.SendAsync(req, timeoutCts.Token).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 서버 도달 여부만 본다 — 화면의 "서버 연결됨" 표시 전용.
+    ///
+    /// 의도적으로 (1) 토큰을 붙이지 않고 (2) 상태 코드를 따지지 않는다.
+    /// /health 는 Public 이므로 인증은 불필요하고, 만료된 토큰이나 서버 내부 오류(5xx)로
+    /// "연결 안됨" 이 뜨면 사용자는 서버가 죽은 줄 오해한다. 응답이 왔다는 것 자체가 연결의 증거다.
+    /// 인증 여부 판정은 <see cref="CheckReadinessAsync"/> 의 몫이다.
+    /// </summary>
     public async Task<bool> CheckHealthAsync(CancellationToken ct = default)
     {
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, Url(HealthPath));
-            ApplyAuth(req);
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
-            return resp.IsSuccessStatusCode;
+            return true;   // 상태 코드 불문 — 응답이 왔으면 연결된 것.
         }
         catch
         {
-            return false;
+            return false;  // 전송 실패/타임아웃만 미연결.
         }
     }
 

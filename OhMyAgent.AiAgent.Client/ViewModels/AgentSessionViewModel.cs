@@ -653,6 +653,8 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
                 if (_currentAssistant is { IsStreaming: true } a)
                     a.IsStreaming = false;
                 IsBusy = false;
+                // 턴이 끝나면 연결 표시로 되돌린다 — 안 그러면 "실행 중..."/"중지됨" 이 상단바에 눌러앉는다.
+                StatusText = ConnectionStatusText;
             }).ConfigureAwait(false);
 
             // C — persist the (now-appended) session and refresh the sidebar list.
@@ -743,7 +745,11 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         ServerReadiness readiness;
         try
         {
-            readiness = await _api.CheckReadinessAsync().ConfigureAwait(false);
+            // ConfigureAwait(true) 필수 — ApplyReadiness 는 Unauthenticated 시 LoginRequested 를 통해
+            // Transcript/Attachments.Clear() 와 Window 조작(App.ReturnToLogin)까지 유발한다.
+            // 스레드풀에서 실행되면 ObservableCollection.Clear() 가 예외를 던지고, 이 Task 는
+            // 호출부에서 버려져(_ =) 예외가 로그로만 남아 "로그인 화면으로 안 돌아감" 으로 나타난다.
+            readiness = await _api.CheckReadinessAsync().ConfigureAwait(true);
         }
         catch
         {
@@ -753,25 +759,29 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         ApplyReadiness(readiness);
     }
 
+    /// <summary>서버에 닿아 있는지만 나타내는 상태 문구 — 인증 실패·실행 상태와 무관하게 이 값으로 고정한다.</summary>
+    private string ConnectionStatusText => IsConnected ? "서버 연결됨" : "서버 연결 안됨";
+
     /// <summary>연결/인증 상태를 화면 상태(배너 제목·문구·버튼)로 반영한다.</summary>
     private void ApplyReadiness(ServerReadiness readiness)
     {
         IsConnected = readiness != ServerReadiness.Disconnected;
         NeedsLogin  = readiness == ServerReadiness.Unauthenticated;
 
+        // 연결 표시는 도달 여부만 따른다 — 로그인이 필요해도 서버에는 닿았으므로 "서버 연결됨".
+        StatusText = ConnectionStatusText;
+
         switch (readiness)
         {
             case ServerReadiness.Ready:
                 HasError = false;
                 ErrorMessage = string.Empty;
-                StatusText = "연결됨";
                 break;
 
             case ServerReadiness.Unauthenticated:
                 HasError = true;
                 ErrorTitle = "로그인 필요";
                 PrimaryActionText = "로그인";
-                StatusText = "로그인 필요";
                 ErrorMessage = "서버에는 연결되었지만 로그인이 필요합니다.\n로그인 화면에서 다시 인증하세요.";
                 // 로그인 필요 상황이면 즉시 모든 창을 닫고 로그인 화면만 남긴다(App이 처리).
                 LoginRequested?.Invoke(this, EventArgs.Empty);
@@ -781,7 +791,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
                 HasError = true;
                 ErrorTitle = "서버 연결 실패";
                 PrimaryActionText = "다시 시도";
-                StatusText = "연결 끊김";
                 ErrorMessage = $"에이전트 서버({_settings.Current.ServerBaseUrl})에 연결할 수 없습니다.\n서버가 실행 중인지 확인하세요.";
                 break;
         }
@@ -805,7 +814,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
             ErrorMessage = string.Empty;
             LastUsageText = string.Empty;
             ResetUsageAccumulation();
-            StatusText = IsConnected ? "Connected" : "Disconnected";
+            StatusText = ConnectionStatusText;
         }).ConfigureAwait(false);
 
         await RefreshChatSessionsAsync().ConfigureAwait(false);
