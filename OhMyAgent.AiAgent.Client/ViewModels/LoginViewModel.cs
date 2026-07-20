@@ -23,6 +23,7 @@ public sealed partial class LoginViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(LoginCommand))]
+    [NotifyPropertyChangedFor(nameof(CanProceed))]
     private string _username = string.Empty;
 
     /// <summary>PasswordBox 는 바인딩 불가 — 코드비하인드에서 푸시.</summary>
@@ -30,7 +31,11 @@ public sealed partial class LoginViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(LoginCommand))]
+    [NotifyPropertyChangedFor(nameof(CanProceed))]
     private bool _isBusy;
+
+    /// <summary>"다음" 버튼(비밀번호 칸 펼치기) 활성 조건 — 로그인 가능 조건과 동일.</summary>
+    public bool CanProceed => CanLogin();
 
     [ObservableProperty] private bool _hasError;
     [ObservableProperty] private string _statusMessage = string.Empty;

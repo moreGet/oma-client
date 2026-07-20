@@ -93,17 +93,25 @@
                 <TextBox x:Name="UsernameBox"
                          Style="{StaticResource DarkTextBox}"
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
-                         FontSize="{StaticResource FontSizeBodyLarge}" MinHeight="42" Margin="0,0,0,16"
-                         KeyDown="Field_KeyDown"/>
+                         FontSize="{StaticResource FontSizeBodyLarge}"
+                         Padding="12,6" MinHeight="34" Margin="0,0,0,12"
+                         KeyDown="UsernameBox_KeyDown"/>
 
-                <!-- 비밀번호 -->
-                <TextBlock Text="비밀번호" Foreground="{StaticResource TextSecondary}"
-                           FontSize="{StaticResource FontSizeXSmall}" Margin="2,0,0,5"/>
-                <PasswordBox x:Name="PasswordBox"
-                             Style="{StaticResource DarkPasswordBox}"
-                             PasswordChanged="PasswordBox_PasswordChanged"
-                             KeyDown="Field_KeyDown"
-                             FontSize="{StaticResource FontSizeBodyLarge}" MinHeight="42" Margin="0,0,0,10"/>
+                <!-- 비밀번호 — ID 입력 후 Enter 시 아래로 슬라이드하며 등장 -->
+                <StackPanel x:Name="PasswordSection" Height="0" Opacity="0" ClipToBounds="True">
+                    <StackPanel.RenderTransform>
+                        <TranslateTransform x:Name="PasswordSlide" Y="-10"/>
+                    </StackPanel.RenderTransform>
+
+                    <TextBlock Text="비밀번호" Foreground="{StaticResource TextSecondary}"
+                               FontSize="{StaticResource FontSizeXSmall}" Margin="2,0,0,5"/>
+                    <PasswordBox x:Name="PasswordBox"
+                                 Style="{StaticResource DarkPasswordBox}"
+                                 PasswordChanged="PasswordBox_PasswordChanged"
+                                 KeyDown="PasswordBox_KeyDown"
+                                 FontSize="{StaticResource FontSizeBodyLarge}"
+                                 Padding="12,6" MinHeight="34" Margin="0,0,0,10"/>
+                </StackPanel>
 
                 <!-- 상태 -->
                 <TextBlock Text="{Binding StatusMessage}" FontSize="{StaticResource FontSizeSmall}" Margin="2,0,0,14"
@@ -120,8 +128,16 @@
                     </TextBlock.Style>
                 </TextBlock>
 
-                <!-- 로그인 버튼 -->
-                <Button Command="{Binding LoginCommand}"
+                <!-- 다음 버튼 — 비밀번호 칸을 펼치기 전까지만 표시 -->
+                <Button x:Name="NextButton" Content="다음"
+                        Click="NextButton_Click"
+                        IsEnabled="{Binding CanProceed}"
+                        Style="{StaticResource PrimaryButton}"
+                        Height="46" FontSize="{StaticResource FontSizeSubtitle}" FontWeight="SemiBold"/>
+
+                <!-- 로그인 버튼 — 비밀번호 칸이 펼쳐진 뒤 "다음"을 대체 -->
+                <Button x:Name="LoginButton" Command="{Binding LoginCommand}"
+                        Visibility="Collapsed"
                         Style="{StaticResource PrimaryButton}"
                         Height="46" FontSize="{StaticResource FontSizeSubtitle}" FontWeight="SemiBold">
                     <Button.Content>
