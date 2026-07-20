@@ -326,6 +326,18 @@
                                        FontSize="{StaticResource FontSizeXSmall}" VerticalAlignment="Center"/>
                         </Button>
 
+                        <!-- 에이전트 루프 반복 횟수 — 실행 중에만 표시(끝나면 VM 이 비운다) -->
+                        <Border Margin="8,0,0,0" VerticalAlignment="Center"
+                                Background="{StaticResource Surface2Bg}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="{StaticResource RadiusMd}" Padding="7,2"
+                                ToolTip="이번 요청에서 에이전트가 반복한 횟수 / 상한(설정의 MaxIterations)"
+                                Visibility="{Binding IterationDisplayText, Converter={StaticResource StringToVisibility}}">
+                            <TextBlock Text="{Binding IterationDisplayText}"
+                                       Foreground="{StaticResource TextSecondary}"
+                                       FontSize="{StaticResource FontSizeXSmall}" VerticalAlignment="Center"/>
+                        </Border>
+
                         <!-- ── 토큰 쿼터 칩 + 팝업 (HasQuota 일 때만) ── -->
                         <Grid Margin="12,0,0,0" VerticalAlignment="Center"
                               Visibility="{Binding HasQuota, Converter={StaticResource BoolToVisibility}}">

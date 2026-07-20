@@ -97,6 +97,14 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     /// <summary>상단 토큰 표시 — 기본은 마지막 응답 in/out, 클릭(ShowTotalUsage) 시 세션 누적 총량(천 단위).</summary>
     public string UsageDisplayText => ShowTotalUsage ? $"총 {_totalTokens:N0} 토큰" : LastUsageText;
 
+    /// <summary>
+    /// 이번 턴의 에이전트 루프 반복 횟수 — "반복 3/100". 실행 중에만 값이 있고 턴이 끝나면 비운다.
+    ///
+    /// StatusText 에 섞어 쓰지 않는다: StatusText 는 서버 연결 표시로 고정돼 있어(연결됨/연결 안됨),
+    /// 거기에 진행 상태를 덮어쓰면 연결 표시가 사라진다.
+    /// </summary>
+    [ObservableProperty] private string _iterationDisplayText = string.Empty;
+
     /// <summary>상단 토큰 표시를 in/out ↔ 세션 누적 총량으로 토글(텍스트 클릭이 바인딩).</summary>
     [RelayCommand]
     private void ToggleUsageView() => ShowTotalUsage = !ShowTotalUsage;
@@ -655,6 +663,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
                 IsBusy = false;
                 // 턴이 끝나면 연결 표시로 되돌린다 — 안 그러면 "실행 중..."/"중지됨" 이 상단바에 눌러앉는다.
                 StatusText = ConnectionStatusText;
+                IterationDisplayText = string.Empty;   // 진행 중에만 의미 있는 값
             }).ConfigureAwait(false);
 
             // C — persist the (now-appended) session and refresh the sidebar list.
@@ -712,6 +721,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         Attachments.Clear();
         _permissions.ClearSessionRules();
         LastUsageText = string.Empty;
+        IterationDisplayText = string.Empty;
         ResetUsageAccumulation();
         PendingApproval = null;
         IsBusy = false;
@@ -813,6 +823,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
             HasError = false;
             ErrorMessage = string.Empty;
             LastUsageText = string.Empty;
+            IterationDisplayText = string.Empty;
             ResetUsageAccumulation();
             StatusText = ConnectionStatusText;
         }).ConfigureAwait(false);
@@ -863,6 +874,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
                 Attachments.Clear();
                 _permissions.ClearSessionRules();
                 LastUsageText = string.Empty;
+                IterationDisplayText = string.Empty;
                 ResetUsageAccumulation();
             }).ConfigureAwait(false);
         }
@@ -1026,6 +1038,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         HasError = false;
         ErrorMessage = string.Empty;
         LastUsageText = string.Empty;
+        IterationDisplayText = string.Empty;
         ResetUsageAccumulation();
         StatusText = IsConnected ? "Connected" : "Disconnected";
 
@@ -1165,7 +1178,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
                 break;
 
             case AgentIterationAdvanced iter:
-                StatusText = $"실행 중 ({iter.Iteration}/{iter.MaxIterations})";
+                IterationDisplayText = $"반복 {iter.Iteration}/{iter.MaxIterations}";
                 break;
 
             case AgentDone done:
@@ -1177,7 +1190,8 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
                 StatusText = "완료";
                 if (done.LastUsage is { } usage)
                 {
-                    LastUsageText = $"in:{usage.PromptTokens} out:{usage.CompletionTokens}";
+                    // 단위를 명시한다 — "in:1234" 만으로는 무슨 수치인지 알 수 없다.
+                    LastUsageText = $"in {usage.PromptTokens:N0} · out {usage.CompletionTokens:N0} 토큰";
                     // Feature 7 — 세션 누적 총 토큰량 갱신(클릭 토글 표시용).
                     _totalTokens += usage.PromptTokens + usage.CompletionTokens;
                     OnPropertyChanged(nameof(UsageDisplayText));
