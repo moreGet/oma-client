@@ -161,11 +161,11 @@
     </p>
     <div class="chips rise" style="margin-top:2rem">
       <span class="chip"><b>폐쇄망</b> 안전</span>
-      <span class="chip"><b>26개</b> 내장 도구</span>
+      <span class="chip"><b>33개</b> 내장 도구</span>
       <span class="chip"><b>권한 승인</b> 3단계</span>
       <span class="chip"><b>실시간</b> 팀 협업</span>
     </div>
-    <p class="dim rise" style="margin-top:1.6rem;font-size:.9rem">설치형 · 외부 연결 0 · 사용량 통제 &nbsp;|&nbsp; <kbd>→</kbd> 다음</p>
+    <p class="dim rise" style="margin-top:1.6rem;font-size:.9rem">설치형 · 외부 연결 ✕ · 사용량 통제 &nbsp;|&nbsp; <kbd>→</kbd> 다음</p>
   </section>
 
   <!-- 2 · The problem -->
@@ -215,7 +215,29 @@
       찾고·만들고·바꾸고·확인하는 <b>실제 손작업</b>은 AI가 맡습니다.
       단, 보안망을 벗어나지 않고, 회사가 통제할 수 있는 방식으로.
     </p>
-    <p class="quote rise" style="margin-top:2.2rem">
+    <div class="vs rise" style="margin-top:1.8rem">
+      <div class="col bad">
+        <span class="lbl">챗봇에게 물으면</span>
+        <h4>"이렇게 하세요"</h4>
+        <ul>
+          <li><span>1</span> 폴더를 여세요</li>
+          <li><span>2</span> 파일을 찾으세요</li>
+          <li><span>3</span> 이 수식을 넣으세요</li>
+          <li><span>→</span> <b>결국 30분은 내가 작업</b></li>
+        </ul>
+      </div>
+      <div class="col good">
+        <span class="lbl">에이전트에게 맡기면</span>
+        <h4>"했습니다"</h4>
+        <ul>
+          <li><span>✓</span> 폴더를 직접 열고</li>
+          <li><span>✓</span> 파일을 직접 찾고</li>
+          <li><span>✓</span> 직접 만들어 저장까지</li>
+          <li><span>→</span> <b>나는 목표 입력과 승인만</b></li>
+        </ul>
+      </div>
+    </div>
+    <p class="quote rise" style="margin-top:1.6rem">
       "답을 주는 AI"가 아니라 <span class="q">"일을 끝내는 AI"</span>.
     </p>
   </section>
@@ -234,22 +256,60 @@
     <p class="dim rise" style="margin-top:1.4rem">필요하면 스스로 반복합니다 — 작업이 끝날 때(<kbd>end_turn</kbd>)까지 자율로.</p>
   </section>
 
+  <!-- 4b · ★ Concrete end-to-end scenario -->
+  <section class="slide">
+    <span class="kicker rise">실제로 이렇게 씁니다</span>
+    <h2 class="rise">월말 정산 보고서, <span class="grad">한 문장으로</span></h2>
+    <div class="split">
+      <div class="rise">
+        <div class="mock">
+          <div class="hd"><span class="av">나</span><span class="nm">요청</span></div>
+          <div class="bub me" style="max-width:100%">
+            @정산/2026-06 폴더의 엑셀들 합쳐서 부서별 합계 내고,
+            지난달 대비 증감 표로 정리해서 보고서 초안 만들어줘
+          </div>
+        </div>
+        <p class="dim" style="margin-top:1rem;font-size:.88rem">
+          <b>@</b> 를 치면 작업 폴더의 파일 목록이 떠서 골라 넣을 수 있습니다.
+        </p>
+      </div>
+      <div class="rise">
+        <div class="card" style="padding:1.1rem 1.2rem">
+          <span class="ic">🧾</span><h3>AI가 스스로 한 일</h3>
+          <ul style="list-style:none;margin-top:.7rem;display:flex;flex-direction:column;gap:.5rem;font-size:.92rem;color:var(--muted);line-height:1.45">
+            <li><b style="color:#56d364">✓</b> 폴더에서 엑셀 12개 찾기 <span class="dim">(glob)</span></li>
+            <li><b style="color:#56d364">✓</b> 각 파일 읽어 부서·금액 추출 <span class="dim">(read_excel)</span></li>
+            <li><b style="color:#56d364">✓</b> 지난달 파일과 대조해 증감 계산</li>
+            <li><b style="color:var(--amber)">⏸</b> 보고서 파일 생성 — <b style="color:var(--text)">승인 요청</b> <span class="dim">(write_excel)</span></li>
+            <li><b style="color:#56d364">✓</b> 승인 후 생성 완료 · 결과 요약 보고</li>
+          </ul>
+        </div>
+        <p class="dim" style="margin-top:.9rem;font-size:.85rem">
+          진행 상황은 화면 상단 <b>작업 계획 카드</b>에 단계별로 표시됩니다 — 지금 무엇을 하는 중인지 보입니다.
+        </p>
+      </div>
+    </div>
+    <p class="dim rise" style="margin-top:1.2rem">읽기는 알아서, <b>쓰기·삭제·실행은 확인 후</b>. 사람은 목표와 승인만 담당합니다.</p>
+  </section>
+
   <!-- 5 · Capabilities / 26 tools -->
   <section class="slide">
     <span class="kicker rise">무엇을 할 수 있나</span>
-    <h2 class="rise"><span class="grad">26개</span> 내장 도구로, 진짜 업무를</h2>
+    <h2 class="rise"><span class="grad">33개</span> 내장 도구로, 진짜 업무를</h2>
     <div class="cards c4">
-      <div class="card rise"><span class="ic">📂</span><h3>문서 정리·병합</h3><p>흩어진 보고서·로그를 찾아 하나로 합치고 정리.</p></div>
-      <div class="card rise"><span class="ic">⚙️</span><h3>업무 자동화</h3><p>파일 변환, 이름 일괄 변경, 폴더 정돈, 배치 처리.</p></div>
-      <div class="card rise"><span class="ic">🔎</span><h3>자료 검색</h3><p>폴더 전체에서 원하는 단어·파일을 빠르게 추적.</p></div>
+      <div class="card rise"><span class="ic">🇰🇷</span><h3>한글·오피스 문서</h3><p><b>한글(HWPX)</b>·Excel·PDF·Word·PPT를 읽고, Excel·PPT는 <b>만들기</b>까지. 사내 문서 업무 그대로.</p></div>
+      <div class="card rise"><span class="ic">⚙️</span><h3>업무 자동화</h3><p>파일 변환, 이름 일괄 변경, 폴더 정돈, zip 묶기·풀기, 배치 처리.</p></div>
+      <div class="card rise"><span class="ic">🔎</span><h3>자료 검색</h3><p>폴더 전체에서 원하는 단어·파일을 추적. 여러 갈래를 <b>동시에</b> 훑어 빠르게.</p></div>
       <div class="card rise"><span class="ic">💻</span><h3>개발 보조</h3><p>코드 탐색·수정·실행을 자율로 — 개발자에게도.</p></div>
     </div>
     <div class="chips rise">
       <span class="chip"><b>파일</b> 읽기·쓰기·검색</span>
       <span class="chip"><b>셸·프로세스</b> 실행</span>
-      <span class="chip"><b>문서</b> CSV·Excel·PDF·Word</span>
+      <span class="chip"><b>문서</b> CSV·Excel·PDF·Word·<b>PPT</b>·<b>한글(HWPX)</b></span>
+      <span class="chip"><b>압축</b> zip 묶기·풀기</span>
       <span class="chip"><b>스크린샷</b>·클립보드</span>
       <span class="chip">사내 <b>HTTP</b></span>
+      <span class="chip"><b>작업 계획</b> 추적</span>
     </div>
     <p class="dim rise" style="margin-top:1.2rem">예) "이 폴더의 모든 .log를 날짜별로 묶어 zip으로 만들어줘" → 찾고, 묶고, 압축하고, 확인까지.</p>
   </section>
@@ -326,7 +386,7 @@
         <ul>
           <li><span>✓</span> 일하는 AI <b>+</b> 안전한 통제</li>
           <li><span>✓</span> 권한 승인·샌드박스 내장</li>
-          <li><span>✓</span> 폐쇄망 100% · 외부 연결 0</li>
+          <li><span>✓</span> 폐쇄망 100% · 외부 연결 ✕</li>
           <li><span>✓</span> <b>팀 실시간 협업까지</b></li>
         </ul>
       </div>
@@ -339,12 +399,87 @@
     <span class="kicker rise">안심하고 쓰세요</span>
     <h2 class="rise">강력하지만 <span class="grad">선을 지킵니다</span></h2>
     <div class="cards c4">
-      <div class="card rise"><span class="ic">🔒</span><h3>폐쇄망 안에서만</h3><p>외부 인터넷으로 데이터가 나가지 않습니다. 외부 유출 0.</p></div>
+      <div class="card rise"><span class="ic">🔒</span><h3>폐쇄망 안에서만</h3><p>외부 인터넷으로 데이터가 나가지 않습니다. 외부 유출 ✕.</p></div>
       <div class="card rise"><span class="ic">📦</span><h3>작업 폴더 샌드박스</h3><p>지정 폴더 밖은 차단. 경로 탈출 방지.</p></div>
       <div class="card rise"><span class="ic">🛡️</span><h3>권한 승인 3단계</h3><p>수동 · 안전 자동 · 전체 자동. 위험 작업은 실행 전 확인.</p></div>
       <div class="card rise"><span class="ic">🏢</span><h3>회사가 통제</h3><p>사용 기능·사용량 한도를 서버 정책으로 관리.</p></div>
     </div>
     <p class="lead rise" style="margin-top:1.8rem">설치 바이너리는 <b>서명·해시(SHA-256/Authenticode)</b>로 무결성을 검증 — 변조 없는 배포를 보장합니다.</p>
+  </section>
+
+  <!-- 9a · ★ What safety actually looks like on screen -->
+  <section class="slide">
+    <span class="kicker rise">눈으로 확인하는 안전</span>
+    <h2 class="rise">"알아서 했다"가 아니라, <span class="grad">뭘 할지 보여주고 묻습니다</span></h2>
+    <div class="cards c3">
+      <div class="card rise">
+        <span class="ic">📝</span><h3>바꾸기 전에 <b>변경 내용</b>을 보여줌</h3>
+        <p>파일 수정은 <b>어디가 어떻게 바뀌는지 색으로 구분해</b> 보여준 뒤 승인을 받습니다. 알 수 없는 코드가 아니라 실제 변경을 보고 판단합니다.</p>
+      </div>
+      <div class="card rise">
+        <span class="ic">📋</span><h3>진행 상황이 <b>계획표</b>로</h3>
+        <p>여러 단계 작업은 할 일 목록으로 표시되고, 지금 하는 단계가 강조됩니다. 끝난 항목은 취소선 — 어디까지 됐는지 한눈에.</p>
+      </div>
+      <div class="card rise">
+        <span class="ic">⛔</span><h3>언제든 <b>중지</b></h3>
+        <p><kbd>Esc</kbd> 한 번이면 즉시 멈춥니다. 실행 중인 명령까지 함께 정리됩니다.</p>
+      </div>
+    </div>
+    <div class="vs rise" style="margin-top:1.6rem">
+      <div class="col mid" style="flex:1.4">
+        <span class="lbl">권한 모드 — 업무 성격에 맞게</span>
+        <h4>확인 강도를 고르세요</h4>
+        <ul>
+          <li><span>🔒</span> <b>수동</b> — 읽기 외 모든 작업을 확인 <span class="dim">(기본값·권장)</span></li>
+          <li><span>⚖️</span> <b>안전 자동</b> — 파일 쓰기는 자동, <b>삭제·명령 실행은 확인</b></li>
+          <li><span>⚡</span> <b>전체 자동</b> — 확인 없이 진행 <span class="dim">(신뢰된 반복 작업용)</span></li>
+        </ul>
+      </div>
+      <div class="col good">
+        <span class="lbl">모드와 무관하게 항상 적용</span>
+        <h4>넘을 수 없는 선</h4>
+        <ul>
+          <li><span>✓</span> 지정 폴더 밖 접근 차단</li>
+          <li><span>✓</span> 위험 명령 차단 목록</li>
+          <li><span>✓</span> 화면·클립보드 읽기는 <b>항상 확인</b></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9b · ★ Data sovereignty -->
+  <section class="slide">
+    <span class="kicker v rise">가장 많이 받는 질문</span>
+    <h2 class="rise">"AI를 쓰면 내부 정보가<br><span class="gradg">국외로 나가지 않나요?"</span></h2>
+    <div class="split">
+      <div class="rise">
+        <p class="big">나갈 <b>경로 자체가 없습니다.</b> 앱은 외부 AI 회사에 <b>직접 접속하지 않습니다</b>.</p>
+        <p class="lead" style="margin-top:1.2rem">
+          앱이 통신하는 곳은 <b>사내 서버 단 한 곳</b>뿐입니다. 외부 AI 서비스의
+          <b>API 키가 앱에 아예 없어서</b>, 설령 노트북을 분실해도 외부로 데이터를 보낼 수단이 없습니다.
+        </p>
+      </div>
+      <div class="rise">
+        <div class="vs" style="flex-direction:column">
+          <div class="col bad">
+            <span class="lbl">흔한 오해</span>
+            <h4>앱 → 해외 AI 서버</h4>
+            <ul><li><span>✕</span> 내 PC가 외국 서버로 직접 전송</li></ul>
+          </div>
+          <div class="col good" style="margin-top:.8rem">
+            <span class="lbl">실제 구조</span>
+            <h4>앱 → 사내 서버 → 지정 모델</h4>
+            <ul><li><span>✓</span> 어떤 모델을 쓸지는 <b>회사가 결정</b></li></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cards c3 rise" style="margin-top:1.4rem">
+      <div class="card hi"><span class="ic">🇰🇷</span><h3>Azure 국내 리전</h3><p>Azure OpenAI를 <b>국내 리전으로 고정</b> — 데이터가 지정 리전을 벗어나지 않음.</p></div>
+      <div class="card hi"><span class="ic">🌐</span><h3>지역 폐쇄망 모델</h3><p>국가·지역별 폐쇄망 AI 서비스와 연동 — <b>해당 국가 내</b> 처리.</p></div>
+      <div class="card hi"><span class="ic">🏭</span><h3>온프레미스</h3><p>사내 GPU의 자체 모델 — <b>외부 통신 ✕</b>, 완전 사내 처리.</p></div>
+    </div>
+    <p class="dim rise" style="margin-top:1.2rem">모델을 바꿔도 <b>앱은 수정하지 않습니다</b> — 서버 설정만 바꾸면 됩니다. 데이터 잔류지는 회사가 배포로 통제합니다.</p>
   </section>
 
   <!-- 10 · Projects / sync -->
@@ -373,12 +508,12 @@
     <span class="kicker rise">한눈에</span>
     <h2 class="rise">숫자로 보는 <span class="grad">OhMyAgent</span></h2>
     <div class="statgrid rise">
-      <div class="stat-card"><div class="n">26개</div><div class="l">내장 도구 — 파일·셸·문서·시스템</div></div>
+      <div class="stat-card"><div class="n">33개</div><div class="l">내장 도구 — 파일·셸·문서·시스템</div></div>
       <div class="stat-card"><div class="n">10개</div><div class="l">동시 작업 폴더 — 폴더별 on/off</div></div>
       <div class="stat-card"><div class="n">3단계</div><div class="l">권한 승인 — 수동·안전자동·전체자동</div></div>
-      <div class="stat-card"><div class="n">100%</div><div class="l">폐쇄망 동작 — 데이터 외부 유출 0</div></div>
-      <div class="stat-card"><div class="n">0</div><div class="l">추가 외부 연결 — 설치형 단독 동작</div></div>
-      <div class="stat-card"><div class="n">실시간</div><div class="l">팀 협업 — WebSocket, 자동 재연결</div></div>
+      <div class="stat-card"><div class="n">6종</div><div class="l">사무 문서 — Excel·PDF·Word·PPT·<b>한글</b>·CSV</div></div>
+      <div class="stat-card"><div class="n">300</div><div class="l">자동화 테스트 — 보안·경계 검증 포함</div></div>
+      <div class="stat-card"><div class="n">✕</div><div class="l">추가 외부 연결 — 설치형 단독 동작</div></div>
     </div>
     <p class="dim rise" style="margin-top:1.4rem">개발자에게는 코딩 비서, 일반 사용자에게는 문서·자동화 비서, 그리고 모두에게 협업 도구.</p>
   </section>
@@ -397,7 +532,7 @@
 </div>
 
 <div class="nav">
-  <span class="count"><span id="cur">1</span> / <span id="tot">12</span></span>
+  <span class="count"><span id="cur">1</span> / <span id="tot">15</span></span>
   <button id="prev" aria-label="이전">‹</button>
   <button id="next" aria-label="다음">›</button>
 </div>

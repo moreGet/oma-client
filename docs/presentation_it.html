@@ -147,7 +147,7 @@
       서버가 LLM을 중계하고 클라이언트가 도구를 실행하는 <b>얇은 클라이언트 + 에이전트 루프</b> 구조.
       WPF/MVVM 레이어링, 3중 게이트, 서버 제어형 도구·보안, 멀티루트 샌드박스, 서버 API 계약, 동기화·쿼터·버전을 검토합니다.
     </p>
-    <p class="dim rise" style="margin-top:1.8rem;font-size:.9rem">C# · .NET 10 (net10.0-windows) · WPF · MVVM(CommunityToolkit.Mvvm) · System.Text.Json · 추가 NuGet 0</p>
+    <p class="dim rise" style="margin-top:1.8rem;font-size:.9rem">C# · .NET 10 (net10.0-windows) · WPF · MVVM(CommunityToolkit.Mvvm) · System.Text.Json · NuGet 4개(코어 도구는 ✕)</p>
   </section>
 
   <!-- 2 · Tech stack & principles -->
@@ -159,7 +159,7 @@
       <div class="card rise"><span class="ic">🧩</span><h3>MVVM</h3><p>CommunityToolkit.Mvvm 소스 생성기(<code>[ObservableProperty]</code>·<code>[RelayCommand]</code>).</p></div>
       <div class="card rise"><span class="ic">🔗</span><h3>System.Text.Json</h3><p>와이어용 <code>AgentJson.Options</code> · 영속용 <code>PersistenceOptions</code> 분리.</p></div>
       <div class="card rise"><span class="ic">🧱</span><h3>수동 컴포지션 루트</h3><p><code>App.OnStartup</code>에서 조립. 외부 DI 컨테이너 없음.</p></div>
-      <div class="card rise"><span class="ic">📦</span><h3>NuGet 의존성 0</h3><p>모든 도구는 BCL/WPF/WinForms 내장만. 폐쇄망 배포 부담 최소화.</p></div>
+      <div class="card rise"><span class="ic">📦</span><h3>NuGet 4개</h3><p>코어 도구는 BCL/WPF/WinForms 내장만. 문서 도구만 <code>ClosedXML</code>·<code>PdfPig</code>·<code>DocumentFormat.OpenXml</code>(+<code>CommunityToolkit.Mvvm</code>) — 전부 순수 관리코드.</p></div>
       <div class="card rise"><span class="ic">🎨</span><h3>디자인 토큰</h3><p><code>Resources/Tokens.xaml</code>로 타이포·모서리·간격 토큰화.</p></div>
     </div>
   </section>
@@ -218,6 +218,38 @@
     </ul>
   </section>
 
+  <!-- 4b · Sub-agent delegation + context compaction -->
+  <section class="slide">
+    <span class="kicker rise">루프 확장 ① · 위임과 컨텍스트</span>
+    <h2 class="rise">서브에이전트 · <span class="grad">자동 압축</span></h2>
+    <div class="split">
+      <div class="rise">
+        <div class="card">
+          <span class="ic">🧬</span><h3><code>task</code> — 서브에이전트 위임</h3>
+          <p style="line-height:1.6">
+          탐색성 하위 작업을 <b>격리된 세션</b>의 2차 루프로 넘기고 <b>최종 텍스트만</b> 회수 — 중간 도구 호출이 부모 컨텍스트를 오염시키지 않는다.<br>
+          • 허용 도구 <b>13개 화이트리스트</b>(위험도 필터가 아니라 명시 목록)<br>
+          • <b>깊이 1 구조적 보장</b> — 서브 레지스트리에 <code>task</code> 자체가 없어 재귀 불가<br>
+          • <code>manage_todos</code>·<code>screenshot</code>·<code>clipboard_read</code> 제외(부모 상태 오염·프라이버시)<br>
+          • 반복 상한 12회 · 결과 20,000자 절단</p>
+        </div>
+      </div>
+      <div class="rise">
+        <div class="card">
+          <span class="ic">🗜️</span><h3><code>ContextCompactor</code> — 요약 압축</h3>
+          <p style="line-height:1.6">
+          매 요청 전 와이어 크기를 측정해 <b>30만자 초과</b> 시 발동. 버리지 않고 <b>요약</b>한다.<br>
+          • 최근 <b>12만자</b>는 원문 유지, 그 앞을 2048토큰 요약으로 대체<br>
+          • 절단은 <b>user/assistant 경계</b>에서만 — <code>tool_use</code>/<code>tool_result</code> 짝을 깨지 않는다<br>
+          • 요약은 <b>누적</b>(직전 요약을 다시 입력)<br>
+          • <code>session.Messages</code> 는 <b>불변</b> — 디스크·서버 동기화 이력은 온전<br>
+          • 실패 시 폴백: 오래된 <b>도구 결과 본문만</b> 치환(메시지 수·역할·id 짝 보존)</p>
+        </div>
+      </div>
+    </div>
+    <p class="dim rise" style="margin-top:1.1rem">둘 다 <b>컨텍스트 예산</b>을 지키는 장치다 — 위임은 애초에 안 들어오게, 압축은 이미 쌓인 것을 줄인다. 사용자에게는 압축 시 시스템 알림 1줄만 노출(에러 배너 아님).</p>
+  </section>
+
   <!-- 5 · Triple gate -->
   <section class="slide">
     <span class="kicker rise">보안 모델 ① · 도구 실행 결정</span>
@@ -225,10 +257,23 @@
     <p class="lead rise">모델이 <code>tool_call</code>을 보내면 세 게이트를 순서대로 통과해야 실제 OS 조작이 일어납니다.</p>
     <div class="gates rise">
       <div class="gate g1"><div class="gn">1</div><div class="gt">서버 도구 정책</div><div class="gd"><code>IToolPolicyService</code> — cached/realtime로 실행 허용 통제. 차단 시 승인·실행 건너뛰고 사유를 모델에 피드백</div></div>
-      <div class="gate g2"><div class="gn">2</div><div class="gt">로컬 권한 게이트</div><div class="gd"><code>IPermissionService</code> — <code>ToolRisk</code> × <code>PermissionMode</code>(Manual/AutoSafe/FullAuto). 위험 작업은 승인 카드</div></div>
-      <div class="gate g3"><div class="gn">3</div><div class="gt">샌드박스 검증</div><div class="gd"><code>IWorkspaceContext.ResolvePath</code> — 활성 워크스페이스 루트 밖 경로면 거부(throw)</div></div>
+      <div class="gate g2"><div class="gn">2</div><div class="gt">로컬 권한 게이트</div><div class="gd"><code>IPermissionService</code> — <code>ToolRisk</code> × <code>PermissionMode</code>. 위험 작업은 승인 카드(<code>edit_file</code> 은 <b>라인 diff</b> 렌더)</div></div>
+      <div class="gate g3"><div class="gn">3</div><div class="gt">샌드박스 검증</div><div class="gd"><code>IWorkspaceContext.ResolvePath</code> — 활성 루트 밖이면 거부. 하위 트리 순회는 <code>SafeFileWalk</code> 로 <b>정션 미traversal</b></div></div>
     </div>
-    <p class="dim rise" style="margin-top:1rem">중앙 집중 오류 처리: 도구 예외는 <code>AgentOrchestrator.ExecuteCallAsync</code>에서 전부 <code>ToolResult.Fail</code>로 변환 → 앱은 죽지 않고 모델에 에러 피드백.</p>
+    <table class="api rise" style="margin-top:1.2rem">
+      <thead><tr><th>ToolRisk</th><th>Manual</th><th>AutoSafe</th><th>FullAuto</th><th>대표 도구</th></tr></thead>
+      <tbody>
+        <tr><td><code>ReadOnly</code></td><td>자동</td><td>자동</td><td>자동</td><td><code>read_file</code> <code>grep</code> <code>glob</code> <code>task</code></td></tr>
+        <tr><td><code>ReadOnly</code> <span class="opt">(민감)</span></td><td><b>승인</b></td><td><b>승인</b></td><td>자동</td><td><code>screenshot</code> <code>clipboard_read</code> <code>get_environment</code></td></tr>
+        <tr><td><code>Write</code></td><td><b>승인</b></td><td>자동</td><td>자동</td><td><code>write_file</code> <code>edit_file</code> <code>compress_files</code></td></tr>
+        <tr><td><code>Execute</code></td><td><b>승인</b></td><td><b>승인</b></td><td>자동</td><td><code>run_command</code> <code>http_fetch</code> <code>start_process</code></td></tr>
+        <tr><td><code>Destructive</code></td><td><b>승인</b></td><td><b>승인</b></td><td>자동</td><td><code>delete</code> <code>move</code> <code>kill_process</code></td></tr>
+      </tbody>
+    </table>
+    <p class="dim rise" style="margin-top:.8rem">
+      <b>민감 ReadOnly</b>: 파괴적이지 않지만 결과가 그대로 서버로 가는 정보 유출 경로(화면·클립보드·환경변수)라 게이트에서만 승격한다 — 스키마상 Risk 는 <code>ReadOnly</code> 유지.
+      세션 <b>"항상 허용"</b> 은 도구명 단위·메모리 전용이며 로그아웃 시 소멸. 중앙 오류 처리로 도구 예외는 전부 <code>ToolResult.Fail</code> → 앱은 죽지 않고 모델에 피드백.
+    </p>
   </section>
 
   <!-- 6 · Server-controlled tools & command security (2중 안전) -->
@@ -282,10 +327,43 @@
     </div>
   </section>
 
+  <!-- 7b · Data sovereignty / egress -->
+  <section class="slide">
+    <span class="kicker rise">보안 모델 ④ · 데이터 주권</span>
+    <h2 class="rise">아웃바운드는 <span class="grad">사내 서버 한 곳</span></h2>
+    <p class="lead rise">"AI API 를 부르면 내부 정보가 국외로 나가지 않나" — 클라이언트에는 그 경로가 <b>구조적으로 없습니다</b>.</p>
+    <div class="split" style="margin-top:1.2rem">
+      <div class="rise">
+        <ul class="checks" style="margin-top:0">
+          <li><span class="ck">✓</span> 모든 요청은 <code>ServerBaseUrl</code> 기준 <b>절대 URI</b> 로 매 호출 생성(<code>AgentApiClient.Url()</code>·<code>ChatApiClient.Url()</code>). WS 도 동일 주소에서 스킴만 <code>http→ws</code></li>
+          <li><span class="ck">✓</span> 버전 점검조차 사내 서버(<code>/api/v1/client/version</code>) — <b>외부 릴리스 피드·자동 다운로더 없음</b></li>
+          <li><span class="ck">✓</span> <b>벤더 API 키 부재</b> — 저장 자격증명은 사내 JWT 하나뿐(DPAPI 암호화, <code>[JsonIgnore]</code> + 평문 폴백 없음)</li>
+          <li><span class="ck">✓</span> <b>provider-agnostic</b> — 모델은 불투명 문자열 <code>ModelId</code> 로만 전달(<code>AgentRequest.Model</code>). 벤더 분기 코드 ✕, <code>provider_type</code> 은 역직렬화만 되고 미사용</li>
+        </ul>
+      </div>
+      <div class="rise">
+        <div class="card">
+          <span class="ic">🌏</span><h3>잔류지는 서버 배포가 결정</h3>
+          <p style="line-height:1.6">
+          • <b>Azure OpenAI 리전 고정</b>(예: Korea Central) → 지정 리전 내<br>
+          • <b>지역/국가별 폐쇄망 모델</b> → 해당 국가 내<br>
+          • <b>온프레미스</b>(사내 GPU/Ollama) → 외부 egress ✕<br>
+          Provider 교체 시 <b>클라이언트 수정 ✕</b>.</p>
+        </div>
+        <div class="card" style="margin-top:1rem">
+          <span class="ic">⚠️</span><h3>유일한 예외 · <code>http_fetch</code></h3>
+          <p style="line-height:1.6">모델 지정 임의 호스트로 나가는 유일한 통로. 전용 <code>HttpClient</code> 분리 + <code>UrlGuard</code>(스킴 허용목록·DNS 해석 후 loopback/링크로컬<code>169.254/16</code>/멀티캐스트 차단·<b>리다이렉트 홉마다 재검증</b>). 사내망 RFC1918 은 의도적 허용.<br>
+          <b>완전 차단이 필요하면</b> 서버 도구 정책에서 비활성화 → 모델에 <b>노출조차 안 됨</b>.</p>
+        </div>
+      </div>
+    </div>
+    <p class="dim rise" style="margin-top:1.1rem">경계선: 클라이언트가 국외 반출을 <b>강제</b>하는 게 아니라, 벤더로 나가는 경로를 갖지 않아 <b>서버 배포 구성만으로 결정 가능</b>해진다. 실제 보장은 Provider 엔드포인트 리전 + 사내망 egress 정책으로 완성.</p>
+  </section>
+
   <!-- 8 · Tool system -->
   <section class="slide">
     <span class="kicker rise">도구 시스템</span>
-    <h2 class="rise"><code>ITool</code> + <span class="grad">ToolRegistry</span> · 26개</h2>
+    <h2 class="rise"><code>ITool</code> + <span class="grad">ToolRegistry</span> · 33개</h2>
     <div class="split">
       <div class="rise">
         <p class="big">도구 1개 = <code>ITool</code> 구현 1개(stateless 싱글톤). <code>ToolRegistry</code>가 이름 조회 + 서버용 스키마 생성.</p>
@@ -297,9 +375,10 @@
         </ul>
       </div>
       <div class="cards rise" style="margin-top:0">
-        <div class="card"><span class="ic">📄</span><h3>파일·검색</h3><p>read/write/edit · list_directory/glob/grep · create_directory/move/copy/delete</p></div>
+        <div class="card"><span class="ic">📄</span><h3>파일·검색</h3><p>read/write/edit · list_directory/glob/grep · create_directory/move/copy/delete · compress_files/extract_archive</p></div>
         <div class="card"><span class="ic">🖥️</span><h3>셸·시스템</h3><p>run_command · get_environment · list_processes(+memory_kb) · start/kill_process</p></div>
-        <div class="card"><span class="ic">🔌</span><h3>통합·비전</h3><p>clipboard_read/write · http_fetch(사내망) · screenshot(PNG base64, 비전 입력)</p></div>
+        <div class="card"><span class="ic">📊</span><h3>사무 문서</h3><p>read/write_csv · read/write_excel(ClosedXML) · read_pdf(PdfPig) · read_document(docx) · read/write_pptx · <b>read_hwpx(한글)</b></p></div>
+        <div class="card"><span class="ic">🔌</span><h3>통합·비전·조율</h3><p>clipboard_read/write · http_fetch(사내망) · screenshot(PNG base64) · manage_todos(계획 카드) · <b>task(서브에이전트)</b></p></div>
       </div>
     </div>
   </section>
@@ -348,7 +427,7 @@
         <p>SemVer + 빌드 git 해시. <code>current&lt;minimum</code>→경고 배너(필수), <code>&lt;latest</code>→액센트 배너. 하드 차단 없음(알림 기반).</p></div>
     </div>
     <ul class="checks rise">
-      <li><span class="ck">✓</span> 영속: <code>%APPDATA%/OhMyAgent</code> — <code>sessions/{id}.json</code> · <code>projects/{id}.json</code> · <code>settings.json</code>(SchemaVersion 5)</li>
+      <li><span class="ck">✓</span> 영속: <code>%APPDATA%/OhMyAgent</code> — <code>sessions/{id}.json</code> · <code>projects/{id}.json</code> · <code>settings.json</code>(SchemaVersion 6 — v6에서 <code>AuthToken</code> DPAPI 암호화)</li>
       <li><span class="ck">✓</span> <code>ChatSessionRecord.ProjectId</code>(null=미분류)로 N:1 귀속. 사이드바 드래그앤드롭 분류, 동기화는 사용자 트리거 시에만</li>
       <li><span class="ck">✓</span> 통합 로그인 게이트(<code>ReturnToLogin</code>): <b>401에서만</b> 재로그인. 403/429/404/5xx는 메시지만(<code>UserErrorMessages</code> 한국어 변환, 원문 비노출)</li>
     </ul>
@@ -428,9 +507,28 @@
           • 안읽음 변동 시 배지만 in-place 갱신, <b>재정렬 안 함</b><br>
           • 메시지 일괄 로드 후 <b>1회만</b> 오토스크롤</p>
         </div>
-        <p class="dim" style="margin-top:.9rem;font-size:.85rem">모든 상태 변경은 <code>UiDispatch.InvokeAsync</code> 로 UI 스레드 마샬. 메신저 WS 는 BCL <code>ClientWebSocket</code> — <b>추가 NuGet 0</b> 유지(코어 도구 0, 문서도구만 ClosedXML/PdfPig).</p>
+        <p class="dim" style="margin-top:.9rem;font-size:.85rem">모든 상태 변경은 <code>UiDispatch.InvokeAsync</code> 로 UI 스레드 마샬. 메신저 WS 는 BCL <code>ClientWebSocket</code> — <b>코어 도구 NuGet ✕</b> 유지(문서 도구만 ClosedXML/PdfPig/OpenXml).</p>
       </div>
     </div>
+  </section>
+
+  <!-- 13b · Client UX internals -->
+  <section class="slide">
+    <span class="kicker rise">클라이언트 UX 내부</span>
+    <h2 class="rise">스트리밍·입력·<span class="grad">투명성</span></h2>
+    <div class="cards c3">
+      <div class="card rise"><span class="ic">⚡</span><h3>토큰 배치 플러시</h3>
+        <p><b>50ms 또는 1,024자</b> 중 먼저 도달하는 쪽에서 일괄 반영. 토큰마다 디스패치하면 UI 스레드 폭주 + 텍스트 증가에 따른 <b>O(n²) 재레이아웃</b>이 발생했다. 비텍스트 이벤트는 <b>선(先) 플러시</b>로 순서 보존, <code>finally</code> 재플러시로 취소 시 잔여 유실 방지.</p></div>
+      <div class="card rise"><span class="ic">⛓️</span><h3>병렬 도구 실행</h3>
+        <p>배치가 2건 이상이고 <b>전부 ReadOnly</b> 일 때만 <code>SemaphoreSlim(8)</code> 로 동시 실행. 결과는 완료 순으로 UI 에 흘리되 <b>이력에는 모델의 원래 호출 순서</b>로 기록 — <code>tool_call_id</code> 짝과 프롬프트 캐시 안정성 유지. 승인 대화상자가 겹칠 일이 없다.</p></div>
+      <div class="card rise"><span class="ic">⌨️</span><h3>컴포저</h3>
+        <p><code>@</code> 파일 참조(퍼지 매칭, 정션 미traversal 인덱싱) · 슬래시 커맨드(<code>/clear</code> <code>/retry</code> <code>/help</code>, 클라 전용·모델 미전송) · <kbd>Esc</kbd> 중지 · 빈 입력 <kbd>↑</kbd> 되불러오기 · 응답 원문 복사.</p></div>
+    </div>
+    <ul class="checks rise">
+      <li><span class="ck">✓</span> 키 처리는 <code>PreviewKeyDown</code>(터널링) — 버블링 <code>KeyDown</code> 은 TextBox 클래스 핸들러가 방향키를 캐럿 이동으로 <b>먼저 소비</b>해 자동완성 탐색이 동작하지 않는다</li>
+      <li><span class="ck">✓</span> 확장 사고(thinking)는 별도 접이식 블록 — 스트리밍 중 펼침, 완료 시 자동 접힘. 기본 <b>off</b>(미지원 모델은 400 반환)</li>
+      <li><span class="ck">✓</span> 사용량 표시 2종: 마지막 턴 <code>in/out</code> 토큰(클릭 시 세션 누적 토글) + 쿼터 칩(잔여 %, ≤10% 경고색)</li>
+    </ul>
   </section>
 
   <!-- 14 · Integrity & deployment security -->
@@ -450,22 +548,43 @@
     <span class="kicker rise">현황 · 확장 · 과제</span>
     <h2 class="rise">검증 상태와 <span class="grad">확장 포인트</span></h2>
     <div class="stat rise">
-      <div><div class="n grad">26</div><div class="l">내장 도구</div></div>
+      <div><div class="n grad">33</div><div class="l">내장 도구</div></div>
       <div><div class="n grad">10</div><div class="l">동시 워크스페이스 루트</div></div>
       <div><div class="n grad">3중</div><div class="l">도구 실행 게이트</div></div>
-      <div><div class="n grad">0</div><div class="l">추가 NuGet 의존성</div></div>
+      <div><div class="n grad">300</div><div class="l">자동화 테스트(전부 통과)</div></div>
+      <div><div class="n grad">4</div><div class="l">NuGet 의존성</div></div>
     </div>
-    <ul class="checks rise">
-      <li><span class="ck">✓</span> 확장 포인트: <code>ITool</code> 추가(스키마 자동 노출) · 서버 Provider 교체(중립 와이어) · <code>tools/catalog</code> 메타 override · 권한/명령 정책 커스터마이즈</li>
-      <li><span class="ck">›</span> 향후 과제: 감사 로그(<code>%APPDATA%/OhMyAgent/audit/</code>) · 양방향 pull 동기화 · 서명/해시 검증 기반 자동 업데이트 · 도구별 세분화 권한</li>
+    <div class="split" style="margin-top:1.2rem">
+      <div class="rise">
+        <div class="card">
+          <span class="ic">🧪</span><h3>테스트가 실제로 덮는 것</h3>
+          <p style="line-height:1.6">
+          보안 경계(<b>실제 정션 생성</b>으로 샌드박스 탈출 검증) · 명령 블랙리스트 우회 · URL 가드 ·
+          컨텍스트 압축 · 서브에이전트 배선 · 도구 정책 게이트 · 병렬 도구 실행 ·
+          DPAPI 토큰 · JWT 신원 · diff·마크다운 렌더 · 퍼지 매칭</p>
+        </div>
+      </div>
+      <div class="rise">
+        <div class="card" style="border-color:rgba(210,153,34,.4)">
+          <span class="ic">⚠️</span><h3>덮지 못하는 것 — 솔직하게</h3>
+          <p style="line-height:1.6">
+          테스트는 <b>서비스·로직 레이어 전용</b>이다. WPF UI·ViewModel 통합 테스트는 없다 —
+          바인딩 오류, 스레드 마샬링, 창 수명주기는 <b>코드 리뷰와 수동 검증</b>에 의존한다.<br>
+          <b>하드링크</b>(<code>mklink /H</code>)는 재분석 지점이 아니라 경로 기반 검사로 막지 못한다 —
+          알려진 한계이며 <code>run_command</code> 승인이 선행되어야 성립한다.</p>
+        </div>
+      </div>
+    </div>
+    <ul class="checks rise" style="margin-top:1rem">
+      <li><span class="ck">✓</span> 확장 포인트: <code>ITool</code> 추가(스키마 자동 노출) · 서버 Provider 교체(중립 와이어) · 권한/명령 정책 커스터마이즈</li>
+      <li><span class="ck">›</span> 향후 과제: 감사 로그(<code>%APPDATA%/OhMyAgent/audit/</code>) · 양방향 pull 동기화 · ViewModel 통합 테스트 · 도구별 세분화 권한</li>
     </ul>
-    <p class="dim rise" style="margin-top:1.2rem">graceful fallback로 서버 선택 기능 미구현 시에도 로컬 전용 정상 동작. 서버 요구 명세는 <code>docs/server-*.md</code>.</p>
   </section>
 
 </div>
 
 <div class="nav">
-  <span class="count"><span id="cur">1</span> / <span id="tot">12</span></span>
+  <span class="count"><span id="cur">1</span> / <span id="tot">18</span></span>
   <button id="prev" aria-label="이전">‹</button>
   <button id="next" aria-label="다음">›</button>
 </div>

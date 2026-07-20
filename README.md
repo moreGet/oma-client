@@ -12,7 +12,8 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 ## 핵심 특징
 
 - **에이전트 루프**: `질의 → 도구 호출 → 실행 → 결과 반환 → 반복`을 `end_turn` 까지 자동 수행
-- **32개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷, 압축(zip), 사무직 문서·데이터(CSV·Excel·PDF·Word·**PowerPoint·한글 HWPX**), 작업 계획 추적(manage_todos)까지 (아래 표 참조)
+- **33개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷, 압축(zip), 사무직 문서·데이터(CSV·Excel·PDF·Word·**PowerPoint·한글 HWPX**), 작업 계획 추적(manage_todos), 서브에이전트 위임(task)까지 (아래 표 참조)
+- **데이터 주권 / 국외 반출 차단**: 클라이언트는 **어떤 LLM 벤더에도 직접 접속하지 않고** 사내 서버하고만 통신합니다. 서버가 연동할 모델을 **Azure OpenAI 국내 리전·지역별 폐쇄망 모델·온프레미스(Ollama 등)** 로 고정하면 내부 정보가 **국경을 넘을 경로 자체가 없습니다**. 클라이언트에는 벤더 API 키가 존재하지 않습니다 ([상세](#데이터-주권--국외-반출-차단))
 - **멀티루트 워크스페이스**: 최대 **10개** 작업 디렉토리를 동시 등록, **폴더별 접근 허용/차단 토글**. 모든 파일/셸 작업이 활성 루트 기준으로 resolve되고 경로 탈출은 차단
 - **프로젝트(대화 묶음)**: 여러 대화 세션을 상위 컨테이너로 묶어 관리. **로컬 우선 저장 + 선택적 서버 동기화**, 사이드바에서 대화를 **드래그앤드롭**으로 프로젝트에 분류
 - **권한 게이트**: Manual / Auto-Safe / Full-Auto 3단계. 위험 작업은 실행 전 사용자 승인
@@ -53,8 +54,13 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
                                  │ HTTP + SSE (text/event-stream) + WebSocket(/chat/ws)
                                  ▼
                   사내 AI API 서버 (OhMyAgent.AiAgent.Server)
-                  활성 LLM Provider(OpenAI / Gemini / Claude / Ollama)로 중계
+                  활성 LLM Provider로 중계 — Azure OpenAI(리전 고정) /
+                  지역 폐쇄망 모델 / 온프레미스(Ollama) / OpenAI / Gemini / Claude
 ```
+
+> **클라이언트는 Provider 를 모릅니다.** 모델은 `ModelId` 문자열 하나로만 다루며(`AgentRequest.Model`),
+> 벤더별 분기 코드도, 벤더 API 키도 클라이언트에 없습니다. 따라서 **어떤 모델을 쓸지·데이터가 어느 나라에
+> 머무를지는 전적으로 서버 배포 구성이 결정**하고, Provider 를 바꿔도 클라이언트는 수정할 필요가 없습니다.
 
 - **MVVM**: `CommunityToolkit.Mvvm` 소스 생성기(`[ObservableProperty]`, `[RelayCommand]`)
 - **직렬화**: `System.Text.Json` 단일화 — 와이어용(`AgentJson.Options`)과 영속용(`PersistenceOptions`) 분리
@@ -62,7 +68,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 
 ---
 
-## 내장 도구 (32)
+## 내장 도구 (33)
 
 | 도구 | 위험도 | 설명 |
 |------|--------|------|
@@ -84,10 +90,14 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 | `read_hwpx` | ReadOnly | 한글 .hwpx(OWPML) 본문 추출(BCL) |
 | `compress_files` / `extract_archive` | Write | 파일·폴더 → zip 압축 / zip 해제(zip-slip 차단, BCL `System.IO.Compression`) |
 | `manage_todos` | ReadOnly | 에이전트 작업 계획 추적(다단계 작업 분해·진행상태) — 메인 화면 계획 카드에 반영 |
+| `task` | ReadOnly | 하위 작업을 **서브에이전트**에 위임(별도 오케스트레이터). 서브에이전트 도구 목록은 `TaskTool.AllowedToolNames` 로 제한되며 `task`·`manage_todos` 는 제외(무한 중첩 방지) |
 
 > 도구 실행 결정 순서: **모델 요청 → 서버 도구 정책 게이트 → 로컬 권한 게이트(승인 카드) → 샌드박스(경로 검증) → 실행**.
 > Destructive / Write / Execute 도구는 권한 모드에 따라 **실행 전 승인 카드**를 띄웁니다.
-> 코어 도구는 BCL/WPF/WinForms 내장 기능만 사용합니다(zip·pptx읽기·hwpx읽기·docx읽기 포함 — 전부 `System.IO.Compression`/`System.IO.Packaging`/`System.Xml`). 추가 패키지는 ClosedXML(Excel)·PdfPig(PDF)·DocumentFormat.OpenXml(pptx 쓰기, ClosedXML 전이 의존성) — 모두 순수 관리코드로 폐쇄망 적합.
+> 코어 도구는 BCL/WPF/WinForms 내장 기능만 사용합니다(zip·pptx읽기·hwpx읽기·docx읽기 포함 — 전부 `System.IO.Compression`/`System.IO.Packaging`/`System.Xml`).
+> NuGet 의존성은 **4개뿐**이며 모두 순수 관리코드로 폐쇄망 적합합니다:
+> `CommunityToolkit.Mvvm` 8.4.0(MVVM) · `ClosedXML` 0.105.0(Excel) · `PdfPig` 0.1.15(PDF) · `DocumentFormat.OpenXml` 3.1.1(pptx 쓰기, ClosedXML 전이 의존성).
+> JSON 은 BCL `System.Text.Json`, 이미지·클립보드는 `UseWindowsForms` 로 들어오는 `System.Drawing` 을 씁니다.
 
 ---
 
@@ -191,10 +201,11 @@ dotnet run --project OhMyAgent.AiAgent.Client
 | 프로젝트(대화 묶음) | `%APPDATA%/OhMyAgent/projects/{id}.json` |
 | 감사 로그(예정) | `%APPDATA%/OhMyAgent/audit/` |
 
-주요 설정: `ServerBaseUrl`, `AuthToken`(로그인 시 자동), `ModelId`, `WorkspaceRoot`(주 루트),
-`Workspaces`(멀티루트 목록, 폴더별 `Enabled` 토글, 최대 10), `PermissionMode`(Manual/AutoSafe/FullAuto),
-`MaxIterations`(기본 25), `Hotkey`. `SchemaVersion`은 `5`(v4→v5 마이그레이션에서 `WorkspaceRoot`를
-`Workspaces` 단일 항목으로 승격, `MaxTokens` 설정 제거).
+주요 설정: `ServerBaseUrl`, `AuthToken`(로그인 시 자동, **DPAPI 로 암호화 저장**), `ModelId`,
+`WorkspaceRoot`(주 루트), `Workspaces`(멀티루트 목록, 폴더별 `Enabled` 토글, 최대 10),
+`PermissionMode`(기본 `Manual`), `MaxIterations`(기본 25), `UiScale`(0.9–1.6 클램프), `Hotkey`.
+`SchemaVersion`은 `6` — v4→v5 에서 `WorkspaceRoot`를 `Workspaces` 단일 항목으로 승격하고 `MaxTokens`
+설정을 제거했으며, v5→v6 에서 `AuthToken` 을 DPAPI 암호화로 전환했습니다.
 
 ---
 
@@ -220,7 +231,7 @@ dotnet run --project OhMyAgent.AiAgent.Client
     ├── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry · PermissionService ·
     │   │                     ToolPolicyService · ProjectService · ChatHistoryService · SessionSyncService ·
     │   │                     AppVersion · UserErrorMessages · FileAttachmentService · 워크스페이스/보안
-    │   ├── Tools/            32개 ITool 구현(파일·셸·시스템·문서(docx/pptx/hwpx)·압축 + manage_todos)
+    │   ├── Tools/            33개 ITool 구현(파일·셸·시스템·문서(docx/pptx/hwpx)·압축 + manage_todos·task)
     │   └── Chat/             IChatApiClient(REST) · IChatSocketClient(WS) · IChatRealtimeService(파사드) ·
     │                         ChatMessengerCoordinator · JwtIdentity(식별자) · ChatApiException
     ├── ViewModels/           AgentSessionViewModel · SettingsViewModel · ProjectsViewModel ·
@@ -241,6 +252,48 @@ dotnet run --project OhMyAgent.AiAgent.Client
 - **권한 게이트**: 위험도(ToolRisk: ReadOnly/Write/Execute/Destructive) × 권한 모드로 실행 전 승인 결정
 - **명령 검증**: `SecurityValidator` 가 위험 명령 차단 — **클라 내장 디폴트 ∪ 서버 추가 패턴**(2중 안전, 서버는 추가만·디폴트 제거 불가). 서버 정규식은 타임아웃·검증으로 ReDoS 방어
 - **배포 무결성**: SHA-256 매니페스트 + Authenticode + HMAC 서명 검증
+- **토큰 보호**: 로그인 JWT 는 `settings.json` 에 평문이 아니라 **DPAPI(사용자 계정 스코프)** 로 암호화 저장
+
+---
+
+## 데이터 주권 / 국외 반출 차단
+
+폐쇄망 도입에서 가장 흔한 반대 논리는 **"결국 AI API 를 부르면 내부 정보가 국외 서버로 나가는 것 아니냐"** 입니다.
+이 구조는 그 경로를 **설계 단계에서 제거**합니다.
+
+**1. 클라이언트는 LLM 벤더에 접속하지 않습니다.**
+클라이언트의 아웃바운드는 설정된 `ServerBaseUrl`(사내 서버) **한 곳뿐**입니다.
+모든 요청은 매 호출마다 `ServerBaseUrl` 기준 절대 URI 로 생성되며(`AgentApiClient.Url()`),
+메신저 WebSocket 도 같은 주소에서 스킴만 바꿔 씁니다(`http→ws`). 버전 점검조차 사내 서버(`/api/v1/client/version`)이며
+**외부 릴리스 피드나 자동 다운로더가 없습니다.**
+
+**2. 클라이언트에 벤더 API 키가 없습니다.**
+저장되는 자격 증명은 사내 서버용 JWT 하나뿐(DPAPI 암호화)입니다.
+OpenAI·Azure·Gemini·Anthropic 등 **어떤 벤더의 키도 클라이언트에 존재하지 않으므로**, 단말이 유출돼도
+외부 AI 서비스를 직접 호출할 수단이 없습니다.
+
+**3. 클라이언트는 Provider 를 모릅니다 (provider-agnostic).**
+모델은 불투명한 문자열 `ModelId` 로만 다뤄집니다. 벤더별 분기 코드가 전무하므로,
+서버가 연동 대상을 바꿔도 클라이언트는 **한 줄도 수정하지 않습니다**.
+
+**4. 따라서 데이터 잔류지(residency)는 서버 배포가 100% 결정합니다.**
+서버의 Provider 를 아래 중 하나로 고정하면 내부 정보가 **국경을 넘지 않습니다**:
+
+| 배포 선택 | 데이터 잔류지 |
+|---|---|
+| **Azure OpenAI — 리전 고정**(예: Korea Central) | 지정 리전 내 |
+| **지역/국가별 폐쇄망 모델 서비스** | 해당 국가 내 |
+| **온프레미스 모델**(Ollama 등 사내 GPU) | 사내망 내 — 외부 egress 0 |
+
+> **경계선을 명확히**: 국외 반출 차단은 클라이언트가 *강제*하는 것이 아니라, 클라이언트가 벤더로 나가는
+> 경로를 갖지 않아 **서버 배포 구성만으로 결정 가능**해지는 것입니다. 실제 보장은 서버가 연동한
+> Provider 엔드포인트의 리전과 사내망 egress 정책으로 완성됩니다.
+
+**예외 하나 — `http_fetch` 도구**: 모델이 지정한 임의 호스트로 HTTP 요청이 가능한 유일한 통로입니다.
+전용 `HttpClient` 로 분리돼 있고 `UrlGuard` 가 스킴 허용목록(http/https), DNS 해석 후 loopback·링크로컬
+(`169.254/16`, 클라우드 메타데이터)·멀티캐스트 차단, **리다이렉트 홉마다 재검증**을 수행합니다.
+사내망(RFC1918) 접근은 **의도적으로 허용**됩니다. 외부 반출을 원천 차단하려면 서버 도구 정책
+(`GET /api/v1/tools/policy`)에서 `http_fetch` 를 비활성화하면 **모델에 노출조차 되지 않습니다**.
 
 ---
 
