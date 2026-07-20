@@ -886,15 +886,19 @@
                                 </TextBlock.Style>
                             </TextBlock>
 
-                            <!-- 모델 칩 (정적 표시) -->
+                            <!-- 모델 칩 — 설정에서 고른 모델을 표시 -->
                             <Border Grid.Column="3" Style="{StaticResource Chip}"
                                     Background="{StaticResource Surface2Bg}"
                                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                                     Margin="0,0,6,0"
-                                    ToolTip="모델은 설정 → 서버 설정에서 변경합니다.">
+                                    ToolTip="{Binding ModelTooltipText}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="모델: 설정값" Foreground="{StaticResource TextSecondary}"
+                                    <TextBlock Text="모델: " Foreground="{StaticResource TextSecondary}"
                                                FontSize="{StaticResource FontSizeXSmall}" VerticalAlignment="Center"/>
+                                    <!-- 모델 ID 는 길 수 있어 잘라 표시하고, 전체는 툴팁으로. -->
+                                    <TextBlock Text="{Binding ModelDisplayText}" Foreground="{StaticResource TextSecondary}"
+                                               FontSize="{StaticResource FontSizeXSmall}" VerticalAlignment="Center"
+                                               MaxWidth="180" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
                             </Border>
 

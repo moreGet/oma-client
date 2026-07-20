@@ -109,6 +109,12 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     /// <summary>F — raw display name (settings UserDisplayName ?? Environment.UserName).</summary>
     [ObservableProperty] private string _userDisplayName = string.Empty;
 
+    /// <summary>작성기 하단 모델 칩에 표시할 모델명. 미설정 시 "미설정".</summary>
+    [ObservableProperty] private string _modelDisplayText = "미설정";
+
+    /// <summary>모델 칩 툴팁 — 잘려 표시될 수 있는 전체 모델 ID 를 보여준다.</summary>
+    [ObservableProperty] private string _modelTooltipText = string.Empty;
+
     /// <summary>D — convenience flag mirroring <c>Attachments.Count &gt; 0</c>.</summary>
     [ObservableProperty] private bool _hasAttachments;
 
@@ -307,6 +313,15 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
             var rawName = string.IsNullOrWhiteSpace(s.UserDisplayName) ? Environment.UserName : s.UserDisplayName;
             UserDisplayName = rawName;
             GreetingText = $"{rawName}님 안녕하세요, 어떤 업무를 시작할까요?";
+
+            // 모델 칩 — 설정에서 고른 모델을 그대로 표시. SettingsChanged 로 재진입하므로
+            // 설정 저장 즉시 반영된다.
+            var modelId = s.ModelId;
+            var hasModel = !string.IsNullOrWhiteSpace(modelId);
+            ModelDisplayText = hasModel ? modelId : "미설정";
+            ModelTooltipText = hasModel
+                ? $"모델: {modelId}\n설정 → 서버 설정에서 변경합니다."
+                : "모델이 설정되지 않았습니다.\n설정 → 서버 설정에서 선택하세요.";
         }
         finally
         {
