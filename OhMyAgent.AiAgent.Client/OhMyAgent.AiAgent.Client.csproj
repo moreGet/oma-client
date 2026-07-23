@@ -30,13 +30,15 @@
 
     <ItemGroup>
         <!-- MVVM 소스 생성기 -->
-        <PackageReference Include="ClosedXML" Version="0.105.0" />
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-        <!-- ClosedXML 의 전이 의존성이기도 함(신규 런타임 부담 없음). write_pptx 에서 직접 사용 위해 명시. -->
-        <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
-        <PackageReference Include="PdfPig" Version="0.1.15" />
+        <!-- ClosedXML/DocumentFormat.OpenXml/PdfPig 은 문서·스프레드시트 도구와 함께 Core 로 이전.
+             Core ProjectReference 로 전이 획득하므로 Client 직접 참조를 제거한다. -->
         <!-- JSON 직렬화는 BCL System.Text.Json 사용 (별도 패키지 불필요) -->
         <!-- System.Drawing 은 UseWindowsForms=true 가 제공하므로 패키지 참조 제거(NU1510) -->
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\OhMyAgent.AiAgent.Core\OhMyAgent.AiAgent.Core.csproj" />
     </ItemGroup>
 
 </Project>

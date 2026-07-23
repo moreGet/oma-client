@@ -6,7 +6,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:OhMyAgent.AiAgent.Client.ViewModels"
         xmlns:views="clr-namespace:OhMyAgent.AiAgent.Client.Views"
-        xmlns:models="clr-namespace:OhMyAgent.AiAgent.Client.Models"
+        xmlns:models="clr-namespace:OhMyAgent.AiAgent.Client.Models;assembly=OhMyAgent.AiAgent.Core"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:AgentSessionViewModel, IsDesignTimeCreatable=False}"
         Title="OhMyAgent — AI 에이전트"

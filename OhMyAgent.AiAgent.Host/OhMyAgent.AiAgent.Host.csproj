@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>   <!-- -windows 아님 -->
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>OhMyAgent.AiAgent.Host</RootNamespace>
+    <AssemblyName>OhMyAgent.AiAgent.Host</AssemblyName>
+
+    <!-- single-file 친화. RID/SingleFile 은 publish CLI 에서 넘겨도 되지만
+         팀 재현성을 위해 기본값을 여기 고정(로컬 build 엔 영향 없음). -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+
+    <!-- 트리밍 비권고(스펙 §0-5): ClosedXML/OpenXml/PdfPig 리플렉션 → 런타임 누락 리스크. -->
+    <PublishTrimmed>false</PublishTrimmed>
+
+    <!-- 압축 single-file(선택): 시작 시 임시 추출 없이 메모리 로드. 크기↓. -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+
+    <!-- InvariantGlobalization: Linux 분기는 OEM 코드페이지를 쓰지 않으나(UTF-8 직행),
+         Core 다른 코드가 CultureInfo 를 참조하므로 안전하게 false 유지. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OhMyAgent.AiAgent.Core\OhMyAgent.AiAgent.Core.csproj" />
+  </ItemGroup>
+
+</Project>

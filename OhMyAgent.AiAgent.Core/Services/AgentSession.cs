@@ -59,13 +59,22 @@ public sealed class AgentSession
 
     private static string BuildBasePrompt(string workspaceRoot, PermissionMode mode, string rootsBlock)
     {
+        var isWindows = OperatingSystem.IsWindows();
+        var osName = isWindows ? "Windows" : "Linux";
+        var agentIntro = isWindows
+            ? "You are a Windows desktop automation agent embedded in a WPF client."
+            : "You are a desktop automation agent.";
+        var shellGuidance = isWindows
+            ? "specify shell as \"powershell\" or \"cmd\"."
+            : "specify shell as \"bash\".";
+
         return
         $"""
-        You are a Windows desktop automation agent embedded in a WPF client.
+        {agentIntro}
         You accomplish the user's goal by calling the provided tools in a loop until the task is done.
 
         Environment:
-        - OS: Windows
+        - OS: {osName}
         - Primary workspace root (shell cwd): {workspaceRoot}
         - Permission mode: {mode}
         - Allowed workspace roots (file access is permitted in any of these):
@@ -124,7 +133,7 @@ public sealed class AgentSession
         Rules:
         - All file operations are sandboxed to the allowed workspace roots above. Never attempt to access paths outside them.
         - Prefer the most specific tool (read_file/write_file/edit_file/glob/grep/...) over run_command when possible.
-        - Use run_command only for tasks no dedicated tool covers; specify shell as "powershell" or "cmd".
+        - Use run_command only for tasks no dedicated tool covers; {shellGuidance}
         - Tool arguments must strictly follow each tool's JSON Schema.
         - When the task is complete, stop calling tools and reply with a concise summary in Korean.
         - If a tool returns an error, read it, adjust, and retry; do not loop indefinitely.

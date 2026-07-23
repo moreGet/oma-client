@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:OhMyAgent.AiAgent.Client.ViewModels"
-        xmlns:models="clr-namespace:OhMyAgent.AiAgent.Client.Models"
+        xmlns:models="clr-namespace:OhMyAgent.AiAgent.Client.Models;assembly=OhMyAgent.AiAgent.Core"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:IntegrityViewModel, IsDesignTimeCreatable=False}"
         Title="무결성 검사 — OhMyAgent"

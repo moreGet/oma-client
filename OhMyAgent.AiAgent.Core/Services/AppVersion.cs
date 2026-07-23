@@ -20,7 +20,7 @@ public static class AppVersion
 
     private static string ComputeSemantic()
     {
-        var v = Assembly.GetExecutingAssembly().GetName().Version;
+        var v = (Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly()).GetName().Version;
         return v is null
             ? "1.0.0"
             : $"{v.Major}.{v.Minor}.{v.Build}";
@@ -28,7 +28,7 @@ public static class AppVersion
 
     private static string ComputeFull()
     {
-        var info = Assembly.GetExecutingAssembly()
+        var info = (Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly())
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion;
 

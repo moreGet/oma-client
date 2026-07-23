@@ -29,6 +29,13 @@ internal static class TokenProtector
         if (string.IsNullOrEmpty(plaintext))
             return null;
 
+        // DPAPI 는 Windows 전용. 헤드리스(비-Windows) 호스트에서는 토큰을 저장하지 않는다(평문 폴백 금지 → 재로그인 유도).
+        if (!OperatingSystem.IsWindows())
+        {
+            AppLog.Warn("TokenProtector", "DPAPI 미지원 플랫폼 — 토큰을 저장하지 않습니다.");
+            return null;
+        }
+
         try
         {
             var bytes = ProtectedData.Protect(
@@ -49,6 +56,13 @@ internal static class TokenProtector
     {
         if (string.IsNullOrEmpty(protectedBase64))
             return string.Empty;
+
+        // DPAPI 는 Windows 전용. 헤드리스(비-Windows) 호스트에서는 복호화 불가 → 재로그인으로 처리.
+        if (!OperatingSystem.IsWindows())
+        {
+            AppLog.Warn("TokenProtector", "DPAPI 미지원 플랫폼 — 재로그인이 필요합니다.");
+            return string.Empty;
+        }
 
         try
         {

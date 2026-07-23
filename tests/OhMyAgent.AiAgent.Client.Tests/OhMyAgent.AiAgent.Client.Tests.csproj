@@ -18,7 +18,9 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- Client 잔류 타입(Converters 등)과 Core 이동 타입(GlobMatcher/SecurityValidator 등) 모두 테스트하므로 둘 다 참조. -->
         <ProjectReference Include="..\..\OhMyAgent.AiAgent.Client\OhMyAgent.AiAgent.Client.csproj" />
+        <ProjectReference Include="..\..\OhMyAgent.AiAgent.Core\OhMyAgent.AiAgent.Core.csproj" />
     </ItemGroup>
 
 </Project>

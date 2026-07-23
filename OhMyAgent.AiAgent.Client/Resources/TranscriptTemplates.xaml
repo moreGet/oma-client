@@ -3,7 +3,7 @@
                     xmlns:tvm="clr-namespace:OhMyAgent.AiAgent.Client.ViewModels.Transcript"
                     xmlns:views="clr-namespace:OhMyAgent.AiAgent.Client.Views"
                     xmlns:md="clr-namespace:OhMyAgent.AiAgent.Client.Views.Markdown"
-                    xmlns:diff="clr-namespace:OhMyAgent.AiAgent.Client.Services.Diff">
+                    xmlns:diff="clr-namespace:OhMyAgent.AiAgent.Client.Services.Diff;assembly=OhMyAgent.AiAgent.Core">
 
     <!-- ══ 사용자 메시지 버블 (accent 그라데이션) ════════════════════════ -->
     <DataTemplate x:Key="UserTurnTemplate" DataType="{x:Type tvm:UserTurnViewModel}">

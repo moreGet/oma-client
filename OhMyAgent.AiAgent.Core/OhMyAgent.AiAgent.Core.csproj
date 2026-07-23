@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>   <!-- -windows 아님. WPF/WinForms 미사용 -->
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>OhMyAgent.AiAgent.Client</RootNamespace>  <!-- 네임스페이스 유지 전략 -->
+    <AssemblyName>OhMyAgent.AiAgent.Core</AssemblyName>
+    <Version>1.3.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WPF 클라이언트가 ToolSchemas/FuzzyMatch/SafeFileWalk/HttpFetchTool 등 Core internal 을
+         계속 소비하므로(네임스페이스 유지 전략의 귀결) Client 어셈블리에도 internal 을 공개한다. -->
+    <InternalsVisibleTo Include="OhMyAgent.AiAgent.Client" />
+    <InternalsVisibleTo Include="OhMyAgent.AiAgent.Client.Tests" />
+    <!-- 헤드리스 호스트가 HttpFetchTool.CreateDefaultClient()(internal, SSRF 대비 redirect-off)를 재사용. -->
+    <InternalsVisibleTo Include="OhMyAgent.AiAgent.Host" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 문서/스프레드시트 도구가 Core로 이동하므로 이 패키지들도 Core로 이동 -->
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
+    <PackageReference Include="PdfPig" Version="0.1.15" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.10" />
+  </ItemGroup>
+
+</Project>

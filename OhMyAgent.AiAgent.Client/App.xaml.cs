@@ -124,8 +124,12 @@ public partial class App : Application
         // 트레이 상주 앱 — 창을 닫아도(트레이로 숨김) 종료되지 않게. 종료는 ExitApplication() 단일 경로.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+        // 0) UI 스레드 마샬링 디스패처 — 가장 먼저 생성해 UI-의존 서비스에 주입한다.
+        //    (헤드리스 호스트는 여기서 ImmediateUiDispatcher 를 주입하면 된다.)
+        var ui = new WpfUiDispatcher();
+
         // 1) Settings 먼저 로드 — 모두가 이를 읽는다.
-        _settingsService = new SettingsService();
+        _settingsService = new SettingsService(ui);
         await _settingsService.LoadAsync();
 
         // 2) Infra — BaseAddress 를 두지 않는다.
@@ -265,7 +269,7 @@ public partial class App : Application
         //      (문자열로 넘기면 각 VM 이 복사본을 들어 사용자가 바뀌어도 판정 기준이 옛 사용자로 남는다).
         var chatApi   = new ChatApiClient(_httpClient!, _settingsService!);
         var chatSocket = new ChatSocketClient(_settingsService!);
-        _chatRealtime = new ChatRealtimeService(chatApi, chatSocket, _settingsService!);
+        _chatRealtime = new ChatRealtimeService(chatApi, chatSocket, _settingsService!, ui);
 
         _chatIdentity = new ChatIdentity(JwtIdentity.MemberId(_settingsService!.Current.AuthToken));
         _chatMessengerVm = new ChatMessengerViewModel(_chatRealtime, _chatIdentity);

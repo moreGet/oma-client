@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using OhMyAgent.AiAgent.Client.Services;
 using Xunit;
@@ -54,5 +55,28 @@ public sealed class ScriptExecutorEncodingTests
         Assert.Equal(0, result.ExitCode);
         Assert.DoesNotContain(ReplacementChar, result.Stdout);
         Assert.Contains("한글출력테스트", result.Stdout);
+    }
+
+    // ── ResolveConsoleEncoding OS 분기 (순수 메서드 — 전 OS 러너에서 검증) ──
+
+    [Fact]
+    public void ResolveConsoleEncoding_Linux_ReturnsUtf8WithoutBom()
+    {
+        var enc = ScriptExecutor.ResolveConsoleEncoding(isWindows: false);
+
+        Assert.IsType<UTF8Encoding>(enc);
+        // BOM 미방출(encoderShouldEmitUTF8Identifier: false).
+        Assert.Empty(enc.GetPreamble());
+    }
+
+    [Fact]
+    public void ResolveConsoleEncoding_Windows_ReturnsUsableEncoding()
+    {
+        // Windows 분기: OEM 코드페이지 또는 UTF-8 폴백 — 어느 쪽이든 non-null 이고 왕복 가능해야 한다.
+        var enc = ScriptExecutor.ResolveConsoleEncoding(isWindows: true);
+
+        Assert.NotNull(enc);
+        const string ascii = "hello 123";
+        Assert.Equal(ascii, enc.GetString(enc.GetBytes(ascii)));
     }
 }
