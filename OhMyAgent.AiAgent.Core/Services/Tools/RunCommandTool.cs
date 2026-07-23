@@ -45,7 +45,7 @@ public sealed class RunCommandTool(IScriptExecutor executor) : ITool
         // Linux 에서는 ScriptExecutor 가 셸 파라미터와 무관하게 모든 타입을 /bin/bash 로 귀결시키므로,
         // 모델이 shell="cmd"/"powershell" 로 보내 bash 블랙리스트(rm -rf, dd, sudo, /etc …)를 우회하는 것을 막기 위해
         // 비-Windows 에서는 항상 Bash 규칙으로 검증한다. (Windows 는 요청 셸 그대로 — 기존 동작 불변.)
-        var validationType = OperatingSystem.IsWindows() ? type : ScriptType.Bash;
+        var validationType = ResolveValidationType(type, OperatingSystem.IsWindows());
         var validation = SecurityValidator.Validate(command, validationType);
         if (!validation.IsValid)
             return ToolResult.Fail($"보안 검증 실패: {validation.Reason}");
@@ -78,6 +78,15 @@ public sealed class RunCommandTool(IScriptExecutor executor) : ITool
             return ToolResult.Fail(ex.Message);
         }
     }
+
+    /// <summary>
+    /// 실제 실행될 셸 기준으로 보안 검증 타입을 결정한다(순수 함수 — 회귀 테스트 대상, 스펙 §3-B).
+    /// 비-Windows 는 ScriptExecutor 가 셸 파라미터와 무관하게 /bin/bash 로 귀결시키므로,
+    /// 라벨(cmd/powershell)로 bash 블랙리스트를 우회하는 것을 막기 위해 항상 Bash 규칙을 쓴다.
+    /// Windows 는 요청 셸 그대로(기존 동작 불변).
+    /// </summary>
+    internal static ScriptType ResolveValidationType(ScriptType requested, bool isWindows)
+        => isWindows ? requested : ScriptType.Bash;
 
     // 모델 컨텍스트 보호 — 스트림당 상한. 초과 시 뒤를 자르고 고지(전체 로그는 셸에서 파일 리다이렉트 권장).
     private const int MaxStreamChars = 24_000;

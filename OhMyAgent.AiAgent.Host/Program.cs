@@ -28,8 +28,13 @@ await settings.UpdateServerConfigAsync(
 if (!string.IsNullOrWhiteSpace(cfg.WorkspaceRoot))
     await settings.UpdateWorkspaceRootAsync(cfg.WorkspaceRoot!);
 
-// 2) HTTP — App 과 동일하게 BaseAddress 미설정(요청마다 절대 URI). 무한 타임아웃.
-var httpClient = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+// 2) HTTP — App 과 동일하게 BaseAddress 미설정(요청마다 절대 URI). 전체 타임아웃은 무한(SSE 스트리밍)이되,
+//    연결 단계만 별도 제한한다. 헤드리스는 취소해 줄 사용자가 없어, 블랙홀 서버(SYN 무응답)에 무한 대기하면
+//    프로세스가 영구 행이다(WSL 스모크 테스트에서 실증). ConnectTimeout 은 수립된 스트림에는 영향 없다.
+var httpClient = new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(10) })
+{
+    Timeout = Timeout.InfiniteTimeSpan
+};
 var toolHttp   = HttpFetchTool.CreateDefaultClient();   // internal → Core IVT(Host)
 
 // 3) 워크스페이스 샌드박스
@@ -53,6 +58,21 @@ var api        = new AgentApiClient(httpClient, settings);
 var toolPolicy = new ToolPolicyService(api);
 var compactor  = new ContextCompactor(api, settings);
 
+// 8-b) 서버 도구 정책 로드 — App 의 로그인 직후 시맨틱과 동일(AgentSessionViewModel 참조).
+//      404(미구현) = 정책 미운영 확정 → fail-open. 그 외 실패 = fail-closed(전 도구 차단)로 계속 실행하되
+//      이유를 알려준다. 이 호출이 없으면 정책 상태가 초기값(Unavailable)에 머물러 모든 도구가 영구 차단된다
+//      (WSL 스모크 테스트에서 실증).
+try { await toolPolicy.LoadAsync(); }
+catch (Exception ex)
+{
+    AppLog.Warn("Host", $"도구 정책 로드 실패 — fail-closed 로 계속: {ex.Message}");
+    Console.Error.WriteLine($"⚠ {ex.Message}");
+}
+
+// 8-c) 서버 추가 위험명령 패턴(디폴트에 가산) — 미구현/오류면 내장 블랙리스트만으로 방어.
+try { SecurityValidator.SetServerPatterns(await api.GetCommandSecurityPolicyAsync()); }
+catch { /* graceful — 내장 디폴트가 바닥을 방어한다. */ }
+
 // 9) 서브에이전트(task) — 재귀 방지 위해 task 도구 없는 레지스트리로 조립.
 var subagentTools   = tools.Where(t => TaskTool.AllowedToolNames.Contains(t.Name)).ToArray();
 var subOrchestrator = new AgentOrchestrator(
@@ -69,6 +89,16 @@ var orchestrator = new AgentOrchestrator(api, registry, permissions, workspace, 
 var host = new HeadlessAgentHost(orchestrator);
 using var cts = ConsoleCancellation();   // Ctrl+C / SIGTERM → 취소 토큰
 
+// 12-a) A2A 서버 모드 — OHMYAGENT_LISTEN 이 있으면 stdin 루프 대신 HttpListener 로 수신(스펙 §1-G).
+//       기존 원샷/대화 경로는 LISTEN 미설정 시 완전 불변.
+var a2a = A2aOptions.FromEnvironment(settings.Current.ModelId);
+if (a2a.IsListenMode)
+{
+    a2a.ValidateOrThrow();   // 토큰 부재 + ANON≠1 → 기동 거부(§1-E)
+    await new A2aListener(orchestrator, a2a).RunAsync(cts.Token);
+    return;
+}
+
 var oneShot = cfg.Prompt ?? (Console.IsInputRedirected ? await Console.In.ReadToEndAsync() : null);
 if (!string.IsNullOrWhiteSpace(oneShot))
     await host.RunOnceAsync(oneShot!, cts.Token);        // 파이프/인자 1회 처리
@@ -83,11 +113,18 @@ return;
 static CancellationTokenSource ConsoleCancellation()
 {
     var cts = new CancellationTokenSource();
+    // 정상 종료 후에도 핸들러는 발화한다(ProcessExit 는 항상, CancelKeyPress 는 드물게) —
+    // using 으로 dispose 된 CTS 에 Cancel() 하면 ObjectDisposedException 으로 종료 코드가 오염된다(WSL 스모크에서 실증).
+    void SafeCancel()
+    {
+        try { cts.Cancel(); }
+        catch (ObjectDisposedException) { /* 이미 정상 종료 경로 — 무시 */ }
+    }
     Console.CancelKeyPress += (_, e) =>
     {
         e.Cancel = true;          // 즉시 종료 대신 협조적 취소
-        cts.Cancel();
+        SafeCancel();
     };
-    AppDomain.CurrentDomain.ProcessExit += (_, _) => cts.Cancel();
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => SafeCancel();
     return cts;
 }

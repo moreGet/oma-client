@@ -21,6 +21,11 @@
         <!-- Client 잔류 타입(Converters 등)과 Core 이동 타입(GlobMatcher/SecurityValidator 등) 모두 테스트하므로 둘 다 참조. -->
         <ProjectReference Include="..\..\OhMyAgent.AiAgent.Client\OhMyAgent.AiAgent.Client.csproj" />
         <ProjectReference Include="..\..\OhMyAgent.AiAgent.Core\OhMyAgent.AiAgent.Core.csproj" />
+        <!-- A2A 매퍼/인증/홉/설정 테스트용. Host 는 net10.0(-windows 아님) → windows 테스트에서 참조 가능.
+             Host 의 self-contained/RID 는 참조에 전파되지 않도록 컴파일 산출물만 취한다. -->
+        <ProjectReference Include="..\..\OhMyAgent.AiAgent.Host\OhMyAgent.AiAgent.Host.csproj">
+            <Properties>SelfContained=false;RuntimeIdentifier=;PublishSingleFile=false</Properties>
+        </ProjectReference>
     </ItemGroup>
 
 </Project>
