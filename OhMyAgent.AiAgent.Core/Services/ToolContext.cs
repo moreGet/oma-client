@@ -8,4 +8,7 @@ namespace OhMyAgent.AiAgent.Client.Services;
 /// </summary>
 public sealed record ToolContext(
     IWorkspaceContext Workspace,
-    PermissionMode PermissionMode);
+    PermissionMode PermissionMode,
+    // A2A 수신 홉. 리스너 경로에서만 >0(요청별 AgentSession.InboundHop 에서 주입). ask_agent 가 +1 전파해
+    // 순환/무한 위임을 유한 깊이에서 봉쇄한다. 비-리스너 경로는 0(최초 홉=1).
+    int InboundHop = 0);

@@ -17,6 +17,12 @@ public sealed class AgentSession
 
     public Usage? LastUsage { get; set; }
 
+    /// <summary>
+    /// A2A 수신 홉 카운트(X-A2A-Hop). 리스너가 요청마다 새 세션에 실어 넣는다. ask_agent 는 이 값을
+    /// ctx.InboundHop 으로 이어받아 +1 전파한다. 비-리스너 세션은 0(최초 홉=1).
+    /// </summary>
+    public int InboundHop { get; set; }
+
     // ── 컨텍스트 컴팩션 상태 ──
     //
     // Messages 는 항상 온전하다(디스크 영속·서버 동기화·UI 가 원본을 본다). 컴팩션은 "서버로 보낼

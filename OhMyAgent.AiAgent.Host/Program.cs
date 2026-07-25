@@ -74,13 +74,27 @@ try { SecurityValidator.SetServerPatterns(await api.GetCommandSecurityPolicyAsyn
 catch { /* graceful — 내장 디폴트가 바닥을 방어한다. */ }
 
 // 9) 서브에이전트(task) — 재귀 방지 위해 task 도구 없는 레지스트리로 조립.
+//    subagentTools 는 이 시점의 tools(기본 도구)에서만 뽑으므로 discover/ask_agent 는 자동 제외된다
+//    (ask_agent 서브에이전트 팬아웃 봉쇄 — 스펙 §10).
 var subagentTools   = tools.Where(t => TaskTool.AllowedToolNames.Contains(t.Name)).ToArray();
 var subOrchestrator = new AgentOrchestrator(
     api, new ToolRegistry(subagentTools), permissions, workspace, settings, toolPolicy, compactor,
     suppressThinking: true);
 
-// 10) 메인 레지스트리 = 기본 도구 + task
-var registry = new ToolRegistry([.. tools, new TaskTool(subOrchestrator, workspace)]);
+// 9-b) 레지스트리 협업 계층 — 등록 클라(컨트롤플레인) + A2A 채팅 클라(SSE 전용) + 협업 도구 2종.
+//      brokerKeyStore 는 도구(exclude_self)·인증기·lifecycle 가 공유하는 슬롯(LISTEN 모드에서 채워짐).
+var brokerKeyStore = new BrokerKeyStore();
+var registryClient = new AgentRegistryClient(httpClient, settings);
+var a2aHttp        = new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(10) })
+{
+    Timeout = Timeout.InfiniteTimeSpan   // A2A SSE 스트리밍 — 전체 타임아웃 무한(연결 단계만 제한).
+};
+var a2aChat        = new A2aChatClient(a2aHttp);
+var discoverTool   = new DiscoverAgentsTool(registryClient, brokerKeyStore);
+var askAgentTool   = new AskAgentTool(registryClient, a2aChat, brokerKeyStore);
+
+// 10) 메인 레지스트리 = 기본 도구 + task + 협업 도구 2종
+var registry = new ToolRegistry([.. tools, new TaskTool(subOrchestrator, workspace), discoverTool, askAgentTool]);
 
 // 11) 오케스트레이터
 var orchestrator = new AgentOrchestrator(api, registry, permissions, workspace, settings, toolPolicy, compactor);
@@ -91,11 +105,26 @@ using var cts = ConsoleCancellation();   // Ctrl+C / SIGTERM → 취소 토큰
 
 // 12-a) A2A 서버 모드 — OHMYAGENT_LISTEN 이 있으면 stdin 루프 대신 HttpListener 로 수신(스펙 §1-G).
 //       기존 원샷/대화 경로는 LISTEN 미설정 시 완전 불변.
-var a2a = A2aOptions.FromEnvironment(settings.Current.ModelId);
+var a2a = A2aOptions.FromEnvironment(settings.Current.ModelId);   // Mode(broker/token/anon) 포함
 if (a2a.IsListenMode)
 {
-    a2a.ValidateOrThrow();   // 토큰 부재 + ANON≠1 → 기동 거부(§1-E)
-    await new A2aListener(orchestrator, a2a).RunAsync(cts.Token);
+    a2a.ValidateOrThrow();   // token 모드 토큰 부재 + ANON≠1 → 기동 거부(§1-E)
+
+    var regOpts  = AgentRegistryOptions.FromEnvironment(a2a);   // AGENT_NAME/ADVERTISE_URL/CAPABILITIES/REGISTRY
+    var authn    = new A2aInboundAuthenticator(a2a, brokerKeyStore, registryClient);
+    var listener = new A2aListener(orchestrator, a2a, authn);
+
+    var listenerTask = listener.RunAsync(cts.Token);   // blocking 수신 루프(Task)
+    AgentRegistryLifecycle? lifecycle = null;
+    if (regOpts.RegistryEnabled)
+    {
+        regOpts.ValidateOrThrow();   // ADVERTISE_URL 0.0.0.0/빈값 → 기동 거부(§D)
+        lifecycle = new AgentRegistryLifecycle(registryClient, regOpts, brokerKeyStore, settings.Current.ModelId);
+        await lifecycle.StartAsync(cts.Token);   // register + 공개키 + heartbeat spawn(실패는 내부 graceful)
+    }
+
+    try { await listenerTask; }
+    finally { if (lifecycle is not null) await lifecycle.StopAsync(); }   // best-effort deregister
     return;
 }
 

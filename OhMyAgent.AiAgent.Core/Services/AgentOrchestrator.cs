@@ -272,7 +272,9 @@ public sealed class AgentOrchestrator(
                 if (gated)
                     yield return new AgentAwaitingApproval(call.Id, call.Name, call.Arguments, risk);
 
-                var ctx = new ToolContext(workspace, settings.Current.PermissionMode);
+                // 순차 경로 — session 이 스코프에 있으므로 A2A 수신 홉을 도구로 전파(ask_agent 가 +1).
+                // 병렬 경로(RunCallAsync)는 ReadOnly 전용이라 Execute 인 ask_agent 가 도달하지 않는다 → 무변경.
+                var ctx = new ToolContext(workspace, settings.Current.PermissionMode, session.InboundHop);
 
                 var (result, cancelled) = await ExecuteCallAsync(tool, call, risk, ctx, ct)
                     .ConfigureAwait(false);

@@ -12,7 +12,7 @@ namespace OhMyAgent.AiAgent.Host;
 /// 계약을 대칭 재사용한다(호출자는 AgentApiClient 무수정). 라우팅·인증·홉·동시성 게이트를 거쳐 요청별
 /// new AgentSession 으로 orchestrator 를 끝까지 돌리고(자기 도구 루프) 최종 프로즈만 스트리밍한다.
 /// </summary>
-public sealed class A2aListener(IAgentOrchestrator orchestrator, A2aOptions opts)
+public sealed class A2aListener(IAgentOrchestrator orchestrator, A2aOptions opts, A2aInboundAuthenticator authn)
 {
     public async Task RunAsync(CancellationToken ct)
     {
@@ -64,8 +64,8 @@ public sealed class A2aListener(IAgentOrchestrator orchestrator, A2aOptions opts
                 return;
             }
 
-            // 2) 인증(§1-E).
-            if (!A2aAuth.IsAuthorized(req.Headers["Authorization"], opts))
+            // 2) 인증(§1-E, §C-2 모드 분기). broker=서버 공개키 검증, token=공유토큰, anon=무인증.
+            if (!await authn.AuthorizeAsync(req.Headers["Authorization"], ct).ConfigureAwait(false))
             {
                 await WriteErrorAsync(resp, 401, "unauthorized", "유효하지 않은 A2A 토큰", ct).ConfigureAwait(false);
                 return;
@@ -103,7 +103,7 @@ public sealed class A2aListener(IAgentOrchestrator orchestrator, A2aOptions opts
                     runId: Guid.NewGuid().ToString("N"), modelId: opts.AdvertisedModelId, opts);
                 await writer.WriteMessageStartAsync(ct).ConfigureAwait(false);
 
-                var session = new AgentSession();
+                var session = new AgentSession { InboundHop = hop };   // 수신 홉을 세션에 실어 ask_agent 가 +1 전파
                 await foreach (var ev in orchestrator.RunAsync(prompt!, session, ct: ct).ConfigureAwait(false))
                     await writer.WriteAsync(ev, ct).ConfigureAwait(false);   // 투영 정책 §1-C
             }
