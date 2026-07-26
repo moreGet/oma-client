@@ -157,15 +157,17 @@
     <h1 class="rise">물어보는 AI를 넘어,<br><span class="grad">함께 일하는 AI</span></h1>
     <p class="lead rise" style="margin-top:1.6rem">
       외부 인터넷이 막힌 보안망 안에서 <b>회사의 AI가 내 PC 작업 폴더에서 직접 문서·파일·자동화를
-      처리</b>하고, 이제 <b>사내 동료와 실시간으로 협업</b>까지 — 설치형 Windows 데스크톱 비서.
+      처리</b>하고, <b>사내 동료와 실시간 협업</b>은 물론, 이제 <b>서버의 여러 AI가 서로 나눠 일하는 것</b>까지
+      — 설치형 데스크톱부터 서버 상주 AI까지.
     </p>
     <div class="chips rise" style="margin-top:2rem">
       <span class="chip"><b>폐쇄망</b> 안전</span>
       <span class="chip"><b>33개</b> 내장 도구</span>
       <span class="chip"><b>권한 승인</b> 3단계</span>
       <span class="chip"><b>실시간</b> 팀 협업</span>
+      <span class="chip"><b>AI끼리</b> 협업</span>
     </div>
-    <p class="dim rise" style="margin-top:1.6rem;font-size:.9rem">설치형 · 외부 연결 ✕ · 사용량 통제 &nbsp;|&nbsp; <kbd>→</kbd> 다음</p>
+    <p class="dim rise" style="margin-top:1.6rem;font-size:.9rem">설치형 · 서버 상주 · 외부 연결 ✕ &nbsp;|&nbsp; <kbd>→</kbd> 다음</p>
   </section>
 
   <!-- 2 · The problem -->
@@ -355,6 +357,30 @@
     <p class="dim rise" style="margin-top:1.2rem"><b>AI 비서 + 팀 협업을 한 앱에서.</b> WebSocket 실시간 · 동료를 사람 이름으로 표시 · 멤버 관리(추가/강퇴/나가기).</p>
   </section>
 
+  <!-- 7b · ★ Multi-agent / A2A collaboration -->
+  <section class="slide">
+    <span class="kicker v rise">더 나아가</span>
+    <h2 class="rise">이제 <span class="gradg">AI끼리도 서로 협업</span>합니다</h2>
+    <p class="lead rise" style="max-width:62ch">
+      혼자 일하는 AI를 넘어 — 서버에 상주하는 여러 AI가 <b>서로를 찾아</b> 전문 작업을
+      <b>나눠 맡깁니다</b>. 내 비서 AI가 혼자 못 끝낼 일은, 그 일을 잘하는 다른 AI에게
+      자동으로 물어보고 결과를 받아옵니다.
+    </p>
+    <div class="flow rise" style="margin-top:1.8rem">
+      <div class="node">🙋 내 AI 비서</div><span class="arrow">→</span>
+      <div class="node k">🗂 명부에서 전문가 AI 찾기</div><span class="arrow">→</span>
+      <div class="node">🤝 작업 위임</div><span class="arrow">→</span>
+      <div class="node k">✅ 결과 받아 종합</div>
+    </div>
+    <div class="cards c4 rise" style="margin-top:1.8rem">
+      <div class="card hi"><span class="ic">🗂️</span><h3>AI 명부</h3><p>어떤 AI가 어떤 일을 잘하는지 서버가 관리 — 필요할 때 골라 씁니다.</p></div>
+      <div class="card hi"><span class="ic">🤝</span><h3>자동 위임</h3><p>혼자 못 끝낼 일은 전문 AI에게 맡기고, 결과만 받아 이어갑니다.</p></div>
+      <div class="card hi"><span class="ic">🔐</span><h3>안전한 신원</h3><p>AI끼리 통신도 서버가 발급한 <b>단명 인증 토큰</b>으로만 — 위조 차단.</p></div>
+      <div class="card hi"><span class="ic">🖥️</span><h3>24시간 상주</h3><p>데스크톱 없이 <b>서버에서 무인 자동화</b> — 같은 엔진, UI만 뺀 형태.</p></div>
+    </div>
+    <p class="dim rise" style="margin-top:1.2rem">데스크톱 앱과 서버 상주 AI가 <b>같은 엔진</b>을 공유 — 폐쇄망 안에서 AI 팀을 구성합니다.</p>
+  </section>
+
   <!-- 8 · Differentiation (3-way vs) -->
   <section class="slide">
     <span class="kicker rise">무엇이 다른가</span>
@@ -387,7 +413,7 @@
           <li><span>✓</span> 일하는 AI <b>+</b> 안전한 통제</li>
           <li><span>✓</span> 권한 승인·샌드박스 내장</li>
           <li><span>✓</span> 폐쇄망 100% · 외부 연결 ✕</li>
-          <li><span>✓</span> <b>팀 실시간 협업까지</b></li>
+          <li><span>✓</span> <b>팀 협업 + AI끼리 협업까지</b></li>
         </ul>
       </div>
     </div>
@@ -512,18 +538,18 @@
       <div class="stat-card"><div class="n">10개</div><div class="l">동시 작업 폴더 — 폴더별 on/off</div></div>
       <div class="stat-card"><div class="n">3단계</div><div class="l">권한 승인 — 수동·안전자동·전체자동</div></div>
       <div class="stat-card"><div class="n">4종</div><div class="l">사무 문서 — Excel·PDF·<b>한글</b>·CSV</div></div>
-      <div class="stat-card"><div class="n">300</div><div class="l">자동화 테스트 — 보안·경계 검증 포함</div></div>
-      <div class="stat-card"><div class="n">✕</div><div class="l">추가 외부 연결 — 설치형 단독 동작</div></div>
+      <div class="stat-card"><div class="n">441</div><div class="l">자동화 테스트 — 보안·경계·<b>AI 협업</b> 검증 포함</div></div>
+      <div class="stat-card"><div class="n">24/7</div><div class="l">서버 상주 AI — 무인 자동화·<b>에이전트 협업</b></div></div>
     </div>
-    <p class="dim rise" style="margin-top:1.4rem">개발자에게는 코딩 비서, 일반 사용자에게는 문서·자동화 비서, 그리고 모두에게 협업 도구.</p>
+    <p class="dim rise" style="margin-top:1.4rem">개발자에게는 코딩 비서, 일반 사용자에게는 문서·자동화 비서, 그리고 모두에게 협업 도구 — 사람끼리도, AI끼리도.</p>
   </section>
 
   <!-- 12 · Close -->
   <section class="slide">
     <span class="kicker rise">한 줄로</span>
     <h1 class="rise">물어보는 AI →<br><span class="grad">일해주는 AI</span> → 함께 일하는 AI</h1>
-    <p class="quote rise" style="margin-top:1.8rem;max-width:36ch">
-      보안망 안에서 <span class="q">실제로 일하고, 안전하며, 이제 팀과 함께</span> 일하는
+    <p class="quote rise" style="margin-top:1.8rem;max-width:38ch">
+      보안망 안에서 <span class="q">실제로 일하고, 안전하며, 팀과 — 그리고 AI끼리 — 함께</span> 일하는
       사내 전용 AI 업무 비서.
     </p>
     <p class="dim rise" style="margin-top:2.4rem">OhMyAgent · 폐쇄망에서 일하고, 함께 일합니다</p>
@@ -532,7 +558,7 @@
 </div>
 
 <div class="nav">
-  <span class="count"><span id="cur">1</span> / <span id="tot">15</span></span>
+  <span class="count"><span id="cur">1</span> / <span id="tot">16</span></span>
   <button id="prev" aria-label="이전">‹</button>
   <button id="next" aria-label="다음">›</button>
 </div>

@@ -1,11 +1,17 @@
-# OhMyAgent.AiAgent.Client
+# OhMyAgent.AiAgent
 
-폐쇄망 사내 환경을 위한 **Windows 네이티브 AI 에이전트 데스크톱 앱**입니다.
+폐쇄망 사내 환경을 위한 **AI 에이전트 실행 호스트**입니다.
 Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서버와 연동하여
 **지정한 작업 디렉토리 안에서 파일·셸·시스템 작업을 자율적으로 수행**합니다.
 
 > 단순 채팅 클라이언트가 아니라, 서버가 내린 **도구 호출(tool call)을 클라이언트가 실제로 실행하고
 > 그 결과를 다시 서버로 돌려주는 에이전트 루프(agentic loop)** 를 도는 실행 호스트입니다.
+
+**두 가지 실행 형태**로 배포됩니다 — 공통 코어(`OhMyAgent.AiAgent.Core`)를 공유합니다:
+
+- **Windows 데스크톱 앱**(`OhMyAgent.AiAgent.Client`, WPF) — 사용자가 직접 쓰는 GUI 클라이언트
+- **헤드리스 에이전트**(`OhMyAgent.AiAgent.Host`, 크로스플랫폼 콘솔) — Linux/Windows 서버에서 UI 없이 상주하며,
+  **에이전트 간 통신(A2A)** 으로 서로를 발견·위임해 협업 ([상세](docs/a2a-registry/))
 
 ---
 
@@ -104,28 +110,97 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 ## 요구 사항
 
 - **스택**: C# **.NET 10.0** · **WPF** · **MVVM**(`CommunityToolkit.Mvvm` 소스 생성기) · `System.Text.Json`
-- **OS**: Windows 10 / 11 (WPF)
 - **.NET SDK**: 10.0 이상 (`dotnet --version`)
+- **OS**:
+  - **WPF 클라이언트**(`OhMyAgent.AiAgent.Client`) — Windows 10 / 11 전용(WPF/WinForms)
+  - **헤드리스 호스트**(`OhMyAgent.AiAgent.Host`) — **크로스플랫폼**(net10.0, WPF 없음). Linux/Windows 서버에서 UI 없이 구동
 - **사내 AI API 서버**: 기본 `http://localhost:8080` ([API 계약](docs/API_CONTRACT.md))
+
+### 구성 프로젝트 (솔루션 3개)
+
+| 프로젝트 | 타깃 | 역할 |
+|----------|------|------|
+| `OhMyAgent.AiAgent.Core` | `net10.0` (크로스플랫폼) | 통신·오케스트레이터·도구·보안 등 **UI 비의존 코어**. Client·Host 공유 |
+| `OhMyAgent.AiAgent.Client` | `net10.0-windows` (WPF) | 데스크톱 앱(UI). Core 참조 |
+| `OhMyAgent.AiAgent.Host` | `net10.0` (콘솔) | **헤드리스 에이전트**. Core만 참조, UI·클립보드·스크린샷 도구 제외. Linux 단일 파일 배포 + [에이전트 간 통신(A2A)](docs/a2a-registry/) |
 
 ## 빌드 & 실행
 
+배포 대상이 **Windows 데스크톱(GUI)** 인지 **서버 헤드리스(UI 없음)** 인지에 따라 빌드 방법이 갈립니다.
+
+### A. Windows 데스크톱 클라이언트 (GUI)
+
 ```bash
 # 빌드
-dotnet build OhMyAgent.AiAgent.Client/OhMyAgent.AiAgent.Client.csproj
+dotnet build OhMyAgent.AiAgent.Client/OhMyAgent.AiAgent.Client.csproj -c Release
 
 # 실행 (Windows)
 dotnet run --project OhMyAgent.AiAgent.Client
 ```
 
-> **WSL에서 Windows용 dotnet을 쓰는 경우**: 이 프로젝트는 WPF(WinExe)라 Windows용 `dotnet.exe`로만 빌드됩니다.
-> WSL에서는 Windows 실행 파일과 Windows 경로를 직접 호출하세요.
-> ```bash
-> "/mnt/c/Program Files/dotnet/dotnet.exe" build \
->   "C:\Users\<USERNAME>\RiderProjects\OhMyAgent.AiAgent.Client\OhMyAgent.AiAgent.Client\OhMyAgent.AiAgent.Client.csproj" \
->   -consoleloggerparameters:ErrorsOnly
-> ```
-> 권한 설정은 `.claude/settings.local.json`(gitignore됨) 참조 — `CLAUDE.md`의 "WSL 환경" 절.
+WPF(`net10.0-windows`)라 **Windows에서만** 빌드·실행됩니다. WSL에서는 Windows용 `dotnet.exe`와 Windows 경로를 직접 호출하세요:
+```bash
+"/mnt/c/Program Files/dotnet/dotnet.exe" build \
+  "C:\Users\<USERNAME>\RiderProjects\OhMyAgent.AiAgent.Client\OhMyAgent.AiAgent.Client\OhMyAgent.AiAgent.Client.csproj" \
+  -consoleloggerparameters:ErrorsOnly
+```
+권한 설정은 `.claude/settings.local.json`(gitignore됨) 참조 — `CLAUDE.md`의 "WSL 환경" 절.
+
+### B. 헤드리스 호스트 — Linux 서버 (단일 실행 파일)
+
+`OhMyAgent.AiAgent.Host`는 WPF가 없는 크로스플랫폼 콘솔이라 **Linux용 단일 실행 파일**로 배포합니다.
+**Windows에서 크로스 컴파일 가능** — Linux 장비 없이도 `-r linux-x64`로 산출물이 나옵니다.
+
+```bash
+dotnet publish OhMyAgent.AiAgent.Host -c Release \
+  -r linux-x64 --self-contained -p:PublishSingleFile=true
+# 산출물: OhMyAgent.AiAgent.Host/bin/Release/net10.0/linux-x64/publish/OhMyAgent.AiAgent.Host
+#   → .NET 런타임 동봉된 단일 ELF 파일(~44MB). 대상 서버에 .NET 설치 불필요.
+```
+
+> **트리밍(`PublishTrimmed`)은 꺼짐**입니다 — 문서 도구(ClosedXML/PdfPig/OpenXML)가 리플렉션을 쓰므로 트리밍/AOT는 비호환. self-contained 단일 파일까지만 사용합니다.
+
+서버에 복사 후 환경 변수로 구동:
+```bash
+scp .../publish/OhMyAgent.AiAgent.Host  user@server:/opt/agent/host
+ssh user@server 'chmod +x /opt/agent/host && \
+  OHMYAGENT_SERVER_URL=http://<사내서버>:8080 \
+  OHMYAGENT_AUTH_TOKEN=<JWT> \
+  OHMYAGENT_WORKSPACE=/srv/agent-ws \
+  /opt/agent/host'          # 원샷: OHMYAGENT_PROMPT="..." / 대화: 표준입력 루프
+```
+
+주요 실행 env(자세히는 [`docs/a2a-registry/`](docs/a2a-registry/)):
+
+| env | 용도 |
+|-----|------|
+| `OHMYAGENT_SERVER_URL` · `OHMYAGENT_AUTH_TOKEN` | 사내 AI 서버 주소 · JWT |
+| `OHMYAGENT_WORKSPACE` | 작업 디렉토리(샌드박스 루트) |
+| `OHMYAGENT_HEADLESS_APPROVAL` | 승인 정책 `deny`(기본) / `auto` |
+| `OHMYAGENT_LISTEN` | **A2A 리스너 모드** — 다른 에이전트의 요청을 수신(예: `http://0.0.0.0:8080/`) |
+| `OHMYAGENT_ADVERTISE_URL` · `OHMYAGENT_AGENT_NAME` · `OHMYAGENT_CAPABILITIES` | 레지스트리 등록 정보(리스너 모드) |
+| `OHMYAGENT_A2A_MODE` | 수신 인증 `broker`(레지스트리 기본) / `token` / `anon` |
+
+> **셸 도구(`run_command`)는 OS 자동 분기**: Windows는 powershell/cmd, Linux는 `/bin/bash`.
+> 클립보드·스크린샷 도구는 헤드리스에서 제외됩니다.
+
+### C. 헤드리스 호스트 — Windows 서버
+
+같은 Host 프로젝트를 Windows 서버용으로도 배포할 수 있습니다(런타임 식별자만 교체):
+```bash
+dotnet publish OhMyAgent.AiAgent.Host -c Release \
+  -r win-x64 --self-contained -p:PublishSingleFile=true
+# 산출물: .../win-x64/publish/OhMyAgent.AiAgent.Host.exe
+```
+
+### 전체 솔루션 빌드 / 테스트
+
+```bash
+dotnet build OhMyAgent.AiAgent.Client.sln -c Release   # Core + Client + Host 일괄(Windows)
+dotnet test  OhMyAgent.AiAgent.Client.sln              # 전체 테스트
+```
+> 솔루션에 WPF 클라이언트가 포함돼 **솔루션 단위 빌드는 Windows에서** 수행합니다.
+> Core·Host만 빌드하려면 해당 `.csproj`를 개별 대상으로 지정하세요(Linux/CI에서도 가능).
 
 ## 첫 사용 흐름
 
@@ -211,36 +286,41 @@ dotnet run --project OhMyAgent.AiAgent.Client
 
 ## 프로젝트 구조
 
-> 트리 루트는 **저장소 루트**. `docs/`·`CHANGELOG.md`·`README.md`는 저장소 루트에 있고, WPF 소스는 하위 프로젝트 폴더에 있다.
+> 트리 루트는 **저장소 루트**. `docs/`·`CHANGELOG.md`·`README.md`는 저장소 루트에 있고, 소스는 3개 프로젝트 폴더에 나뉜다.
+> UI 비의존 코어(통신·오케스트레이터·도구·보안)는 `Core`로 분리되어 WPF 클라이언트와 헤드리스 호스트가 공유한다.
 
 ```
 <repo-root>/
 ├── README.md · CHANGELOG.md · CLAUDE.md
 ├── docs/                     AGENT_ARCHITECTURE_PLAN · API_CONTRACT · tool-system(도구 설계) ·
 │                             realtime-chat(메신저) · server-*.md(쿼터/버전/도구정책/명령보안) ·
-│                             design-tokens · 발표자료(presentation_*.html)
-└── OhMyAgent.AiAgent.Client/          (WPF 프로젝트)
-    ├── App.xaml(.cs)         컴포지션 루트 · 트레이 · 핫키 · 통합 로그인 게이트(ReturnToLogin)
-    ├── MainWindow.xaml(.cs)  메인 셸 · 프로젝트 사이드바(드래그앤드롭 분류) · 쿼터 칩 · 업데이트 배너
-    ├── Models/               AppSettings · WorkspaceFolder · ProjectRecord/Summary · UserProfile ·
-    │   │                     ChatSessionRecord/Summary · Attachment · Suggestion
-    │   ├── Agent/            Agent DTO(AgentMessage/ToolCall/Usage/QuotaInfo/ClientVersionInfo/
-    │   │                     RemoteProject/RemoteSession/ToolPolicy …)
-    │   ├── Chat/             메신저 DTO(ChatDtos) · WS envelope(+ChatJson) · ChatEnums
-    │   └── Integrity/        무결성 매니페스트(IntegrityManifest/Entry)
-    ├── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry · PermissionService ·
-    │   │                     ToolPolicyService · ProjectService · ChatHistoryService · SessionSyncService ·
-    │   │                     AppVersion · UserErrorMessages · FileAttachmentService · 워크스페이스/보안
-    │   ├── Tools/            33개 ITool 구현(파일·셸·시스템·문서(docx/pptx/hwpx)·압축 + manage_todos·task)
-    │   └── Chat/             IChatApiClient(REST) · IChatSocketClient(WS) · IChatRealtimeService(파사드) ·
-    │                         ChatMessengerCoordinator · JwtIdentity(식별자) · ChatApiException
-    ├── ViewModels/           AgentSessionViewModel · SettingsViewModel · ProjectsViewModel ·
-    │   │                     WorkspaceFolderViewModel · QuotaWindowViewModel · LoginViewModel · IntegrityViewModel
-    │   └── Chat/             ChatMessengerViewModel(셸) · ChatRooms/ChatRoom/ChatMessage · 멤버/멘션 VM
-    ├── Views/                LoginWindow · ChatOnlyWindow · SettingsWindow · IntegrityWindow
-    │   └── Chat/             ChatMessengerWindow · ChatRooms/ChatRoomView · RoomMembers/MentionFeed · Controls(말풍선/멘션)
-    ├── Resources/            Colors · Tokens(디자인 토큰) · Styles · Converters · TranscriptTemplates
-    └── docs/                 api-conformance-report(API 정합성 리포트)
+│                             a2a-registry/(에이전트 간 통신·레지스트리 계약) · design-tokens ·
+│                             발표자료(presentation_*.html)
+│
+├── OhMyAgent.AiAgent.Core/            (net10.0 · 크로스플랫폼 코어 라이브러리 — Client·Host 공유)
+│   ├── Models/               Agent DTO · Chat DTO · Integrity · Registry(A2A 레지스트리 계약)
+│   └── Services/             AgentOrchestrator · AgentApiClient · ToolRegistry · PermissionService ·
+│       │                     ToolPolicyService · ContextCompactor · ScriptExecutor(OS 셸 라우팅) ·
+│       │                     SecurityValidator · SettingsService · IUiDispatcher(UI 마샬링 추상화) …
+│       ├── Tools/            ITool 구현(파일·셸·시스템·문서·압축 + manage_todos·task + discover_agents·ask_agent)
+│       ├── Chat/             IChatApiClient(REST) · IChatSocketClient(WS) · IChatRealtimeService(파사드)
+│       └── Registry/         AgentRegistryClient · A2aChatClient(A2A 호출) · IBrokerKeyStore
+│
+├── OhMyAgent.AiAgent.Client/          (net10.0-windows · WPF 데스크톱 앱 — Core 참조)
+│   ├── App.xaml(.cs)         컴포지션 루트 · 트레이 · 핫키 · 통합 로그인 게이트(ReturnToLogin)
+│   ├── MainWindow.xaml(.cs)  메인 셸 · 프로젝트 사이드바(드래그앤드롭) · 쿼터 칩 · 업데이트 배너
+│   ├── Services/             WpfUiDispatcher(실제 Dispatcher) · DialogService · GlobalHotkeyService ·
+│   │                         TrayNotificationService · Clipboard/Screenshot 도구 · 무결성(Authenticode)
+│   ├── ViewModels/           AgentSessionViewModel · SettingsViewModel · ProjectsViewModel · Login · 메신저 VM
+│   ├── Views/                LoginWindow · ChatOnlyWindow · SettingsWindow · IntegrityWindow · Chat/*
+│   └── Resources/            Colors · Tokens(디자인 토큰) · Styles · Converters · TranscriptTemplates
+│
+└── OhMyAgent.AiAgent.Host/            (net10.0 · 헤드리스 에이전트 콘솔 — Core만 참조, Linux 단일 파일 배포)
+    ├── Program.cs                     컴포지션 루트(수동 배선) · ImmediateUiDispatcher(no-op) · 모드 분기
+    ├── HeadlessAgentHost.cs           원샷/대화 실행 코어 + headless-safe 도구 세트(클립보드·스크린샷 제외)
+    ├── A2aListener · A2aSseWriter …    A2A 수신 리스너(HttpListener SSE, 기존 chat 계약 대칭 노출)
+    ├── A2aBrokerToken · A2aInboundAuthenticator   ES256 토큰 브로커 수신 검증(BCL만)
+    └── AgentRegistryLifecycle · BrokerKeyStore    레지스트리 등록·heartbeat·공개키 캐시
 ```
 
 ---
