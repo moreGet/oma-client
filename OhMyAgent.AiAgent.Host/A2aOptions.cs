@@ -117,22 +117,31 @@ public sealed record A2aOptions
     }
 
     /// <summary>
-    /// 리스너 기동 전 안전 검증. 서버 모드인데 토큰이 없고 무인증 옵트인도 아니면 기동을 거부한다
+    /// 리스너 기동 전 안전 검증. 서버 모드인데 인증 수단이 전혀 없으면 기동을 거부한다
     /// (무인증 무인 호스트 사고 방지, 스펙 §1-E).
+    ///
+    /// 모드별 요구:
+    /// - Broker: 서버 발급 ES256 토큰을 공개키로 검증한다 — **공유 토큰 불필요**(자기 agent_id 는 등록 성공으로 확보).
+    /// - Token : 공유 Bearer(OHMYAGENT_A2A_TOKEN) 필수.
+    /// - Anon  : 무인증(폐쇄망 전용 옵트인).
     /// </summary>
     public void ValidateOrThrow()
     {
         if (!IsListenMode) return;
 
-        if (AllowAnonymous)
+        if (AllowAnonymous || Mode == A2aMode.Anon)
         {
             AppLog.Warn("A2A", "무인증 모드(OHMYAGENT_A2A_ALLOW_ANON=1) — 모든 요청이 토큰 없이 허용됩니다. 폐쇄망 전용.");
             return;
         }
 
+        // 브로커 모드는 서버가 서명한 단명 ES256 토큰을 쓴다 → 공유 토큰이 없어도 정상.
+        if (Mode == A2aMode.Broker) return;
+
         if (string.IsNullOrEmpty(Token))
             throw new InvalidOperationException(
-                "A2A 서버 모드(OHMYAGENT_LISTEN)에는 OHMYAGENT_A2A_TOKEN 이 필요합니다. " +
+                "A2A token 모드(OHMYAGENT_LISTEN + OHMYAGENT_A2A_MODE=token)에는 OHMYAGENT_A2A_TOKEN 이 필요합니다. " +
+                "레지스트리 브로커를 쓰려면 OHMYAGENT_A2A_MODE=broker(레지스트리 on 시 기본), " +
                 "토큰 없이 열려면 OHMYAGENT_A2A_ALLOW_ANON=1 을 명시하세요(폐쇄망 전용).");
     }
 }

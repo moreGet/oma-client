@@ -23,15 +23,48 @@ public class A2aConfigTests
     }
 
     [Fact]
-    public void Listen_without_token_fails_fast()
+    public void Token_mode_without_token_fails_fast()
     {
+        // token 모드를 명시(또는 레지스트리 off)했는데 공유 토큰이 없으면 fail-fast.
+        var opts = A2aOptions.FromEnvironment(Env(new()
+        {
+            ["OHMYAGENT_LISTEN"] = "http://0.0.0.0:8080/",
+            ["OHMYAGENT_A2A_MODE"] = "token",
+        }));
+
+        Assert.Equal(A2aMode.Token, opts.Mode);
+        Assert.True(opts.IsListenMode);
+        Assert.Throws<InvalidOperationException>(opts.ValidateOrThrow);
+    }
+
+    [Fact]
+    public void Registry_off_defaults_to_token_and_without_token_fails_fast()
+    {
+        // 레지스트리 off → 기본 모드 token → 토큰 없으면 fail-fast(기존 무회귀).
+        var opts = A2aOptions.FromEnvironment(Env(new()
+        {
+            ["OHMYAGENT_LISTEN"] = "http://0.0.0.0:8080/",
+            ["OHMYAGENT_REGISTRY"] = "off",
+        }));
+
+        Assert.Equal(A2aMode.Token, opts.Mode);
+        Assert.Throws<InvalidOperationException>(opts.ValidateOrThrow);
+    }
+
+    [Fact]
+    public void Broker_mode_allows_listen_without_shared_token()
+    {
+        // LISTEN 만 설정(레지스트리 on 기본) → 모드 Broker → 서버 발급 ES256 토큰을 쓰므로
+        // 공유 토큰 없이도 기동 통과. (실기 통합에서 잡힌 회귀 — Host 가 broker 모드인데 fail-fast 하던 버그.)
         var opts = A2aOptions.FromEnvironment(Env(new()
         {
             ["OHMYAGENT_LISTEN"] = "http://0.0.0.0:8080/",
         }));
 
+        Assert.Equal(A2aMode.Broker, opts.Mode);
         Assert.True(opts.IsListenMode);
-        Assert.Throws<InvalidOperationException>(opts.ValidateOrThrow);
+        Assert.Null(opts.Token);
+        opts.ValidateOrThrow();   // 예외 없어야 함
     }
 
     [Fact]
