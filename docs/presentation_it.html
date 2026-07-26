@@ -142,12 +142,13 @@
   <!-- 1 · Title -->
   <section class="slide">
     <span class="kicker rise">아키텍처 &amp; 기술 리뷰</span>
-    <h1 class="rise">폐쇄망 에이전트<br><span class="grad">클라이언트 설계 리뷰</span></h1>
+    <h1 class="rise">폐쇄망 에이전트<br><span class="grad">아키텍처 설계 리뷰</span></h1>
     <p class="lead rise" style="margin-top:1.5rem">
       서버가 LLM을 중계하고 클라이언트가 도구를 실행하는 <b>얇은 클라이언트 + 에이전트 루프</b> 구조.
-      WPF/MVVM 레이어링, 3중 게이트, 서버 제어형 도구·보안, 멀티루트 샌드박스, 서버 API 계약, 동기화·쿼터·버전을 검토합니다.
+      코어 분리·헤드리스 호스트·<b>에이전트 간 통신(A2A)</b>, MVVM 레이어링, 3중 게이트, 서버 제어형 도구·보안,
+      멀티루트 샌드박스, 서버 API 계약, 동기화·쿼터·버전을 검토합니다.
     </p>
-    <p class="dim rise" style="margin-top:1.8rem;font-size:.9rem">C# · .NET 10 (net10.0-windows) · WPF · MVVM(CommunityToolkit.Mvvm) · System.Text.Json · NuGet 4개(코어 도구는 ✕)</p>
+    <p class="dim rise" style="margin-top:1.8rem;font-size:.9rem">C# · .NET 10 · Core(net10.0 크로스플랫폼) + Client(net10.0-windows WPF) + Host(net10.0 헤드리스) · System.Text.Json · NuGet 4개(코어 도구는 ✕)</p>
   </section>
 
   <!-- 2 · Tech stack & principles -->
@@ -155,7 +156,7 @@
     <span class="kicker rise">스택 &amp; 원칙</span>
     <h2 class="rise">경량 · 무의존 · <span class="grad">계약 중심</span></h2>
     <div class="cards c3">
-      <div class="card rise"><span class="ic">🪟</span><h3>WPF · WinExe</h3><p>net10.0-windows. 데스크톱 네이티브, 트레이 상주, 전역 핫키(<code>Ctrl+Space</code>).</p></div>
+      <div class="card rise"><span class="ic">🏗️</span><h3>3-프로젝트 분리</h3><p><b>Core</b>(net10.0 크로스플랫폼) 코어를 <b>Client</b>(WPF)·<b>Host</b>(헤드리스)가 공유. UI 마샬링은 <code>IUiDispatcher</code>로 추상화.</p></div>
       <div class="card rise"><span class="ic">🧩</span><h3>MVVM</h3><p>CommunityToolkit.Mvvm 소스 생성기(<code>[ObservableProperty]</code>·<code>[RelayCommand]</code>).</p></div>
       <div class="card rise"><span class="ic">🔗</span><h3>System.Text.Json</h3><p>와이어용 <code>AgentJson.Options</code> · 영속용 <code>PersistenceOptions</code> 분리.</p></div>
       <div class="card rise"><span class="ic">🧱</span><h3>수동 컴포지션 루트</h3><p><code>App.OnStartup</code>에서 조립. 외부 DI 컨테이너 없음.</p></div>
@@ -187,15 +188,40 @@
       </div>
       <div class="down">▼ 인터페이스 호출</div>
       <div class="layer svc">
-        <div class="lt">Service / Agent Core</div>
+        <div class="lt">Service / Agent Core — <code>OhMyAgent.AiAgent.Core</code> (net10.0, Client·Host 공유)</div>
         <div class="row">
           <span class="chip">IAgentOrchestrator</span><span class="chip">IAgentApiClient</span>
           <span class="chip">IToolRegistry</span><span class="chip">IPermissionService</span><span class="chip">IToolPolicyService</span>
           <span class="chip">IWorkspaceContext</span><span class="chip">IChatHistoryService</span><span class="chip">ISessionSyncService</span><span class="chip">IProjectService</span>
+          <span class="chip">IAgentRegistryClient</span><span class="chip">IUiDispatcher</span>
         </div>
       </div>
     </div>
-    <p class="dim rise" style="margin-top:1.1rem">코드비하인드 최소화, 모든 상태·명령은 ViewModel. 서비스는 인터페이스로 추상화, <code>App.OnStartup</code>에서 수동 조립.</p>
+    <p class="dim rise" style="margin-top:1.1rem">코드비하인드 최소화, 모든 상태·명령은 ViewModel. 서비스는 <b>Core로 분리</b>돼 WPF 클라이언트·헤드리스 호스트가 공유하며, <code>App.OnStartup</code>(Client)·<code>Program.cs</code>(Host)에서 수동 조립.</p>
+  </section>
+
+  <!-- 3b · Core extraction + headless host -->
+  <section class="slide">
+    <span class="kicker rise">배포 형태 · 크로스플랫폼</span>
+    <h2 class="rise">코어 분리 · <span class="grad">헤드리스 호스트</span></h2>
+    <p class="lead rise">UI 비의존 로직을 <code>OhMyAgent.AiAgent.Core</code>(net10.0)로 분리 — WPF 클라이언트와 <b>Linux/Windows 헤드리스 호스트</b>가 같은 엔진을 공유합니다. UI 스레드 마샬링만 <code>IUiDispatcher</code> 뒤로 숨겨 구현을 주입.</p>
+    <div class="arch rise" style="margin-top:1rem">
+      <div class="layer svc">
+        <div class="lt">OhMyAgent.AiAgent.Core · net10.0 (WPF 없음)</div>
+        <div class="row">
+          <span class="chip">AgentOrchestrator</span><span class="chip">AgentApiClient</span><span class="chip">ToolRegistry</span>
+          <span class="chip">SecurityValidator</span><span class="chip">ScriptExecutor(OS 셸 라우팅)</span><span class="chip">Registry/A2aChatClient</span>
+        </div>
+      </div>
+    </div>
+    <div class="cards c2 rise" style="margin-top:1rem">
+      <div class="card"><span class="ic">🪟</span><h3>Client · net10.0-windows (WPF)</h3><p><code>WpfUiDispatcher</code>(실제 Dispatcher 마샬링) · 클립보드·스크린샷·트레이·Authenticode 무결성 — Windows 전용.</p></div>
+      <div class="card"><span class="ic">🐧</span><h3>Host · net10.0 (콘솔, 헤드리스)</h3><p><code>ImmediateUiDispatcher</code>(no-op) · UI 도구 제외 · Linux 단일 파일. <code>run_command</code>은 OS별 <code>powershell/cmd</code>↔<code>/bin/bash</code> 분기.</p></div>
+    </div>
+    <ul class="checks rise" style="margin-top:.9rem">
+      <li><span class="ck">›</span> 배포: <code>publish -r linux-x64 --self-contained -p:PublishSingleFile=true</code> → 단일 ELF(~44MB), 트리밍 OFF(문서 도구 리플렉션)</li>
+      <li><span class="ck">›</span> <code>TokenProtector</code> DPAPI는 <code>OperatingSystem.IsWindows()</code> 가드 — 비-Windows는 폴백(재로그인), 크래시 없음</li>
+    </ul>
   </section>
 
   <!-- 4 · Agent loop -->
@@ -248,6 +274,25 @@
       </div>
     </div>
     <p class="dim rise" style="margin-top:1.1rem">둘 다 <b>컨텍스트 예산</b>을 지키는 장치다 — 위임은 애초에 안 들어오게, 압축은 이미 쌓인 것을 줄인다. 사용자에게는 압축 시 시스템 알림 1줄만 노출(에러 배너 아님).</p>
+  </section>
+
+  <!-- 4c · A2A + registry + token broker -->
+  <section class="slide">
+    <span class="kicker rise">루프 확장 ② · 멀티 에이전트 A2A</span>
+    <h2 class="rise">에이전트 간 통신 · <span class="grad">레지스트리 · 토큰 브로커</span></h2>
+    <p class="lead rise">헤드리스 호스트가 자기 오케스트레이터를 <b>동일한 <code>/api/v1/agent/chat</code> SSE 계약으로 대칭 노출</b>(BCL <code>HttpListener</code>) — 다른 에이전트는 기존 <code>AgentApiClient</code>를 무수정 재사용해 접속합니다.</p>
+    <div class="flow rise" style="margin-top:1rem">
+      <div class="node"><code>discover_agents</code></div><span class="arrow">→</span>
+      <div class="node k"><code>POST /agents/{id}/token</code></div><span class="arrow">→</span>
+      <div class="node"><code>ask_agent</code> (Bearer + <code>X-A2A-Hop</code>)</div><span class="arrow">→</span>
+      <div class="node k">수신측 로컬 검증 → 위임</div>
+    </div>
+    <div class="cards c3 rise" style="margin-top:1.2rem">
+      <div class="card"><span class="ic">🗂️</span><h3>레지스트리 (서버)</h3><p>register(upsert)·heartbeat(lease 45s)·discover. <code>status</code>는 서버 read-시 계산(online/stale/offline). 발견 = capability 태그 필터.</p></div>
+      <div class="card"><span class="ic">🔐</span><h3>ES256 토큰 브로커</h3><p><code>POST /agents/{id}/token</code>가 대상별 단명(120s) ES256 JWT 발급. 수신측은 <b>공개키로 로컬 검증</b>(서버 왕복 0) — <code>aud</code>·<code>exp</code>·<code>iss</code> 확인.</p></div>
+      <div class="card"><span class="ic">🛡️</span><h3>순환·위조 방어</h3><p><code>X-A2A-Hop</code> 홉 카운트(초과 508) · <code>alg</code> 화이트리스트(ES256만, <code>none</code>/HS256 거부) · 내부 <code>tool_call</code> 억제(이중 실행 차단).</p></div>
+    </div>
+    <p class="dim rise" style="margin-top:.9rem">수신 인증 모드: <code>broker</code>(기본) · <code>token</code>(공유 Bearer) · <code>anon</code>. Go 서버(<code>crypto/ecdsa</code>)가 서명, C# Host가 BCL <code>ECDsa</code>만으로 검증 — 실서버 대상 E2E 통과(언어 간 암호 상호운용).</p>
   </section>
 
   <!-- 5 · Triple gate -->
@@ -548,10 +593,10 @@
     <span class="kicker rise">현황 · 확장 · 과제</span>
     <h2 class="rise">검증 상태와 <span class="grad">확장 포인트</span></h2>
     <div class="stat rise">
-      <div><div class="n grad">33</div><div class="l">내장 도구</div></div>
-      <div><div class="n grad">10</div><div class="l">동시 워크스페이스 루트</div></div>
+      <div><div class="n grad">33</div><div class="l">내장 도구(+A2A 협업 2)</div></div>
+      <div><div class="n grad">3</div><div class="l">프로젝트 — Core·Client·Host</div></div>
       <div><div class="n grad">3중</div><div class="l">도구 실행 게이트</div></div>
-      <div><div class="n grad">300</div><div class="l">자동화 테스트(전부 통과)</div></div>
+      <div><div class="n grad">441</div><div class="l">자동화 테스트(전부 통과)</div></div>
       <div><div class="n grad">4</div><div class="l">NuGet 의존성</div></div>
     </div>
     <div class="split" style="margin-top:1.2rem">
@@ -559,9 +604,9 @@
         <div class="card">
           <span class="ic">🧪</span><h3>테스트가 실제로 덮는 것</h3>
           <p style="line-height:1.6">
-          보안 경계(<b>실제 정션 생성</b>으로 샌드박스 탈출 검증) · 명령 블랙리스트 우회 · URL 가드 ·
+          보안 경계(<b>실제 정션 생성</b>으로 샌드박스 탈출 검증) · 명령 블랙리스트 우회(<b>OS별 셸 라우팅</b> 포함) · URL 가드 ·
           컨텍스트 압축 · 서브에이전트 배선 · 도구 정책 게이트 · 병렬 도구 실행 ·
-          DPAPI 토큰 · JWT 신원 · diff·마크다운 렌더 · 퍼지 매칭</p>
+          DPAPI 토큰 · JWT 신원 · <b>A2A ES256 브로커 검증</b>(alg 위장·aud 불일치·만료) · 레지스트리 배선 · diff·마크다운 렌더 · 퍼지 매칭</p>
         </div>
       </div>
       <div class="rise">
@@ -576,15 +621,15 @@
       </div>
     </div>
     <ul class="checks rise" style="margin-top:1rem">
-      <li><span class="ck">✓</span> 확장 포인트: <code>ITool</code> 추가(스키마 자동 노출) · 서버 Provider 교체(중립 와이어) · 권한/명령 정책 커스터마이즈</li>
-      <li><span class="ck">›</span> 향후 과제: 감사 로그(<code>%APPDATA%/OhMyAgent/audit/</code>) · 양방향 pull 동기화 · ViewModel 통합 테스트 · 도구별 세분화 권한</li>
+      <li><span class="ck">✓</span> 확장 포인트: <code>ITool</code> 추가(스키마 자동 노출) · 서버 Provider 교체(중립 와이어) · 권한/명령 정책 커스터마이즈 · <b>헤드리스 호스트 서버 배포 + A2A 협업</b></li>
+      <li><span class="ck">›</span> 향후 과제: 감사 로그(<code>%APPDATA%/OhMyAgent/audit/</code>) · 양방향 pull 동기화 · ViewModel 통합 테스트 · <b>A2A 브로커 v2(대상별 호출 ACL·재생 방지)</b> · Native AOT(현재 리플렉션 의존으로 보류)</li>
     </ul>
   </section>
 
 </div>
 
 <div class="nav">
-  <span class="count"><span id="cur">1</span> / <span id="tot">18</span></span>
+  <span class="count"><span id="cur">1</span> / <span id="tot">20</span></span>
   <button id="prev" aria-label="이전">‹</button>
   <button id="next" aria-label="다음">›</button>
 </div>
