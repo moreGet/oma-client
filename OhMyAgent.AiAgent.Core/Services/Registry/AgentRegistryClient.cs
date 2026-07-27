@@ -62,6 +62,11 @@ public sealed class AgentRegistryClient(HttpClient httpClient, ISettingsService 
             ApplyAuth(httpReq);
 
             using var resp = await SendControlAsync(httpReq, ct).ConfigureAwait(false);
+
+            // 401/403 = 자격증명 사망. 재시도해도 영원히 실패하므로 typed 신호로 구분한다(호출자가 종료 판단).
+            if (resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                throw new AgentUnauthorizedException("agents/register", (int)resp.StatusCode);
+
             if (!resp.IsSuccessStatusCode)
             {
                 var (code, message) = await ReadErrorAsync(resp, ct).ConfigureAwait(false);
@@ -77,6 +82,10 @@ public sealed class AgentRegistryClient(HttpClient httpClient, ISettingsService 
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
+        }
+        catch (AgentUnauthorizedException)
+        {
+            throw;   // 자격증명 사망 — 일반 연결 오류로 뭉개면 호출자가 종료 판단을 못 한다.
         }
         catch (AgentException)
         {
@@ -102,6 +111,10 @@ public sealed class AgentRegistryClient(HttpClient httpClient, ISettingsService 
             if (resp.StatusCode == HttpStatusCode.NotFound)
                 throw new AgentLeaseExpiredException(agentId);
 
+            // 401/403 = 토큰 사망. 404 와 달리 재등록으로 치유되지 않으므로 별도 신호(lifecycle 가 종료 판단).
+            if (resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                throw new AgentUnauthorizedException("agents/heartbeat", (int)resp.StatusCode);
+
             if (!resp.IsSuccessStatusCode)
             {
                 var (code, message) = await ReadErrorAsync(resp, ct).ConfigureAwait(false);
@@ -121,6 +134,10 @@ public sealed class AgentRegistryClient(HttpClient httpClient, ISettingsService 
         catch (AgentLeaseExpiredException)
         {
             throw;
+        }
+        catch (AgentUnauthorizedException)
+        {
+            throw;   // 404(재등록으로 치유)와 달리 종료가 정답 — 일반 오류로 뭉개지 않는다.
         }
         catch (AgentException)
         {

@@ -170,7 +170,8 @@ ssh user@server 'chmod +x /opt/agent/host && \
   /opt/agent/host'          # 원샷: OHMYAGENT_PROMPT="..." / 대화: 표준입력 루프
 ```
 
-주요 실행 env(자세히는 [`docs/a2a-registry.md`](docs/a2a-registry.md)):
+주요 실행 env(A2A 계약은 [`docs/a2a-registry.md`](docs/a2a-registry.md), systemd 상주 운영은
+[`docs/headless-deployment.md`](docs/headless-deployment.md)):
 
 | env | 용도 |
 |-----|------|
@@ -180,6 +181,10 @@ ssh user@server 'chmod +x /opt/agent/host && \
 | `OHMYAGENT_LISTEN` | **A2A 리스너 모드** — 다른 에이전트의 요청을 수신(예: `http://0.0.0.0:8080/`) |
 | `OHMYAGENT_ADVERTISE_URL` · `OHMYAGENT_AGENT_NAME` · `OHMYAGENT_CAPABILITIES` | 레지스트리 등록 정보(리스너 모드) |
 | `OHMYAGENT_A2A_MODE` | 수신 인증 `broker`(레지스트리 기본) / `token` / `anon` |
+
+> **인증 실패는 종료로 드러납니다** — 기동 시 토큰을 선검사하고, 죽었으면 종료 코드 `77`로 즉시 종료합니다.
+> 런타임에도 401/403이 연속 3회면 종료합니다(성공 1회면 초기화 — 일시적 401은 흡수). 서버 미도달은 `69`.
+> systemd `RestartPreventExitStatus=77 78` 로 "재시작해도 안 낫는 실패"만 멈추게 하세요.
 
 > **셸 도구(`run_command`)는 OS 자동 분기**: Windows는 powershell/cmd, Linux는 `/bin/bash`.
 > 클립보드·스크린샷 도구는 헤드리스에서 제외됩니다.
@@ -293,8 +298,9 @@ dotnet test  OhMyAgent.AiAgent.Client.sln              # 전체 테스트
 <repo-root>/
 ├── README.md · CHANGELOG.md · CLAUDE.md
 ├── docs/                     API_CONTRACT(서버 연동 계약) · tool-system(도구 설계) ·
-│                             realtime-chat(메신저) · server-*.md(프로필·쿼터·버전·도구정책) ·
-│                             a2a-registry(에이전트 간 통신·레지스트리 계약) · design-tokens ·
+│                             realtime-chat(메신저) · server-*.md(프로필·쿼터·버전·도구정책·서비스계정) ·
+│                             a2a-registry(에이전트 간 통신·레지스트리 계약) ·
+│                             headless-deployment(배포·운영) · design-tokens ·
 │                             발표자료(presentation_*.html)
 │
 ├── OhMyAgent.AiAgent.Core/            (net10.0 · 크로스플랫폼 코어 라이브러리 — Client·Host 공유)

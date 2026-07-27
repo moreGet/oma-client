@@ -11,9 +11,14 @@ namespace OhMyAgent.AiAgent.Host;
 ///
 /// graceful degrade: 등록·heartbeat·공개키 실패는 로그만 남기고 throw 하지 않는다 — 레지스트리 없이도
 /// A2A 수신·로컬 작업은 계속돼야 한다(등록은 발견 편의일 뿐). broker 모드 미등록 수신만 401(설계된 안전 실패).
+///
+/// <b>예외는 인증 실패(401/403)</b>: 주입된 토큰이 죽었다는 뜻이라 재시도가 영원히 실패한다. graceful
+/// degrade 로 삼키면 "살아있지만 아무 것도 못 하는" 좀비가 되므로, <paramref name="authFailures"/> 에
+/// 기록해 프로세스 종료로 이어지게 한다(Program.cs 가 종료 코드 <see cref="HostExitCode.AuthFailure"/> 로 종료).
 /// </summary>
 public sealed class AgentRegistryLifecycle(
-    IAgentRegistryClient registry, AgentRegistryOptions opts, IBrokerKeyStore keyStore, string modelId)
+    IAgentRegistryClient registry, AgentRegistryOptions opts, IBrokerKeyStore keyStore, string modelId,
+    AuthFailureReporter authFailures)
 {
     private const int DefaultHeartbeatSeconds = 15;
     private const int DefaultLeaseSeconds = 45;
@@ -69,12 +74,19 @@ public sealed class AgentRegistryLifecycle(
                 $"등록 성공: agent_id={resp.AgentId}, name={opts.AgentName}, endpoint={opts.AdvertiseUrl}, " +
                 $"interval={_heartbeatSeconds}s, lease={lease}s");
 
+            authFailures.RecordSuccess();   // 인증이 통했다 — 연속 실패 카운터 초기화.
             await TryFetchPublicKeyAsync(ct).ConfigureAwait(false);
             return true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
+        }
+        catch (AgentUnauthorizedException ex)
+        {
+            // 재시도해도 같은 토큰으로는 영원히 실패 — graceful degrade 대상이 아니다.
+            authFailures.Report("Registry", $"등록 인증 실패({ex.StatusCode})");
+            return false;
         }
         catch (Exception ex)
         {
@@ -138,6 +150,13 @@ public sealed class AgentRegistryLifecycle(
                 case HeartbeatAction.Backoff:
                     // 로그만 — 다음 주기 재시도(프로세스 유지).
                     break;
+
+                case HeartbeatAction.Fatal:
+                    // 토큰 사망 의심. 서버 재기동·키 회전 중의 일시적 401 일 수 있으므로 임계값까지는
+                    // 계속 돈다(성공 1회면 카운터 초기화). 확정된 뒤에만 루프를 접는다.
+                    authFailures.Report("Registry", "heartbeat 인증 실패");
+                    if (authFailures.IsFatal) return;
+                    break;
             }
         }
     }
@@ -147,11 +166,17 @@ public sealed class AgentRegistryLifecycle(
         try
         {
             await registry.HeartbeatAsync(agentId, ct).ConfigureAwait(false);
+            authFailures.RecordSuccess();   // 인증이 통했다 — 일시적 401 이었다면 여기서 해소된다.
             return HeartbeatOutcome.Ok;
         }
         catch (AgentLeaseExpiredException)
         {
             return HeartbeatOutcome.LeaseExpired;
+        }
+        catch (AgentUnauthorizedException ex)
+        {
+            AppLog.Error("Registry", $"heartbeat 인증 실패({ex.StatusCode}) — 토큰이 만료·무효합니다.", ex);
+            return HeartbeatOutcome.Unauthorized;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

@@ -9,6 +9,9 @@ public enum HeartbeatOutcome
     /// <summary>404(AgentLeaseExpired) — 소유자 아님/리스 만료 정리.</summary>
     LeaseExpired,
 
+    /// <summary>401/403(AgentUnauthorized) — 토큰 만료·무효. 같은 토큰으로는 영원히 실패한다.</summary>
+    Unauthorized,
+
     /// <summary>네트워크/기타 실패 — 일시 오류.</summary>
     TransientFailure,
 }
@@ -24,6 +27,9 @@ public enum HeartbeatAction
 
     /// <summary>로그 후 다음 주기 재시도(죽지 않음).</summary>
     Backoff,
+
+    /// <summary>자격증명 사망 — 재시도 무의미. 프로세스를 종료해 새 토큰으로 재시작받는다.</summary>
+    Fatal,
 }
 
 /// <summary>
@@ -36,6 +42,7 @@ public static class RegistryHeartbeatPolicy
     {
         HeartbeatOutcome.Ok               => HeartbeatAction.Continue,
         HeartbeatOutcome.LeaseExpired     => HeartbeatAction.Reregister,
+        HeartbeatOutcome.Unauthorized     => HeartbeatAction.Fatal,
         HeartbeatOutcome.TransientFailure => HeartbeatAction.Backoff,
         _                                 => HeartbeatAction.Backoff,
     };
