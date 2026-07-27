@@ -39,7 +39,7 @@
 
 | 항목 | 요구 |
 |---|---|
-| 수명 | 기본 무기한 또는 **90일 이상** 선택 가능 |
+| 수명 | 기본 무기한 또는 **90일 이상** 선택 가능 — 2026-07-27부터 **서버가 발급 시점에 강제**(↓ 하한 계약) |
 | 형식 | 기존 `Authorization: Bearer <값>` 그대로 — **클라이언트 변경 0** |
 | 발급 | 평문은 **발급 응답에서 1회만** 노출. 서버는 해시만 보관 |
 | 폐기 | 즉시 무효화(다음 요청부터 401) |
@@ -47,6 +47,41 @@
 
 > **회전에 키 2개가 필요한 이유**: 헤드리스는 재시작으로만 토큰을 바꿉니다. 새 키 발급 → 유닛 파일
 > 갱신 → 재시작 → 구 키 폐기 순서를 밟으려면 그 사이 두 키가 모두 유효해야 무중단이 됩니다.
+
+#### B-1. 키 수명 하한 90일 — 서버 강제 (2026-07-27 반영 완료)
+
+원래 "90일 이상"은 이 문서의 운영 권고일 뿐이라 서버는 미래 시각이기만 하면(예: 1초 뒤) 키를 발급했고,
+운영자가 실수로 초단기 키를 발급하면 헤드리스가 조기 401로 죽었습니다. 이제 서버가 발급 시점에 하한을
+강제합니다. 서버 구현: `internal/domain/serviceaccount/model.go`의 `MinKeyLifetime = 90 * 24h`.
+
+| 입력 `expires_at` | 결과 |
+|---|---|
+| 생략 / `0` (무기한) | `201` — 하한 적용 대상 아님 |
+| 과거·현재 | `400 expires_at must be in the future` |
+| 미래, `now + 90일` 이상 | `201` |
+| 미래, 90일 미만 | **`400 expires_at must be at least 90 days in the future`** |
+
+```jsonc
+// POST /api/v1/service-accounts/{id}/keys   (admin JWT)
+// expires_at 은 RFC3339 가 아니라 unix epoch seconds(int64). 생략/0 = 무기한(0 sentinel 때문의 의도적 이탈)
+{ "expires_at": 1801036800 }
+
+// 400 — 하한 위반 (평면 에러 envelope)
+{ "code": "BAD_REQUEST", "message": "expires_at must be at least 90 days in the future" }
+```
+
+- 경계값 `now + 90일` **정확히는 통과**합니다(`>=` 비교).
+- 기준 시각은 **서버의 발급 시각**(UTC, 초 단위 절삭)이라 클라이언트 시계와 수 초 오차가 날 수 있습니다.
+  90일 정확히를 노리지 말고 여유를 둘 것 — 권장은 180일 또는 무기한.
+- **이미 발급된 키는 영향 없습니다.** 하한은 발급 시점에만 적용되고 인증 경로의 만료 판정은 그대로입니다.
+
+**권장 운영값**
+
+| 용도 | `expires_at` |
+|---|---|
+| 상시 가동 헤드리스 호스트 | **무기한(생략/0)** + `last_used_at` 모니터링 + 필요 시 즉시 폐기 |
+| CI 러너 / 임시 워커 | 180일(분기 회전) |
+| 감사 요건상 만료가 필수인 환경 | 90일(회전 주기를 캘린더에 고정) |
 
 ### C. 401 응답 계약 (필수 — 이미 클라이언트가 의존)
 
@@ -72,7 +107,7 @@
 | `POST` | `/api/v1/service-accounts` | 생성 — `{ name, owner_member_id, description? }` → `{ id, name }` |
 | `GET` | `/api/v1/service-accounts` | 목록(키 메타 포함, 평문 키 제외) |
 | `DELETE` | `/api/v1/service-accounts/{id}` | 계정 폐기(딸린 키 전부 무효) |
-| `POST` | `/api/v1/service-accounts/{id}/keys` | 키 발급 — `{ expires_at? }` → `{ key_id, token, expires_at }` ← **평문 `token`은 여기서만** |
+| `POST` | `/api/v1/service-accounts/{id}/keys` | 키 발급 — `{ expires_at? }` → `{ key_id, token, expires_at }` ← **평문 `token`은 여기서만**. 90일 하한 위반 시 `400`([B-1](#b-1-키-수명-하한-90일--서버-강제-2026-07-27-반영-완료)) |
 | `GET` | `/api/v1/service-accounts/{id}/keys` | 키 목록 — `{ key_id, created_at, expires_at, last_used_at, revoked }` |
 | `DELETE` | `/api/v1/service-accounts/{id}/keys/{key_id}` | 키 폐기 |
 
@@ -89,6 +124,11 @@
 
 **없습니다.** API 키를 `Authorization: Bearer`로 받는 한, `OHMYAGENT_AUTH_TOKEN`에 JWT 대신 API 키를
 넣기만 하면 동작합니다. 클라이언트 코드 변경이 필요한 설계(별도 헤더, 서명 기반 인증 등)는 피해 주세요.
+
+90일 하한(B-1)도 런타임 영향은 없습니다 — 발급은 관리 API 1개에서만 일어나고, 이 저장소에는 그 엔드포인트를
+호출하는 코드가 없습니다(GUI·헤드리스 모두 토큰을 주입받기만 함). 다만 **나중에 키 발급 UI나 스크립트를
+붙일 때는** 만료일 입력에 클라이언트 측 하한(오늘 + 90일)을 걸어 서버 왕복 전에 막고, 400 메시지는
+"만료일은 최소 90일 이후여야 합니다"로 번역해 노출해야 합니다.
 
 ---
 
