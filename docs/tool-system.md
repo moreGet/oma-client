@@ -88,7 +88,7 @@ App.xaml.cs 에서 도구 배열 생성
 즉 클라가 **"나 이런 거 할 수 있어"를 스키마(데이터)로** 모델에 알려주고, **실행 코드는 클라에** 둡니다.
 
 > **노출·실행 일관성**: 노출 필터(`IsExposed`)는 실행 게이트(`EvaluateAsync`)와 **동일 규칙**(cached 모드: disabled 우선 → enabled 화이트리스트)을 씁니다.
-> 비활성 도구는 모델이 **보지도 못하고**(노출 차단) 설령 호출해도 **실행도 차단**됩니다. 자세한 설계는 [`server-controlled-security-and-tools.md`](server-controlled-security-and-tools.md) 참조.
+> 비활성 도구는 모델이 **보지도 못하고**(노출 차단) 설령 호출해도 **실행도 차단**됩니다. 서버 정책 계약은 [`server-tool-policy-api.md`](server-tool-policy-api.md) 참조.
 
 ---
 

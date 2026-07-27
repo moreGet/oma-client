@@ -11,7 +11,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 
 - **Windows 데스크톱 앱**(`OhMyAgent.AiAgent.Client`, WPF) — 사용자가 직접 쓰는 GUI 클라이언트
 - **헤드리스 에이전트**(`OhMyAgent.AiAgent.Host`, 크로스플랫폼 콘솔) — Linux/Windows 서버에서 UI 없이 상주하며,
-  **에이전트 간 통신(A2A)** 으로 서로를 발견·위임해 협업 ([상세](docs/a2a-registry/))
+  **에이전트 간 통신(A2A)** 으로 서로를 발견·위임해 협업 ([상세](docs/a2a-registry.md))
 
 ---
 
@@ -122,7 +122,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 |----------|------|------|
 | `OhMyAgent.AiAgent.Core` | `net10.0` (크로스플랫폼) | 통신·오케스트레이터·도구·보안 등 **UI 비의존 코어**. Client·Host 공유 |
 | `OhMyAgent.AiAgent.Client` | `net10.0-windows` (WPF) | 데스크톱 앱(UI). Core 참조 |
-| `OhMyAgent.AiAgent.Host` | `net10.0` (콘솔) | **헤드리스 에이전트**. Core만 참조, UI·클립보드·스크린샷 도구 제외. Linux 단일 파일 배포 + [에이전트 간 통신(A2A)](docs/a2a-registry/) |
+| `OhMyAgent.AiAgent.Host` | `net10.0` (콘솔) | **헤드리스 에이전트**. Core만 참조, UI·클립보드·스크린샷 도구 제외. Linux 단일 파일 배포 + [에이전트 간 통신(A2A)](docs/a2a-registry.md) |
 
 ## 빌드 & 실행
 
@@ -170,7 +170,7 @@ ssh user@server 'chmod +x /opt/agent/host && \
   /opt/agent/host'          # 원샷: OHMYAGENT_PROMPT="..." / 대화: 표준입력 루프
 ```
 
-주요 실행 env(자세히는 [`docs/a2a-registry/`](docs/a2a-registry/)):
+주요 실행 env(자세히는 [`docs/a2a-registry.md`](docs/a2a-registry.md)):
 
 | env | 용도 |
 |-----|------|
@@ -247,7 +247,7 @@ dotnet test  OhMyAgent.AiAgent.Client.sln              # 전체 테스트
 `stop_reason == tool_use` 면 클라이언트가 도구를 실행해 `tool` 메시지로 재요청(루프 지속), `end_turn` 이면 종료.
 `tool_call.arguments` 는 JSON 문자열로 주고받으며 클라이언트가 객체로 복원합니다.
 
-상세: [`docs/AGENT_ARCHITECTURE_PLAN.md`](docs/AGENT_ARCHITECTURE_PLAN.md) · [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)
+상세: [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) · [`docs/tool-system.md`](docs/tool-system.md)
 
 > **연결 ≠ 로그인**: `/health` 는 인증이 필요 없으므로(Public) 로그인 전에도 서버에 "연결"은 됩니다.
 > 앱은 연결 상태와 인증 상태를 구분하여 `Disconnected`(서버 다운) / `Unauthenticated`(로그인 필요) /
@@ -292,9 +292,9 @@ dotnet test  OhMyAgent.AiAgent.Client.sln              # 전체 테스트
 ```
 <repo-root>/
 ├── README.md · CHANGELOG.md · CLAUDE.md
-├── docs/                     AGENT_ARCHITECTURE_PLAN · API_CONTRACT · tool-system(도구 설계) ·
-│                             realtime-chat(메신저) · server-*.md(쿼터/버전/도구정책/명령보안) ·
-│                             a2a-registry/(에이전트 간 통신·레지스트리 계약) · design-tokens ·
+├── docs/                     API_CONTRACT(서버 연동 계약) · tool-system(도구 설계) ·
+│                             realtime-chat(메신저) · server-*.md(프로필·쿼터·버전·도구정책) ·
+│                             a2a-registry(에이전트 간 통신·레지스트리 계약) · design-tokens ·
 │                             발표자료(presentation_*.html)
 │
 ├── OhMyAgent.AiAgent.Core/            (net10.0 · 크로스플랫폼 코어 라이브러리 — Client·Host 공유)

@@ -77,7 +77,7 @@ public sealed class ChatApiClient(HttpClient httpClient, ISettingsService settin
 
     /// <summary>
     /// 멤버 디렉터리(id → 이름) best-effort. 현재 소스는 admin 전용 <c>/members</c> 라 일반 user 는 403→null.
-    /// 서버가 멤버 스코프 이름 엔드포인트를 추가하면(docs/server-request-chat-directory.md) 이 메서드 소스만 교체한다.
+    /// 서버가 멤버 스코프 이름 엔드포인트를 추가하면 이 메서드 소스만 교체한다.
     /// </summary>
     public async Task<IReadOnlyDictionary<string, string>?> TryGetMemberDirectoryAsync(CancellationToken ct = default)
     {
