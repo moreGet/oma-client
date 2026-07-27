@@ -146,6 +146,15 @@ WPF(`net10.0-windows`)라 **Windows에서만** 빌드·실행됩니다. WSL에�
 ```
 권한 설정은 `.claude/settings.local.json`(gitignore됨) 참조 — `CLAUDE.md`의 "WSL 환경" 절.
 
+**배포용 인스톨러**는 Inno Setup으로 만듭니다:
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
+# 산출물: artifacts\OhMyAgent-Setup-1.3.0.exe (~55MB)
+```
+publish → 바이너리 서명 → 컴파일 → 인스톨러 서명 순서를 스크립트가 지킵니다. **self-contained** 로 묶어
+대상 PC에 .NET 설치가 필요 없고, **per-user 설치**(`%LOCALAPPDATA%\Programs\OhMyAgent`)라 관리자 권한도
+필요 없습니다. 서명·아이콘·무결성 매니페스트 처리는 [`installer/README.md`](installer/README.md) 참고.
+
 ### B. 헤드리스 호스트 — Linux 서버 (단일 실행 파일)
 
 `OhMyAgent.AiAgent.Host`는 WPF가 없는 크로스플랫폼 콘솔이라 **Linux용 단일 실행 파일**로 배포합니다.
