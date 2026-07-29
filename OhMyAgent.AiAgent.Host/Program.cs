@@ -4,7 +4,9 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using OhMyAgent.AiAgent.Client.Models;
+using OhMyAgent.AiAgent.Client.Models.Loop;
 using OhMyAgent.AiAgent.Client.Services;
+using OhMyAgent.AiAgent.Client.Services.Loop;
 using OhMyAgent.AiAgent.Client.Services.Tools;
 using OhMyAgent.AiAgent.Host;
 
@@ -49,9 +51,12 @@ var scriptExec = new ScriptExecutor();
 
 // 5) 공유 서비스
 var todoService = new TodoService();
+// schedule_wakeup 도구 → 루프 엔진 사이의 우편함. 도구와 컨트롤러가 같은 인스턴스를 봐야
+// "이번 턴에 모델이 정한 다음 시점"이 전달된다(조립 순서: sink → tool → controller).
+var wakeupSink  = new WakeupSink();
 
 // 6) headless-safe 도구 (Clipboard 2종 + Screenshot 제외)
-var tools = HeadlessAgentHost.BuildHeadlessTools(scriptExec, toolHttp, todoService);
+var tools = HeadlessAgentHost.BuildHeadlessTools(scriptExec, toolHttp, todoService, wakeupSink);
 
 // 7) 권한 게이트 — 핸들러는 정책에 따라 등록. 미등록이면 gated=Deny(안전 기본).
 var permissions = new PermissionService(settings);
@@ -131,7 +136,9 @@ var registry = new ToolRegistry([.. tools, new TaskTool(subOrchestrator, workspa
 var orchestrator = new AgentOrchestrator(api, registry, permissions, workspace, settings, toolPolicy, compactor);
 
 // 12) 실행 코어 + 모드 분기
-var host = new HeadlessAgentHost(orchestrator, authFailures);
+// using — A2A 리스너 경로처럼 중간에 return 하는 분기에서도 루프 Task 가 확실히 접히게 한다.
+using var loop = new LoopController(wakeupSink);
+var host = new HeadlessAgentHost(orchestrator, authFailures, loop);
 
 // 12-a) A2A 서버 모드 — OHMYAGENT_LISTEN 이 있으면 stdin 루프 대신 HttpListener 로 수신(스펙 §1-G).
 //       기존 원샷/대화 경로는 LISTEN 미설정 시 완전 불변.
@@ -165,6 +172,9 @@ if (!string.IsNullOrWhiteSpace(oneShot))
     await host.RunOnceAsync(oneShot!, cts.Token);        // 파이프/인자 1회 처리
 else
     await host.RunInteractiveAsync(cts.Token);           // 표준입력 프롬프트 루프
+
+// 프로세스가 접히기 전에 반복 실행을 확실히 멈춘다 — 남은 턴이 종료 후에도 서버를 때리면 안 된다.
+await loop.StopAndWaitAsync(LoopStopReason.HostShutdown);
 
 // 인증 실패로 접힌 경우에만 비정상 종료 — 그래야 systemd 가 새 토큰으로 재시작을 건다.
 return authFatal ? HostExitCode.AuthFailure : HostExitCode.Ok;

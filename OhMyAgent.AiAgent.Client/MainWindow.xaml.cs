@@ -22,6 +22,15 @@ public partial class MainWindow : Window
 
         vm.Transcript.CollectionChanged += Transcript_CollectionChanged;
         ChatScrollViewer.ScrollChanged += ChatScrollViewer_ScrollChanged;
+
+        // 서랍 항목의 View 책임분 — 파일 대화상자와 입력창 포커스는 VM 이 직접 못 만진다.
+        // VM 은 창과 수명이 같아(App 소유) 별도 해제 경로를 두지 않는다.
+        vm.AttachFileRequested += (_, _) => ShowAttachDialog();
+        vm.ComposerFocusRequested += (_, _) =>
+        {
+            InputBox.Focus();
+            InputBox.CaretIndex = InputBox.Text.Length;   // 프리필("/loop ") 뒤에 이어 치게 한다.
+        };
     }
 
     // @파일 자동완성: 텍스트/caret 변화 → 후보 갱신.
@@ -132,8 +141,10 @@ public partial class MainWindow : Window
         }
     }
 
-    // + 버튼 → 파일 첨부 다이얼로그 (MVVM 안전: 선택 경로를 VM 진입점으로 전달)
-    private void AttachButton_Click(object sender, RoutedEventArgs e)
+    // 서랍 "파일 첨부"(RequestAttachFileCommand → AttachFileRequested) 의 View 책임분.
+    // 파일 다이얼로그는 View 소유이고 선택 경로만 VM 진입점으로 넘긴다(MVVM 안전).
+    // 서랍을 닫는 일은 커맨드가 이미 처리하므로 여기서 중복으로 만지지 않는다.
+    private void ShowAttachDialog()
     {
         if (DataContext is not AgentSessionViewModel vm) return;
 

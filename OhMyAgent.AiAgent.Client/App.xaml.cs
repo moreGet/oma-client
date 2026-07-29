@@ -9,6 +9,7 @@ using System.Windows.Forms;
 using OhMyAgent.AiAgent.Client.Models;
 using OhMyAgent.AiAgent.Client.Services;
 using OhMyAgent.AiAgent.Client.Services.Chat;
+using OhMyAgent.AiAgent.Client.Services.Loop;
 using OhMyAgent.AiAgent.Client.Services.Tools;
 using OhMyAgent.AiAgent.Client.ViewModels;
 using OhMyAgent.AiAgent.Client.ViewModels.Chat;
@@ -168,6 +169,13 @@ public partial class App : Application
         // 4c) 작업 계획(todo) 공유 저장소 — manage_todos 도구가 쓰고 메인 VM이 구독해 화면에 반영(싱글톤 1개).
         var todoService = new TodoService();
 
+        // 4d) /loop 배선 — 조립 순서가 곧 의존 방향이다(sink → 도구 → 컨트롤러).
+        //     싱크는 schedule_wakeup 도구와 루프 컨트롤러 사이의 단방향 우편함이고,
+        //     컨트롤러는 오케스트레이터를 모른 채 턴 실행 델리게이트만 받는다(VM 이 주입).
+        //     컨트롤러의 수명/Dispose 는 AgentSessionViewModel 이 소유한다.
+        var wakeupSink = new WakeupSink();
+        var loopController = new LoopController(wakeupSink);
+
         // 5) 파일/셸 도구 + 시스템(환경/클립보드/프로세스/HTTP/스크린샷) 도구 묶음 (배열 순서 = 표시 순서)
         var tools = new ITool[]
         {
@@ -192,8 +200,9 @@ public partial class App : Application
             new KillProcessTool(),
             new HttpFetchTool(_toolHttpClient),
             new ScreenshotTool(),
-            // ── 에이전트 메타 도구 (다단계 작업 계획 추적) ──
+            // ── 에이전트 메타 도구 (다단계 작업 계획 추적 / 반복 실행 페이싱) ──
             new ManageTodosTool(todoService),
+            new ScheduleWakeupTool(wakeupSink),
             // ── 사무직 문서·데이터 도구 묶음 (CSV: BCL / Excel: ClosedXML / PDF: PdfPig / Word: BCL) ──
             new ReadCsvTool(),
             new WriteCsvTool(),
@@ -256,7 +265,7 @@ public partial class App : Application
         // 10) 루트 ViewModel
         _mainVm = new AgentSessionViewModel(
             orchestrator, _api, permissions, workspace, _settingsService,
-            chatHistory, attachments, suggestions, _toolPolicy, sessionSync, todoService);
+            chatHistory, attachments, suggestions, _toolPolicy, sessionSync, todoService, loopController);
 
         // 10b) 프로젝트 사이드바 VM 조립·주입 (#4). 메인 DataContext에서 Projects.* 로 바인딩.
         _mainVm.Projects = new ProjectsViewModel(_projectService, chatHistory);

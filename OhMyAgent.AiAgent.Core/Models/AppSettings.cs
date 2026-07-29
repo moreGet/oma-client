@@ -16,6 +16,10 @@ public class AppSettings
     public string WorkspaceRoot { get; set; } = "";            // 주 루트(primary). 첫 활성 폴더와 동기화. empty => Desktop fallback
     public PermissionMode PermissionMode { get; set; } = PermissionMode.Manual;
     public int MaxIterations { get; set; } = 25;
+
+    // /loop 한 번에 허용할 최대 반복 수. 폭주 방지의 마지막 방벽이라 LoopPolicy 가 1..1000 으로 다시 클램프한다
+    // (설정 파일 오타 하나로 무한 루프가 되면 안 된다). 기본값 보유 → SchemaVersion bump 불필요.
+    public int LoopMaxIterations { get; set; } = 50;
     public string ServerBaseUrl { get; set; } = "http://localhost:8080";
     public string AuthScheme { get; set; } = "Bearer";          // "Bearer" | "ApiKey"
     public string ModelId { get; set; } = "";
