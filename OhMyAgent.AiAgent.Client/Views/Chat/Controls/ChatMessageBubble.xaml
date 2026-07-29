@@ -17,6 +17,7 @@
                 BorderThickness="1"
                 Padding="12,8"
                 Effect="{StaticResource SoftShadow}"
+                ContextMenuOpening="Bubble_ContextMenuOpening"
                 Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
             <StackPanel>
 
@@ -132,11 +133,24 @@
                                VerticalAlignment="Center"
                                Visibility="{Binding IsEdited, Converter={StaticResource BoolToVisibility}}"/>
 
-                    <!-- 전송 실패 점(재시도) -->
-                    <Ellipse Width="6" Height="6" Margin="6,0,0,0" VerticalAlignment="Center"
-                             Fill="{StaticResource ErrorDot}" ToolTip="전송 실패 — 클릭하여 재시도">
-                        <Ellipse.Style>
-                            <Style TargetType="Ellipse">
+                    <!-- 전송 실패 점 — 실제로 눌러서 재시도되도록 Button 이다(Ellipse 는 Command 를 못 받는다).
+                         룸 VM(RetrySendCommand)은 부모 ItemsControl.DataContext 로 도달. -->
+                    <Button Margin="6,0,0,0" VerticalAlignment="Center"
+                            Padding="0" BorderThickness="0" Background="Transparent"
+                            Cursor="Hand" Focusable="False"
+                            ToolTip="전송 실패 — 클릭하여 재시도"
+                            Command="{Binding DataContext.RetrySendCommand,
+                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="Transparent" Padding="2">
+                                    <Ellipse Width="6" Height="6" Fill="{StaticResource ErrorDot}"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <Button.Style>
+                            <Style TargetType="Button">
                                 <Setter Property="Visibility" Value="Collapsed"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding SendStatus}" Value="Failed">
@@ -144,8 +158,8 @@
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </Ellipse.Style>
-                    </Ellipse>
+                        </Button.Style>
+                    </Button>
 
                     <!-- 읽음 N (내 메시지에만) -->
                     <TextBlock Margin="6,0,0,0"
@@ -158,9 +172,11 @@
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed"/>
                                 <Style.Triggers>
+                                    <!-- 아무도 안 읽었을 때 "읽음 0" 이 붙지 않도록 HasReads 를 함께 본다. -->
                                     <MultiDataTrigger>
                                         <MultiDataTrigger.Conditions>
                                             <Condition Binding="{Binding IsMine}" Value="True"/>
+                                            <Condition Binding="{Binding HasReads}" Value="True"/>
                                         </MultiDataTrigger.Conditions>
                                         <Setter Property="Visibility" Value="Visible"/>
                                     </MultiDataTrigger>
@@ -176,16 +192,6 @@
                  ContextMenu 는 비주얼 트리 밖이라 PlacementTarget(=Border).Tag 경유로 룸 VM 에 도달. -->
             <Border.ContextMenu>
                 <ContextMenu>
-                    <ContextMenu.Style>
-                        <Style TargetType="ContextMenu">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsMine}" Value="True">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ContextMenu.Style>
                     <!-- 수정: 인라인 편집은 code-behind 가 입력 모달을 띄운 뒤 EditCommand((id,content)) 실행. -->
                     <MenuItem Header="수정" Click="Edit_Click"/>
                     <MenuItem Header="삭제"

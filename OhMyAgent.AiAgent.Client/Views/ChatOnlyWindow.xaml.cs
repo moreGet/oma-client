@@ -50,10 +50,15 @@ public partial class ChatOnlyWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e)
         => Hide();
 
-    private void InputBox_KeyDown(object sender, KeyEventArgs e)
+    // Enter → 전송 / Shift+Enter → 줄바꿈.
+    //
+    // 버블링 KeyDown 이 아니라 PreviewKeyDown(터널링) 이어야 한다. AcceptsReturn="True" 인 TextBox 는
+    // 클래스 핸들러가 Enter 를 줄바꿈으로 먼저 소비하며 Handled=true 로 표시하므로, 버블링에 붙이면
+    // 이 핸들러가 아예 호출되지 않아 Enter 로 전송이 되지 않는다(ChatRoomView 와 같은 방식).
+    private void InputBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) return;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) return;   // Shift+Enter = 줄바꿈(기본 동작에 맡긴다)
         e.Handled = true;
         if (DataContext is AgentSessionViewModel vm && vm.SendCommand.CanExecute(null))
             vm.SendCommand.Execute(null);

@@ -58,4 +58,10 @@ public class AppSettings
     // 확장 사고 표시. 기본 false — 서버 기본 모델(3.5-sonnet)은 확장 사고를 지원하지 않으므로
     // 켜면 그 모델에선 400 이 난다. 사고 지원 모델(4.x/5)로 설정된 경우에만 켠다.
     public bool ShowThinking { get; set; } = false;
+
+    // 큰 요청 본문을 gzip 으로 보낸다(Content-Encoding: gzip). 기본 false —
+    // 서버가 압축된 본문을 해석하지 못하면 400/415 로 요청 자체가 실패하기 때문에,
+    // 서버 반영이 확인된 환경에서만 켠다. 요구 스펙: docs/server-compression-spec.md
+    // 켜더라도 CompressRequestMinBytes 미만인 작은 요청은 그대로 평문으로 나간다.
+    public bool CompressRequests { get; set; } = false;
 }

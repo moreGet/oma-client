@@ -83,29 +83,53 @@
                     BorderBrush="{StaticResource ChatLineBrush}" BorderThickness="1"
                     CornerRadius="18" Margin="12,8"
                     Effect="{StaticResource SoftShadow}">
-                <ScrollViewer x:Name="MessagesScroll"
-                              Padding="0,8"
-                              ScrollChanged="MessagesScroll_ScrollChanged"
-                              VerticalScrollBarVisibility="Auto">
-                    <ScrollViewer.Resources>
-                        <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/>
-                    </ScrollViewer.Resources>
-                    <StackPanel>
-                        <!-- 상단 더보기 로더 -->
-                        <ProgressBar IsIndeterminate="True" Height="3" Margin="0,0,0,4"
-                                     Background="Transparent" BorderThickness="0"
-                                     Foreground="{StaticResource ChatAccentBrush}"
-                                     Visibility="{Binding IsLoadingMore, Converter={StaticResource BoolToVisibility}}"/>
+                <Grid>
+                    <!-- 메시지 리스트. 가상화 필수: 이력을 계속 올리면 수천 건이 쌓이는데
+                         ScrollViewer>StackPanel 조합은 가상화가 꺼져 전량을 실체화한다(스크롤 렉의 원인).
+                         ScrollViewer 를 ControlTemplate 안에 두어 VirtualizingStackPanel 이 스크롤 주인이 되게 한다. -->
+                    <ItemsControl x:Name="MessagesList"
+                                  ItemsSource="{Binding Messages}"
+                                  Focusable="False"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  VirtualizingPanel.ScrollUnit="Pixel"
+                                  VirtualizingPanel.CacheLengthUnit="Page"
+                                  VirtualizingPanel.CacheLength="1,1">
+                        <ItemsControl.Template>
+                            <ControlTemplate TargetType="ItemsControl">
+                                <ScrollViewer x:Name="MessagesScroll"
+                                              Padding="0,8"
+                                              Focusable="False"
+                                              CanContentScroll="True"
+                                              VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              ScrollChanged="MessagesScroll_ScrollChanged">
+                                    <ScrollViewer.Resources>
+                                        <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/>
+                                    </ScrollViewer.Resources>
+                                    <ItemsPresenter/>
+                                </ScrollViewer>
+                            </ControlTemplate>
+                        </ItemsControl.Template>
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <VirtualizingStackPanel Orientation="Vertical"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:ChatMessageViewModel}">
+                                <controls:ChatMessageBubble/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
-                        <ItemsControl ItemsSource="{Binding Messages}" Focusable="False">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type vm:ChatMessageViewModel}">
-                                    <controls:ChatMessageBubble/>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </ScrollViewer>
+                    <!-- 상단 더보기 로더(스크롤되지 않도록 리스트 위에 겹친다) -->
+                    <ProgressBar IsIndeterminate="True" Height="3"
+                                 VerticalAlignment="Top"
+                                 Background="Transparent" BorderThickness="0"
+                                 Foreground="{StaticResource ChatAccentBrush}"
+                                 Visibility="{Binding IsLoadingMore, Converter={StaticResource BoolToVisibility}}"/>
+                </Grid>
             </Border>
 
             <!-- 멤버 Flyout (헤더 토글) -->
@@ -243,6 +267,7 @@
                                      TextWrapping="Wrap" AcceptsReturn="True"
                                      MaxLines="6" MinHeight="24" MaxHeight="140"
                                      VerticalScrollBarVisibility="Auto"
+                                     TextChanged="DraftBox_TextChanged"
                                      PreviewKeyDown="DraftBox_PreviewKeyDown"/>
                             <TextBlock Text="메시지를 입력하세요 (Enter 전송, Shift+Enter 줄바꿈)"
                                        IsHitTestVisible="False"

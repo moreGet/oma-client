@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -13,8 +14,23 @@ using OhMyAgent.AiAgent.Client.Models;
 
 namespace OhMyAgent.AiAgent.Client.Services;
 
-public sealed class AgentApiClient(HttpClient httpClient, ISettingsService settings) : IAgentApiClient
+public sealed class AgentApiClient(
+    HttpClient httpClient,
+    ISettingsService settings,
+    HttpClient? restClient = null) : IAgentApiClient
 {
+    /// <summary>
+    /// 컨트롤플레인(비스트리밍) 전용 클라이언트. 응답 압축(<c>Accept-Encoding</c>)을 켠 인스턴스를 주입받는다.
+    ///
+    /// 스트리밍(SSE)과 분리하는 이유: <c>AutomaticDecompression</c> 은 핸들러 단위 설정이라 요청별로 끌 수 없다
+    /// (요청에 <c>Accept-Encoding: identity</c> 를 직접 넣어도 핸들러가 뒤에 gzip 을 덧붙인다 — 실측 확인).
+    /// SSE 응답까지 압축을 광고하면 서버/프록시가 이벤트 스트림을 gzip 버퍼에 모았다 내보낼 수 있어
+    /// 토큰이 실시간으로 흐르지 않는다. 그래서 채팅 스트림만은 압축을 광고하지 않는 클라이언트로 남긴다.
+    ///
+    /// 주입이 없으면 스트리밍 클라이언트를 그대로 쓴다(= 종전 동작).
+    /// </summary>
+    private readonly HttpClient _rest = restClient ?? httpClient;
+
     private const string ChatPath     = "/api/v1/agent/chat";
     private const string HealthPath   = "/api/v1/health";
     private const string ModelsPath   = "/api/v1/models";
@@ -56,7 +72,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
 
         using var httpReq = new HttpRequestMessage(HttpMethod.Post, Url(ChatPath))
         {
-            Content = new StringContent(json, Encoding.UTF8, "application/json")
+            Content = JsonBody(json)
         };
         httpReq.Headers.Accept.ParseAdd("text/event-stream");
         ApplyAuth(httpReq);
@@ -135,15 +151,56 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         }
     }
 
+    /// <summary>이 크기 미만이면 압축하지 않는다 — 줄어드는 양보다 gzip 헤더·CPU 가 아깝고, 작은 본문은 되레 커질 수 있다.</summary>
+    private const int CompressRequestMinBytes = 32 * 1024;
+
+    /// <summary>요청 본문 미디어 타입. 압축 여부와 무관하게 동일해야 하므로 한 곳에 둔다.</summary>
+    private const string JsonMediaType = "application/json";
+
+    /// <summary>
+    /// JSON 요청 본문을 만든다. 설정(<see cref="AppSettings.CompressRequests"/>)이 켜져 있고 본문이
+    /// <see cref="CompressRequestMinBytes"/> 이상이면 gzip 으로 압축해 <c>Content-Encoding: gzip</c> 을 붙인다.
+    ///
+    /// 기본이 꺼짐인 이유: 서버가 압축 본문을 해석하지 못하면 400/415 로 요청 자체가 실패한다.
+    /// 서버 요구 스펙과 수용 기준은 docs/server-compression-spec.md 참고.
+    ///
+    /// 효과가 큰 이유: 에이전트는 도구 왕복마다 대화 전문을 다시 보내는데(ContextCompactor.BuildWireMessages),
+    /// 그 안에 도구가 읽은 소스 코드 원문이 그대로 들어 있어 gzip 이 잘 듣는다(실측 200메시지 세션 78% 감소).
+    /// 레벨 Optimal — 308KB 기준 Fastest 보다 1.5ms 더 쓰고 35KB 더 줄인다(실측).
+    /// </summary>
+    private HttpContent JsonBody(string json)
+    {
+        // 압축이 꺼져 있으면 바이트로 옮기는 것조차 하지 않는다(대부분의 요청이 이 경로).
+        if (!settings.Current.CompressRequests)
+            return PlainJson(json);
+
+        var bytes = Encoding.UTF8.GetBytes(json);
+        if (bytes.Length < CompressRequestMinBytes)
+            return PlainJson(json);
+
+        using var ms = new MemoryStream();
+        using (var gz = new GZipStream(ms, CompressionLevel.Optimal, leaveOpen: true))
+            gz.Write(bytes);
+
+        // ByteArrayContent — 리다이렉트·재전송 시 본문을 다시 읽을 수 있다(StreamContent 는 1회성이라 재전송에서 빈 본문이 된다).
+        var content = new ByteArrayContent(ms.GetBuffer(), 0, (int)ms.Length);
+        content.Headers.ContentType = new MediaTypeHeaderValue(JsonMediaType) { CharSet = "utf-8" };
+        content.Headers.ContentEncoding.Add("gzip");
+        return content;
+    }
+
+    private static StringContent PlainJson(string json) => new(json, Encoding.UTF8, JsonMediaType);
+
     // 컨트롤플레인(비스트리밍) 요청 상한 — SSE용 무한 타임아웃 공유 HttpClient가 무응답 서버에서
     // 영구 대기(로그인/시작 화면 정지)하지 않도록 요청별 타임아웃을 건다. 타임아웃은 연결 실패로 취급된다.
     private const int ControlPlaneTimeoutSeconds = 30;
 
+    // 모든 비스트리밍 REST 호출이 이 한 곳을 지난다 — 응답 압축은 여기서만 켜진다(_rest 주석 참조).
     private async Task<HttpResponseMessage> SendControlAsync(HttpRequestMessage req, CancellationToken ct)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(ControlPlaneTimeoutSeconds));
-        return await httpClient.SendAsync(req, timeoutCts.Token).ConfigureAwait(false);
+        return await _rest.SendAsync(req, timeoutCts.Token).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -241,7 +298,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
             // Public 엔드포인트 — 토큰 발급 전이므로 ApplyAuth 미부착.
             using var req = new HttpRequestMessage(HttpMethod.Post, Url(LoginPath))
             {
-                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                Content = JsonBody(payload)
             };
 
             using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
@@ -355,7 +412,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
 
             using var req = new HttpRequestMessage(HttpMethod.Post, Url(AuthorizePath))
             {
-                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                Content = JsonBody(payload)
             };
             ApplyAuth(req);
 
@@ -420,7 +477,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
             var payload = JsonSerializer.Serialize(body, AgentJson.Options);
             using var req = new HttpRequestMessage(HttpMethod.Post, Url(ProjectsPath))
             {
-                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                Content = JsonBody(payload)
             };
             ApplyAuth(req);
 
@@ -459,7 +516,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
             var payload = JsonSerializer.Serialize(body, AgentJson.Options);
             using var req = new HttpRequestMessage(HttpMethod.Post, Url(path))
             {
-                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                Content = JsonBody(payload)
             };
             ApplyAuth(req);
 
@@ -596,7 +653,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
             var payload = JsonSerializer.Serialize(new SessionUpsertDto(title, data), AgentJson.Options);
             using var req = new HttpRequestMessage(HttpMethod.Put, Url(path))
             {
-                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                Content = JsonBody(payload)
             };
             ApplyAuth(req);
 

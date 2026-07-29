@@ -41,6 +41,16 @@ public partial class ChatMessageBubble : UserControl
         return Tag as ChatRoomViewModel;
     }
 
+    /// <summary>
+    /// 남의 메시지/삭제된 메시지에서는 컨텍스트 메뉴 자체를 열지 않는다.
+    /// (ContextMenu 에 Visibility=Collapsed 를 걸어도 Popup 은 열려 빈 상자가 깜빡인다.)
+    /// </summary>
+    private void Bubble_ContextMenuOpening(object sender, System.Windows.Controls.ContextMenuEventArgs e)
+    {
+        if (Message is { IsMine: true, IsDeleted: false }) return;
+        e.Handled = true;
+    }
+
     /// <summary>본인 메시지 수정 — 현재 본문을 채운 입력 모달 → EditCommand((id, content)).</summary>
     private void Edit_Click(object sender, RoutedEventArgs e)
     {

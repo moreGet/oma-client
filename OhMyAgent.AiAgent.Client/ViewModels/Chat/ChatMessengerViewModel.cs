@@ -17,7 +17,16 @@ namespace OhMyAgent.AiAgent.Client.ViewModels.Chat;
 /// </summary>
 public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposable
 {
+    /// <summary>상태 메시지 자동 소거(ms). 일시적 429/5xx 토스트가 영구히 떠 있지 않도록.</summary>
+    private const int StatusAutoClearMs = 6_000;
+
     private readonly IChatRealtimeService _realtime;
+
+    /// <summary>창이 화면에 보이는지. 숨김 상태에서는 "보고 있는 방"이 없다 → 안읽음이 정상 집계된다.</summary>
+    private bool _windowVisible;
+
+    /// <summary>상태 메시지 세대. 늦게 도착한 소거가 최신 메시지를 지우지 않게 한다.</summary>
+    private int _statusGeneration;
 
     /// <summary>현재 사용자 신원(참조 공유). 재로그인 시 App 이 이 객체의 MemberId 만 갱신한다.</summary>
     private readonly ChatIdentity _identity;
@@ -83,7 +92,7 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
         }
         catch (Exception ex)
         {
-            await UiInvokeAsync(() => StatusMessage = Describe(ex)).ConfigureAwait(false);
+            await UiInvokeAsync(() => ShowStatus(Describe(ex))).ConfigureAwait(false);
         }
 
         await Rooms.LoadRoomsCommand.ExecuteAsync(null).ConfigureAwait(false);
@@ -100,6 +109,7 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
     {
         _ = UiInvokeAsync(() =>
         {
+            _realtime.SetActiveRoom(null);
             CurrentRoom?.Dispose();
             CurrentRoom = null;
             Rooms.Rooms.Clear();
@@ -108,6 +118,20 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
             IsMentionFeedOpen = false;
             StatusMessage = string.Empty;
         });
+    }
+
+    /// <summary>
+    /// 창 표시/숨김 통지(View 의 IsVisibleChanged). 트레이로 내려간 동안에는 "보고 있는 방"을 비워야
+    /// 그 방의 새 메시지도 안읽음으로 집계된다 — 안 그러면 마지막에 보던 방만 배지가 영원히 0 이다.
+    /// </summary>
+    public void NotifyWindowVisibilityChanged(bool visible)
+    {
+        _windowVisible = visible;
+        _realtime.SetActiveRoom(visible ? CurrentRoom?.RoomId : null);
+
+        // 다시 열었을 때 보고 있는 방은 즉시 읽음 처리(배지 잔상 제거).
+        if (visible && CurrentRoom is { } room)
+            _ = room.MarkReadCommand.ExecuteAsync(null);
     }
 
     // ── 방 열기 ────────────────────────────────────────────────────────
@@ -124,7 +148,7 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
         }
         catch (Exception ex)
         {
-            await UiInvokeAsync(() => StatusMessage = Describe(ex)).ConfigureAwait(false);
+            await UiInvokeAsync(() => ShowStatus(Describe(ex))).ConfigureAwait(false);
         }
     }
 
@@ -165,9 +189,11 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
             next.Members.Left += OnRoomLeft;
             CurrentRoom = next;
             IsMentionFeedOpen = false;
+            Rooms.SelectWithoutOpening(room.Id);   // 좌측 목록 하이라이트 동기화(재오픈은 억제)
         }).ConfigureAwait(false);
 
-        _realtime.SetActiveRoom(room.Id);   // 이 방 수신분은 안읽음 증가 제외(보는 중)
+        // 창이 보일 때만 "보는 중" — 트레이에 내려간 상태로 방을 바꾸는 경로에서도 배지가 정상 집계된다.
+        _realtime.SetActiveRoom(_windowVisible ? room.Id : null);
 
         if (previous is not null)
         {
@@ -195,10 +221,25 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
     // ── realtime/child 이벤트(UI 마샬) ─────────────────────────────────
 
     private void OnRoomOpenRequested(object? sender, ChatRoomListItemViewModel item)
-        => _ = OpenRoomByIdAsync(item.Id, item.DisplayName, item.Type);
+    {
+        // 이미 열려 있는 방이면 무시 — 다시 열면 방 VM 이 통째로 재생성되고 서버 재조회가 한 벌 더 나간다.
+        if (string.Equals(CurrentRoom?.RoomId, item.Id, StringComparison.Ordinal))
+        {
+            if (IsMentionFeedOpen) _ = UiInvokeAsync(() => IsMentionFeedOpen = false);
+            return;
+        }
+        _ = OpenRoomByIdAsync(item.Id, item.DisplayName, item.Type);
+    }
 
     private void OnMentionOpenRequested(object? sender, string roomId)
-        => _ = OpenRoomByIdAsync(roomId, displayName: null, type: null);
+    {
+        if (string.Equals(CurrentRoom?.RoomId, roomId, StringComparison.Ordinal))
+        {
+            _ = UiInvokeAsync(() => IsMentionFeedOpen = false);
+            return;
+        }
+        _ = OpenRoomByIdAsync(roomId, displayName: null, type: null);
+    }
 
     private void OnConnectionStateChanged(object? sender, ChatConnectionState state)
         => _ = UiInvokeAsync(() => ConnectionState = state);
@@ -207,7 +248,26 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
         => _ = UiInvokeAsync(() => TotalUnread = unread.Total);
 
     private void OnOperationFailed(object? sender, ChatOperationError error)
-        => _ = UiInvokeAsync(() => StatusMessage = FriendlyError(error));
+        => _ = UiInvokeAsync(() => ShowStatus(FriendlyError(error)));
+
+    /// <summary>토스트 표시 + 일정 시간 뒤 자동 소거(최신 메시지만 살아남는다). UI 스레드에서 호출.</summary>
+    private void ShowStatus(string message)
+    {
+        StatusMessage = message;
+        if (string.IsNullOrEmpty(message)) return;
+
+        var generation = ++_statusGeneration;
+        _ = ClearStatusLaterAsync(generation);
+    }
+
+    private async Task ClearStatusLaterAsync(int generation)
+    {
+        await Task.Delay(StatusAutoClearMs).ConfigureAwait(false);
+        await UiInvokeAsync(() =>
+        {
+            if (_statusGeneration == generation) StatusMessage = string.Empty;
+        }).ConfigureAwait(false);
+    }
 
     /// <summary>401 — 표시하지 않고 상위(App)로. ApplyReadiness/ReturnToLogin이 로그인 화면 회귀 처리.</summary>
     private void OnAuthExpired(object? sender, EventArgs e)
@@ -240,5 +300,6 @@ public sealed partial class ChatMessengerViewModel : ObservableObject, IDisposab
             room.Dispose();
         }
         Rooms.Dispose();
+        MentionFeed.Dispose();
     }
 }

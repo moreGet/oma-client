@@ -9,11 +9,14 @@
              d:DataContext="{d:DesignInstance Type=vm:MentionAutoCompleteViewModel, IsDesignTimeCreatable=False}">
 
     <!-- 컴포저 위에 띄우는 @멘션 자동완성. Placement=Top, PlacementTarget 은 부모에서 지정. -->
-    <Popup IsOpen="{Binding IsActive, Mode=OneWay}"
+    <!-- IsOpen 은 반드시 TwoWay: StaysOpen=False 인 Popup 이 바깥 클릭으로 스스로 닫힐 때
+         VM 의 IsActive 가 true 로 굳으면 이후 어떤 입력에도 다시 열리지 않는다. -->
+    <Popup IsOpen="{Binding IsActive, Mode=TwoWay}"
            Placement="Top"
            PlacementTarget="{Binding ElementName=MentionRoot}"
            AllowsTransparency="True"
            StaysOpen="False"
+           Focusable="False"
            PopupAnimation="Fade"
            MaxHeight="220">
         <Border Background="{StaticResource Surface2Bg}"
@@ -27,10 +30,19 @@
                 <ItemsControl ItemsSource="{Binding Candidates}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Button Style="{StaticResource SidebarItemButton}"
-                                    Command="{Binding DataContext.SelectCommand,
+                            <Button Command="{Binding DataContext.SelectCommand,
                                               RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                     CommandParameter="{Binding}">
+                                <!-- ↑↓ 키보드 이동 하이라이트(IsSelected) -->
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource SidebarItemButton}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource Surface3Bg}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
                                 <StackPanel Orientation="Horizontal">
                                     <Border Width="22" Height="22" CornerRadius="11"
                                             Background="{StaticResource AccentSoftBrush}"

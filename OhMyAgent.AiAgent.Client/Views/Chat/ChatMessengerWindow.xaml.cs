@@ -17,6 +17,10 @@ public partial class ChatMessengerWindow : Window
     {
         InitializeComponent();
         DataContext = vm;
+
+        // 트레이로 내려간 동안에는 "보고 있는 방"이 없어야 그 방의 새 메시지도 안읽음으로 잡힌다.
+        IsVisibleChanged += (_, e) =>
+            (DataContext as ChatMessengerViewModel)?.NotifyWindowVisibilityChanged(e.NewValue is true);
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -24,6 +25,7 @@ public partial class App : Application
     private MainWindow?               _mainWindow;
     private NotifyIcon?               _trayIcon;
     private HttpClient?               _httpClient;
+    private HttpClient?               _restHttpClient;
     private HttpClient?               _toolHttpClient;
     private ISettingsService?         _settingsService;
     private IGlobalHotkeyService?     _globalHotkey;
@@ -137,6 +139,19 @@ public partial class App : Application
         //    (BaseAddress 는 첫 요청 후 변경이 불가해, 서버 주소를 바꿔도 재시작 전까지 반영되지 않았다.)
         _httpClient = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
 
+        //    2a) 컨트롤플레인(비스트리밍) 전용 — 응답 압축을 켠다. 세션 목록/세션 본문·프로젝트처럼
+        //    JSON 이 큰 응답이 gzip 으로 내려오면 그대로 이득이고, 서버가 압축을 지원하지 않으면
+        //    Accept-Encoding 이 무시될 뿐이라 손해가 없다.
+        //    채팅 SSE 는 이 클라이언트를 쓰지 않는다 — AutomaticDecompression 은 핸들러 단위라
+        //    요청별로 끌 수 없고, 이벤트 스트림에 압축이 걸리면 토큰이 버퍼에 갇힐 수 있다.
+        _restHttpClient = new HttpClient(new SocketsHttpHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All
+        })
+        {
+            Timeout = Timeout.InfiniteTimeSpan   // 요청별 상한은 AgentApiClient.SendControlAsync 가 건다.
+        };
+
         // 2b) 다이얼로그 서비스 — 코드비하인드의 직접 MessageBox/절차적 입력창을 대체(의존성 없음).
         _dialogService = new DialogService();
 
@@ -198,7 +213,7 @@ public partial class App : Application
         var permissions = new PermissionService(_settingsService);
 
         // 7) API 클라이언트
-        _api = new AgentApiClient(_httpClient, _settingsService);
+        _api = new AgentApiClient(_httpClient, _settingsService, _restHttpClient);
 
         // 7a) 서버 도구 정책 게이트(싱글톤 1개) — 오케스트레이터·VM가 동일 인스턴스를 공유한다.
         _toolPolicy = new ToolPolicyService(_api);
@@ -267,7 +282,8 @@ public partial class App : Application
         //      신원 = JWT(sub) = member UUID. /users/me 엔 id 없음 → 토큰 디코드가 유일 소스.
         //      ChatIdentity 를 참조로 공유해, 재로그인 시 MemberId 만 갱신하면 VM 트리 전체가 따라온다
         //      (문자열로 넘기면 각 VM 이 복사본을 들어 사용자가 바뀌어도 판정 기준이 옛 사용자로 남는다).
-        var chatApi   = new ChatApiClient(_httpClient!, _settingsService!);
+        // 메신저 API 는 전부 비스트리밍 REST(실시간은 별도 WebSocket) — 압축 클라이언트를 쓴다.
+        var chatApi   = new ChatApiClient(_restHttpClient!, _settingsService!);
         var chatSocket = new ChatSocketClient(_settingsService!);
         _chatRealtime = new ChatRealtimeService(chatApi, chatSocket, _settingsService!, ui);
 
@@ -280,6 +296,10 @@ public partial class App : Application
         _chatCoordinator = new ChatMessengerCoordinator(
             () => chatWindow ??= new ChatMessengerWindow(_chatMessengerVm!),
             _trayNotification!);
+
+        // 창이 닫혀(트레이) 있을 때 온 남의 메시지는 트레이 풍선으로 알린다 — 없으면 새 메시지가 와도
+        // 사용자가 창을 열어보기 전까지 아무 신호가 없다. 이벤트는 이미 UI 스레드로 마샬돼 온다.
+        _chatRealtime.MessageUpserted += OnChatMessageForTray;
 
         // 14) Global Hotkey 서비스 생성 (HWND는 SourceInitialized 후 획득)
         _globalHotkey = new GlobalHotkeyService();
@@ -476,6 +496,24 @@ public partial class App : Application
         _ = _chatMessengerVm.StartCommand.ExecuteAsync(null);
     }
 
+    /// 메신저 창이 안 보일 때 온 남의 새 메시지 → 트레이 풍선 알림.
+    /// (수정·삭제 이벤트, 내 메시지, 창이 떠 있는 경우는 제외.)
+    private void OnChatMessageForTray(object? sender, RoomMessageEvent e)
+    {
+        if (e.IsEdited || e.IsDeleted) return;
+        if (_chatIdentity is null || _chatIdentity.IsMine(e.Message.SenderId)) return;
+        if (_chatCoordinator is null || _chatCoordinator.IsOpen) return;
+
+        var sender_ = _chatRealtime?.DisplayName(e.Message.SenderId);
+        var title = string.IsNullOrWhiteSpace(sender_) ? "새 메시지" : sender_!;
+        var body = string.IsNullOrWhiteSpace(e.Message.Content)
+            ? "파일을 보냈습니다"
+            : e.Message.Content.ReplaceLineEndings(" ").Trim();
+        if (body.Length > 120) body = body[..120] + "…";
+
+        _trayNotification?.ShowInfo(title, body);
+    }
+
     /// 로그인이 필요한 모든 상황(로그아웃 · 세션 만료/401)의 단일 진입점.
     /// 실행 중 작업·세션을 강제 종료하고, 모든 보조 창을 닫고 메인은 숨긴 뒤 로그인 화면만 남긴다.
     /// 로그인 성공 시 메인 복귀, 그냥 닫으면 앱 종료(시작 게이트와 동일).
@@ -546,6 +584,7 @@ public partial class App : Application
         }
         catch { /* ignore */ }
         try { _httpClient?.Dispose(); }     catch { /* ignore */ }
+        try { _restHttpClient?.Dispose(); } catch { /* ignore */ }
         try { _toolHttpClient?.Dispose(); } catch { /* ignore */ }
     }
 

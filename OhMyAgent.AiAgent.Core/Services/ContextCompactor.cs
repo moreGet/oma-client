@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -176,7 +177,19 @@ public sealed class ContextCompactor(IAgentApiClient api, ISettingsService setti
         return total;
     }
 
-    private static int Measure(AgentMessage m)
+    /// <summary>
+    /// 메시지 인스턴스별 측정값 캐시. 한 턴 안에서 도구 왕복(iteration)마다 <see cref="MeasureWire"/> 와
+    /// <see cref="ElideOldToolResults"/> 가 각각 전 메시지를 훑는데, <c>Arguments.GetRawText()</c> 는
+    /// 호출할 때마다 도구 인자 JSON 을 통째로 새 문자열로 만든다(200메시지·15왕복 세션에서 턴당 ~11MB).
+    /// AgentMessage 는 불변 record 라 같은 인스턴스의 측정값은 변하지 않으므로 그대로 재사용해도 안전하다.
+    /// 키가 약참조라 메시지가 사라지면 항목도 함께 사라진다.
+    /// </summary>
+    private static readonly ConditionalWeakTable<AgentMessage, StrongBox<int>> MeasureCache = new();
+
+    private static int Measure(AgentMessage m) =>
+        MeasureCache.GetValue(m, static key => new StrongBox<int>(MeasureCore(key))).Value;
+
+    private static int MeasureCore(AgentMessage m)
     {
         var n = m.Content?.Length ?? 0;
         // 사고 블록은 매 요청에 재생돼 실제 와이어 크기를 지배할 수 있는데(사고가 켜진 긴 세션),

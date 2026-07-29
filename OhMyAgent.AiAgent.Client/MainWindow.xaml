@@ -778,7 +778,9 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <!-- 멀티라인 입력 -->
+                        <!-- 멀티라인 입력 : Enter 전송 / Shift+Enter 줄바꿈.
+                             AcceptsReturn 이 True 여야 Shift+Enter 가 실제로 줄을 넘긴다. 평문 Enter 는
+                             InputBox_PreviewKeyDown 이 터널링 단계에서 가로채므로 줄바꿈되지 않고 전송된다. -->
                         <Grid Grid.Row="1">
                             <TextBox x:Name="InputBox"
                                      Background="Transparent" BorderThickness="0"
@@ -787,7 +789,7 @@
                                      CaretBrush="{StaticResource AccentBrush}"
                                      SelectionBrush="{StaticResource AccentBrush}"
                                      Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
-                                     TextWrapping="Wrap" AcceptsReturn="False"
+                                     TextWrapping="Wrap" AcceptsReturn="True"
                                      MaxLines="6" MinHeight="40" MaxHeight="140"
                                      VerticalScrollBarVisibility="Auto"
                                      IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}"

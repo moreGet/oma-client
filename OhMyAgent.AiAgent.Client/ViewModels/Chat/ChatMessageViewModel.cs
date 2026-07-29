@@ -58,7 +58,15 @@ public sealed partial class ChatMessageViewModel : ObservableObject
     [ObservableProperty] private ChatSendStatus _sendStatus = ChatSendStatus.Sent;
 
     /// <summary>이 메시지를 읽은(내 메시지 기준 타 멤버) 수. ReadChanged 구독으로 갱신.</summary>
-    [ObservableProperty] private int _readByCount;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasReads))]
+    private int _readByCount;
+
+    /// <summary>읽음 배지 표시 여부. 아무도 안 읽었을 때 "읽음 0" 이 붙지 않도록 XAML 조건으로 쓴다.</summary>
+    public bool HasReads => ReadByCount > 0;
+
+    /// <summary>이 메시지에 실린 멘션 memberId 목록(재전송 시 유실 방지). 서버 이력은 null 가능.</summary>
+    public IReadOnlyList<string>? Mentions { get; private set; }
 
     /// <summary>서버 DTO로부터 구성(이력/실시간 수신분). mentions/attachments는 null 가능(REST 이력 한계).</summary>
     public ChatMessageViewModel(ChatMessage dto, ChatIdentity identity)
@@ -72,6 +80,7 @@ public sealed partial class ChatMessageViewModel : ObservableObject
         _editedAt = dto.EditedAt;
         _isDeleted = dto.Deleted ?? false;
         IsMine = identity.IsMine(dto.SenderId);
+        Mentions = dto.Mentions;
         _segments = BuildSegments(_content, dto.Mentions);
 
         if (dto.Attachments is { Count: > 0 } atts)
@@ -99,6 +108,7 @@ public sealed partial class ChatMessageViewModel : ObservableObject
         _editedAt = null;
         _isDeleted = false;
         IsMine = identity.IsMine(senderId);
+        Mentions = mentions;
         _segments = BuildSegments(_content, mentions);
         _sendStatus = ChatSendStatus.Pending;
 
@@ -117,7 +127,8 @@ public sealed partial class ChatMessageViewModel : ObservableObject
         Content = dto.Content ?? string.Empty;
         EditedAt = dto.EditedAt;
         IsDeleted = dto.Deleted ?? false;
-        Segments = BuildSegments(Content, dto.Mentions);
+        Mentions = dto.Mentions ?? Mentions;   // REST 이력엔 mentions 가 없으므로 낙관 시점 값을 보존
+        Segments = BuildSegments(Content, Mentions);
         SendStatus = ChatSendStatus.Sent;
 
         // 첨부는 실시간 수신분(WS)에만 존재 — 비어 있으면 그대로 둔다(낙관 첨부 유지).

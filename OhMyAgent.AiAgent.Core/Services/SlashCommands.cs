@@ -35,6 +35,13 @@ public static class SlashCommands
         if (!trimmed.StartsWith('/'))
             return new SlashCommand(SlashCommandKind.None, input);
 
+        // 여러 줄이면 커맨드로 보지 않는다. 입력창이 Shift+Enter 줄바꿈을 받으면서 '/' 로 시작하는
+        // 여러 줄 본문(경로 붙여넣기 등)이 들어올 수 있는데, 첫 토큰만 떼는 아래 로직으로는
+        // "/clear\n나머지" 가 "알 수 없는 명령"이 되어 전송 자체가 막힌다. 커맨드는 한 줄 전용으로 둔다.
+        var body = trimmed.TrimEnd();
+        if (body.Contains('\n') || body.Contains('\r'))
+            return new SlashCommand(SlashCommandKind.None, input);
+
         // 첫 토큰만 커맨드로 본다("/clear foo" → "/clear").
         var space = trimmed.IndexOf(' ');
         var word = (space < 0 ? trimmed : trimmed[..space]).ToLowerInvariant();

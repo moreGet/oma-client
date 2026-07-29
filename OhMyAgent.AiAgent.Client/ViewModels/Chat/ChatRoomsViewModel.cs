@@ -13,12 +13,16 @@ namespace OhMyAgent.AiAgent.Client.ViewModels.Chat;
 
 /// <summary>
 /// 좌측 방 목록(§4.2). 안읽음 배지 + 방 생성(1:1/group) + 선택. 최근활동순(lastActivityAt desc) 정렬.
-/// realtime.RoomUpserted/UnreadChanged 구독 → 해당 item 갱신 + 재정렬. 단일 의존 = <see cref="IChatRealtimeService"/>.
+/// realtime.RoomUpserted/UnreadChanged/MessageUpserted 구독 → 해당 item 갱신 + 재정렬.
+/// 단일 의존 = <see cref="IChatRealtimeService"/>.
 /// </summary>
 public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
 {
     private readonly IChatRealtimeService _realtime;
     private readonly Action _unsubscribe;
+
+    /// <summary>셸이 이미 연 방을 목록에서 하이라이트할 때 — 선택 변경이 방을 다시 열지 않도록 억제.</summary>
+    private bool _suppressOpen;
 
     /// <summary>방 목록 행(최근활동순).</summary>
     public ObservableCollection<ChatRoomListItemViewModel> Rooms { get; } = [];
@@ -36,11 +40,13 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
         _realtime.RoomUpserted += OnRoomUpserted;
         _realtime.UnreadChanged += OnUnreadChanged;
         _realtime.DirectoryUpdated += OnDirectoryUpdated;
+        _realtime.MessageUpserted += OnMessageUpserted;
         _unsubscribe = () =>
         {
             _realtime.RoomUpserted -= OnRoomUpserted;
             _realtime.UnreadChanged -= OnUnreadChanged;
             _realtime.DirectoryUpdated -= OnDirectoryUpdated;
+            _realtime.MessageUpserted -= OnMessageUpserted;
         };
     }
 
@@ -102,8 +108,15 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
 
                 var item = new ChatRoomListItemViewModel(r);
                 Rooms.Add(item);
-                if (item.Type == ChatRoomType.Direct) directItems.Add(item);    // 신규 1:1 만 이름 해석
             }
+
+            // 상대 id 를 아직 모르는 1:1 방은 전부 해석 대상이다.
+            // "신규로 추가된 행"만 대상으로 삼으면, 세션 중 만들어져 RoomUpserted 로 먼저 들어온 방이
+            // 목록 재로드 때 "기존 행"으로 분류되어 영영 "1:1 대화" 로 남는다(라이브 2인 테스트로 확인).
+            foreach (var item in Rooms)
+                if (item.Type == ChatRoomType.Direct && string.IsNullOrEmpty(item.CounterpartId))
+                    directItems.Add(item);
+
             Resort();
             IsLoading = false;
         }).ConfigureAwait(false);
@@ -158,9 +171,24 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
     /// <summary>방 생성/선택 시 셸이 해당 방을 열도록 알림.</summary>
     public event EventHandler<ChatRoomListItemViewModel>? RoomOpenRequested;
 
+    /// <summary>
+    /// 셸이 이미 연 방(멘션 피드 진입·방 생성 직후)을 목록에서 하이라이트만 한다.
+    /// 그냥 <see cref="SelectedRoom"/> 을 대입하면 선택 변경 훅이 같은 방을 한 번 더 열어 VM 이 중복 생성된다.
+    /// </summary>
+    public void SelectWithoutOpening(string roomId)
+    {
+        var item = Rooms.FirstOrDefault(r => string.Equals(r.Id, roomId, StringComparison.Ordinal));
+        if (item is null || ReferenceEquals(item, SelectedRoom)) return;
+
+        _suppressOpen = true;
+        try { SelectedRoom = item; }
+        finally { _suppressOpen = false; }
+    }
+
     /// <summary>목록에서 방을 선택하면 셸이 해당 방을 연다(ListBox SelectedItem TwoWay 바인딩 → 자동 오픈).</summary>
     partial void OnSelectedRoomChanged(ChatRoomListItemViewModel? value)
     {
+        if (_suppressOpen) return;
         if (value is not null)
             RoomOpenRequested?.Invoke(this, value);
     }
@@ -168,7 +196,28 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
     // ── realtime 이벤트(UI 마샬) ───────────────────────────────────────
 
     private void OnRoomUpserted(object? sender, ChatRoom room)
-        => _ = UiInvokeAsync(() => { Upsert(room); Resort(); });
+        => _ = UiInvokeAsync(() =>
+        {
+            var item = Upsert(room);
+            Resort();
+
+            // 세션 중 생성/수신된 1:1 방도 여기서 바로 상대 이름을 해석한다(목록 재로드를 기다리지 않는다).
+            if (item.Type == ChatRoomType.Direct && string.IsNullOrEmpty(item.CounterpartId))
+                _ = ResolveDirectNameAsync(item);
+        });
+
+    /// <summary>
+    /// 새 메시지 → 해당 행의 미리보기/활동시각 갱신 후 그 행만 제자리로 옮긴다.
+    /// (서버 GET /rooms 에는 마지막 메시지가 없어, 미리보기·"최근활동순" 정렬의 유일한 소스가 이 이벤트다.)
+    /// </summary>
+    private void OnMessageUpserted(object? sender, RoomMessageEvent e)
+        => _ = UiInvokeAsync(() =>
+        {
+            var item = Rooms.FirstOrDefault(r => string.Equals(r.Id, e.Message.RoomId, StringComparison.Ordinal));
+            if (item is null) return;
+            item.ApplyMessage(e.Message, e.IsDeleted);
+            MoveToSortedPosition(item);
+        });
 
     private void OnUnreadChanged(object? sender, ChatUnreadResponse unread)
     {
@@ -197,7 +246,7 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
         return item;
     }
 
-    /// <summary>최근활동순(lastActivityAt desc) 재정렬. UI 스레드에서 호출(컬렉션 재배치).</summary>
+    /// <summary>최근활동순(lastActivityAt desc) 전체 재정렬. 목록 로드/방 추가 등 드문 경로에서만 호출.</summary>
     private void Resort()
     {
         var ordered = Rooms.OrderByDescending(r => r.LastActivityAt).ToList();
@@ -206,6 +255,26 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
             var current = Rooms.IndexOf(ordered[i]);
             if (current != i) Rooms.Move(current, i);
         }
+    }
+
+    /// <summary>
+    /// 이미 정렬된 목록에서 한 행만 제자리로 이동(메시지마다 전체 재정렬 O(n²)을 돌리지 않는다).
+    /// UI 스레드에서 호출.
+    /// </summary>
+    private void MoveToSortedPosition(ChatRoomListItemViewModel item)
+    {
+        var from = Rooms.IndexOf(item);
+        if (from < 0) return;
+
+        var target = 0;
+        for (var i = 0; i < Rooms.Count; i++)
+        {
+            if (i == from) continue;
+            if (Rooms[i].LastActivityAt > item.LastActivityAt) target++;
+            else break;
+        }
+
+        if (target != from) Rooms.Move(from, target);
     }
 
     private static string Describe(Exception ex)
@@ -219,6 +288,9 @@ public sealed partial class ChatRoomsViewModel : ObservableObject, IDisposable
 /// <summary>방 목록 한 행(§4.2). 안읽음 배지 = UnreadCount &gt; 0.</summary>
 public sealed partial class ChatRoomListItemViewModel : ObservableObject
 {
+    /// <summary>미리보기 최대 길이(긴 본문을 통째로 들고 있지 않도록 자른다).</summary>
+    private const int PreviewMaxLength = 60;
+
     public string Id { get; }
     public ChatRoomType Type { get; }
 
@@ -249,6 +321,24 @@ public sealed partial class ChatRoomListItemViewModel : ObservableObject
             DisplayName = room.Name!;   // direct 는 ResolveDirectNameAsync 가 채운 이름 유지
         UnreadCount = room.UnreadCount;
         if (room.CreatedAt > LastActivityAt) LastActivityAt = room.CreatedAt;
+    }
+
+    /// <summary>새/수정/삭제 메시지로 미리보기·활동시각 갱신. UI 스레드에서 호출.</summary>
+    public void ApplyMessage(ChatMessage message, bool isDeleted)
+    {
+        LastPreview = (isDeleted || (message.Deleted ?? false)) ? "삭제된 메시지"
+            : !string.IsNullOrWhiteSpace(message.Content) ? Flatten(message.Content)
+            : message.Attachments is { Count: > 0 } ? "파일을 보냈습니다"
+            : string.Empty;
+
+        if (message.CreatedAt > LastActivityAt) LastActivityAt = message.CreatedAt;
+    }
+
+    /// <summary>미리보기 한 줄화 — 줄바꿈 제거 + 길이 제한.</summary>
+    private static string Flatten(string content)
+    {
+        var single = content.ReplaceLineEndings(" ").Trim();
+        return single.Length <= PreviewMaxLength ? single : single[..PreviewMaxLength] + "…";
     }
 
     partial void OnUnreadCountChanged(int value) => OnPropertyChanged(nameof(HasUnread));
