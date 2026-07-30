@@ -23,9 +23,8 @@ public sealed class WriteCsvTool : ITool
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var path = ToolSchemas.GetString(args, "path");
-        if (string.IsNullOrWhiteSpace(path))
-            return ToolResult.Fail("path 가 비어 있습니다.");
+        if (!ToolPaths.TryGetRequiredPath(args, out var path, out var error))
+            return error;
 
         if (args.ValueKind != JsonValueKind.Object
             || !args.TryGetProperty("rows", out var rowsEl)
@@ -35,9 +34,7 @@ public sealed class WriteCsvTool : ITool
         var delim = ToolSchemas.GetString(args, "delimiter") is { Length: > 0 } d ? d[0] : ',';
 
         var full = ctx.Workspace.ResolvePath(path);
-        var dir = Path.GetDirectoryName(full);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
+        ToolPaths.EnsureParentDirectory(full);
 
         var sb = new StringBuilder();
         var rowCount = 0;
@@ -52,10 +49,9 @@ public sealed class WriteCsvTool : ITool
             rowCount++;
         }
 
-        var bytes = new UTF8Encoding(false).GetBytes(sb.ToString());
-        await File.WriteAllBytesAsync(full, bytes, ct).ConfigureAwait(false);
+        var written = await ToolPaths.WriteUtf8NoBomAsync(full, sb.ToString(), ct).ConfigureAwait(false);
 
-        return ToolResult.Json(new { path, rows_written = rowCount, bytes_written = bytes.Length });
+        return ToolResult.Json(new { path, rows_written = rowCount, bytes_written = written });
     }
 
     private static void AppendRow(StringBuilder sb, List<string> fields, char delim)

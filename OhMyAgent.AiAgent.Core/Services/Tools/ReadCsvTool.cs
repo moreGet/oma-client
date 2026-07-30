@@ -25,13 +25,8 @@ public sealed class ReadCsvTool : ITool
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var path = ToolSchemas.GetString(args, "path");
-        if (string.IsNullOrWhiteSpace(path))
-            return ToolResult.Fail("path 가 비어 있습니다.");
-
-        var full = ctx.Workspace.ResolvePath(path);
-        if (!File.Exists(full))
-            return ToolResult.Fail($"파일이 존재하지 않습니다: {path}");
+        if (!ToolPaths.TryResolveExistingFile(args, ctx, out var path, out var full, out var error))
+            return error;
 
         var delim = ToolSchemas.GetString(args, "delimiter") is { Length: > 0 } d ? d[0] : ',';
         var hasHeader = ToolSchemas.GetBool(args, "has_header", true);

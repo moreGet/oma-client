@@ -23,9 +23,8 @@ public sealed class WriteExcelTool : ITool
 
     public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var path = ToolSchemas.GetString(args, "path");
-        if (string.IsNullOrWhiteSpace(path))
-            return Task.FromResult(ToolResult.Fail("path 가 비어 있습니다."));
+        if (!ToolPaths.TryGetRequiredPath(args, out var path, out var error))
+            return Task.FromResult(error);
 
         if (args.ValueKind != JsonValueKind.Object
             || !args.TryGetProperty("rows", out var rowsEl)
@@ -36,9 +35,7 @@ public sealed class WriteExcelTool : ITool
         var append = string.Equals(ToolSchemas.GetString(args, "mode"), "append", System.StringComparison.OrdinalIgnoreCase);
 
         var full = ctx.Workspace.ResolvePath(path);
-        var dir = Path.GetDirectoryName(full);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
+        ToolPaths.EnsureParentDirectory(full);
 
         XLWorkbook wb;
         IXLWorksheet ws;

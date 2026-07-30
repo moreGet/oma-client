@@ -25,13 +25,8 @@ public sealed class ReadExcelTool : ITool
 
     public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var path = ToolSchemas.GetString(args, "path");
-        if (string.IsNullOrWhiteSpace(path))
-            return Task.FromResult(ToolResult.Fail("path 가 비어 있습니다."));
-
-        var full = ctx.Workspace.ResolvePath(path);
-        if (!File.Exists(full))
-            return Task.FromResult(ToolResult.Fail($"파일이 존재하지 않습니다: {path}"));
+        if (!ToolPaths.TryResolveExistingFile(args, ctx, out _, out var full, out var error))
+            return Task.FromResult(error);
 
         var sheetArg = ToolSchemas.GetString(args, "sheet");
         var rangeArg = ToolSchemas.GetString(args, "range");

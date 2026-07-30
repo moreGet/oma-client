@@ -21,22 +21,14 @@ public sealed class WriteFileTool : ITool
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var path = ToolSchemas.GetString(args, "path");
-        var content = ToolSchemas.GetString(args, "content");
+        if (!ToolPaths.TryResolvePath(args, ctx, out var path, out var full, out var error))
+            return error;
 
-        if (string.IsNullOrWhiteSpace(path))
-            return ToolResult.Fail("path 가 비어 있습니다.");
-        content ??= "";
+        var content = ToolSchemas.GetString(args, "content") ?? "";
 
-        var full = ctx.Workspace.ResolvePath(path);
+        ToolPaths.EnsureParentDirectory(full);
+        var written = await ToolPaths.WriteUtf8NoBomAsync(full, content, ct).ConfigureAwait(false);
 
-        var dir = Path.GetDirectoryName(full);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
-
-        var bytes = new UTF8Encoding(false).GetBytes(content);
-        await File.WriteAllBytesAsync(full, bytes, ct).ConfigureAwait(false);
-
-        return ToolResult.Json(new { path, bytes_written = bytes.Length });
+        return ToolResult.Json(new { path, bytes_written = written });
     }
 }

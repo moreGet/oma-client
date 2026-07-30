@@ -343,10 +343,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         await RetryConnectionAsync();
         if (IsConnected && !NeedsLogin)
         {
-            Transcript.Add(new SystemNoticeViewModel
-            {
-                Text = "에이전트 서버에 연결되었습니다. 무엇을 도와드릴까요?",
-            });
+            AddNotice("에이전트 서버에 연결되었습니다. 무엇을 도와드릴까요?");
 
             // 로그인 직후 1회 — 서버 도구 정책(모드+목록) 로드.
             // 서버 미구현(404)이면 조용히 fail-open. 그 외 조회 실패는 fail-closed(전 도구 차단)이므로
@@ -357,10 +354,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
             }
             catch (Exception ex)
             {
-                Transcript.Add(new SystemNoticeViewModel
-                {
-                    Text = $"⚠ {ex.Message}",
-                });
+                AddNotice($"⚠ {ex.Message}");
             }
 
             // 로그인 직후 1회 — 서버 추가 위험명령 패턴 로드(디폴트에 더해짐). 미구현/오류면 디폴트만.
@@ -641,7 +635,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
             await UiInvokeAsync(() =>
             {
                 StatusText = "중지됨";
-                Transcript.Add(new SystemNoticeViewModel { Text = "사용자가 중지했습니다." });
+                AddNotice("사용자가 중지했습니다.");
             }).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -650,7 +644,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
             {
                 HasError = true;
                 ErrorMessage = ex.Message;
-                Transcript.Add(new SystemNoticeViewModel { Text = $"오류: {ex.Message}" });
+                AddNotice($"오류: {ex.Message}");
             }).ConfigureAwait(false);
         }
         finally
@@ -692,11 +686,11 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
 
             case SlashCommandKind.Help:
                 InputText = string.Empty;
-                Transcript.Add(new SystemNoticeViewModel { Text = SlashCommands.HelpText });
+                AddNotice(SlashCommands.HelpText);
                 break;
 
             case SlashCommandKind.Unknown:
-                Transcript.Add(new SystemNoticeViewModel { Text = SlashCommands.UnknownText(cmd.Raw) });
+                AddNotice(SlashCommands.UnknownText(cmd.Raw));
                 break;
         }
     }
@@ -955,10 +949,8 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
             {
                 var name = a.FileName;
                 var reason = ex is AgentException ? ex.Message : "읽기 실패";
-                await UiInvokeAsync(() => Transcript.Add(new SystemNoticeViewModel
-                {
-                    Text = $"첨부 '{name}'(을)를 보내지 못했습니다 — {reason}"
-                })).ConfigureAwait(false);
+                await UiInvokeAsync(() => AddNotice($"첨부 '{name}'(을)를 보내지 못했습니다 — {reason}"))
+                    .ConfigureAwait(false);
             }
         }
 
@@ -1137,11 +1129,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
                 break;
 
             case AgentAssistantMessageComplete:
-                if (_currentAssistant is { } a)
-                {
-                    a.IsStreaming = false;
-                    _currentAssistant = null; _currentThinking = null;
-                }
+                CompleteAssistantTurn();
                 break;
 
             case AgentToolCallStarted started:
@@ -1182,11 +1170,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
                 break;
 
             case AgentDone done:
-                if (_currentAssistant is { } finalAssistant)
-                {
-                    finalAssistant.IsStreaming = false;
-                    _currentAssistant = null; _currentThinking = null;
-                }
+                CompleteAssistantTurn();
                 StatusText = "완료";
                 if (done.LastUsage is { } usage)
                 {
@@ -1200,56 +1184,71 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
 
             case AgentNotice notice:
                 // 오류가 아니다 — 전사에만 남긴다. HasError/ErrorTitle/"다시 시도"를 건드리지 않는다.
-                Transcript.Add(new SystemNoticeViewModel { Text = notice.Text });
+                AddNotice(notice.Text);
                 break;
 
             case AgentError err:
-                // API-SPEC §클라이언트 처리 가이드: HTTP 상태(코드)로 분기. 401에서만 재로그인,
-                // 403/429/404/5xx는 메시지만 표시하고 로그아웃하지 않는다.
-                switch (ClassifyAgentError(err.Code))
-                {
-                    case AgentErrorKind.Cancelled:
-                        StatusText = "중지됨";
-                        break;
-
-                    case AgentErrorKind.Unauthorized:
-                        // 401 만 재로그인(세션 폐기). ApplyReadiness가 LoginRequested→로그인 화면 회귀.
-                        ApplyReadiness(ServerReadiness.Unauthenticated);
-                        break;
-
-                    case AgentErrorKind.RateLimited:
-                        // 429 토큰 쿼터/세션 캡 초과 — 친화 문구로 안내(서버 원문 비노출), 로그아웃 금지.
-                        StatusText = "사용 한도 초과";
-                        Transcript.Add(new SystemNoticeViewModel
-                        {
-                            Text = "⚠ " + UserErrorMessages.ForAgentError(err.Code, err.Message)
-                        });
-                        _ = RefreshQuotaAsync();   // 잔여량 즉시 갱신
-                        break;
-
-                    case AgentErrorKind.Forbidden:
-                        // 403 권한 부족 — 친화 문구 안내, 로그아웃 금지.
-                        StatusText = "권한 없음";
-                        Transcript.Add(new SystemNoticeViewModel
-                        {
-                            Text = UserErrorMessages.ForAgentError(err.Code, err.Message)
-                        });
-                        break;
-
-                    default:
-                        // 400/404/500/502/기타 — 친화 문구만 표시(서버 원문 비노출), 로그아웃 금지.
-                        var friendly = UserErrorMessages.ForAgentError(err.Code, err.Message);
-                        HasError = true;
-                        ErrorTitle = "오류";
-                        PrimaryActionText = "다시 시도";
-                        ErrorMessage = friendly;
-                        StatusText = "오류";
-                        Transcript.Add(new SystemNoticeViewModel { Text = friendly });
-                        break;
-                }
+                ProjectError(err);
                 break;
         }
     }
+
+    /// <summary>
+    /// API-SPEC §클라이언트 처리 가이드: HTTP 상태(코드)로 분기. 401에서만 재로그인,
+    /// 403/429/404/5xx는 메시지만 표시하고 로그아웃하지 않는다.
+    /// </summary>
+    private void ProjectError(AgentError err)
+    {
+        switch (ClassifyAgentError(err.Code))
+        {
+            case AgentErrorKind.Cancelled:
+                StatusText = "중지됨";
+                return;
+
+            case AgentErrorKind.Unauthorized:
+                // 401 만 재로그인(세션 폐기). ApplyReadiness가 LoginRequested→로그인 화면 회귀.
+                ApplyReadiness(ServerReadiness.Unauthenticated);
+                return;
+
+            case AgentErrorKind.RateLimited:
+                // 429 토큰 쿼터/세션 캡 초과 — 친화 문구로 안내(서버 원문 비노출), 로그아웃 금지.
+                StatusText = "사용 한도 초과";
+                AddNotice("⚠ " + UserErrorMessages.ForAgentError(err.Code, err.Message));
+                _ = RefreshQuotaAsync();   // 잔여량 즉시 갱신
+                return;
+
+            case AgentErrorKind.Forbidden:
+                // 403 권한 부족 — 친화 문구 안내, 로그아웃 금지.
+                StatusText = "권한 없음";
+                AddNotice(UserErrorMessages.ForAgentError(err.Code, err.Message));
+                return;
+
+            default:
+                // 400/404/500/502/기타 — 친화 문구만 표시(서버 원문 비노출), 로그아웃 금지.
+                var friendly = UserErrorMessages.ForAgentError(err.Code, err.Message);
+                HasError = true;
+                ErrorTitle = "오류";
+                PrimaryActionText = "다시 시도";
+                ErrorMessage = friendly;
+                StatusText = "오류";
+                AddNotice(friendly);
+                return;
+        }
+    }
+
+    /// <summary>스트리밍 중이던 어시스턴트 턴을 확정하고 사고(thinking) 커서까지 함께 닫는다.</summary>
+    private void CompleteAssistantTurn()
+    {
+        if (_currentAssistant is not { } assistant) return;
+
+        assistant.IsStreaming = false;
+        _currentAssistant = null;
+        _currentThinking = null;
+    }
+
+    /// <summary>전사에 시스템 안내 한 줄을 남긴다(오류 배너 상태는 건드리지 않는다).</summary>
+    private void AddNotice(string text)
+        => Transcript.Add(new SystemNoticeViewModel { Text = text });
 
     /// <summary>
     /// Feature 7 — 세션 초기화(새 채팅·로그아웃·세션 복원/삭제) 시 토큰 표시 상태를 리셋한다.

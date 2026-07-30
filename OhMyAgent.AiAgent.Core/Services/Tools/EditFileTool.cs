@@ -22,13 +22,12 @@ public sealed class EditFileTool : ITool
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var path = ToolSchemas.GetString(args, "path");
         var oldString = ToolSchemas.GetString(args, "old_string");
         var newString = ToolSchemas.GetString(args, "new_string") ?? "";
         var replaceAll = ToolSchemas.GetBool(args, "replace_all");
 
-        if (string.IsNullOrWhiteSpace(path))
-            return ToolResult.Fail("path 가 비어 있습니다.");
+        if (!ToolPaths.TryGetRequiredPath(args, out var path, out var error))
+            return error;
         if (string.IsNullOrEmpty(oldString))
             return ToolResult.Fail("old_string 이 비어 있습니다.");
 
@@ -58,8 +57,7 @@ public sealed class EditFileTool : ITool
             replacements = 1;
         }
 
-        var bytes = new UTF8Encoding(false).GetBytes(updated);
-        await File.WriteAllBytesAsync(full, bytes, ct).ConfigureAwait(false);
+        await ToolPaths.WriteUtf8NoBomAsync(full, updated, ct).ConfigureAwait(false);
 
         return ToolResult.Json(new { path, replacements });
     }

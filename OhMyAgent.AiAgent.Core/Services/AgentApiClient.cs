@@ -147,6 +147,40 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     }
 
     /// <summary>
+    /// Bearer 인증 컨트롤플레인 요청 1건을 구성·전송한다. jsonPayload 가 있으면 JSON 본문으로 싣는다.
+    /// 응답은 호출자가 dispose 한다(본문은 이미 버퍼링된 상태).
+    /// </summary>
+    private async Task<HttpResponseMessage> SendControlAsync(
+        HttpMethod method, string path, string? jsonPayload, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(method, Url(path));
+        if (jsonPayload is not null)
+            req.Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+        ApplyAuth(req);
+        return await SendControlAsync(req, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 멱등 DELETE — 204/200/404(이미 없음) 모두 성공으로 간주하고, 오프라인·미지원도 graceful no-op.
+    /// 로컬 삭제는 호출자가 이미 수행한 뒤이므로 원격 실패로 사용자를 막지 않는다.
+    /// </summary>
+    private async Task DeleteGracefulAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            using var resp = await SendControlAsync(HttpMethod.Delete, path, null, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // 오프라인/미지원 → graceful no-op.
+        }
+    }
+
+    /// <summary>
     /// 서버 도달 여부만 본다 — 화면의 "서버 연결됨" 표시 전용.
     ///
     /// 의도적으로 (1) 토큰을 붙이지 않고 (2) 상태 코드를 따지지 않는다.
@@ -207,9 +241,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, Url(ModelsPath));
-            ApplyAuth(req);
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendControlAsync(HttpMethod.Get, ModelsPath, null, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 return Array.Empty<ModelInfo>();
 
@@ -280,9 +312,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, Url(path));
-            ApplyAuth(req);
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendControlAsync(HttpMethod.Get, path, null, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 return null;
 
@@ -317,9 +347,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, Url(PolicyPath));
-            ApplyAuth(req);
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendControlAsync(HttpMethod.Get, PolicyPath, null, ct).ConfigureAwait(false);
 
             if (resp.StatusCode == HttpStatusCode.NotFound)
                 return ToolPolicyFetch.NotImplemented;
@@ -353,13 +381,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
             var payload = JsonSerializer.Serialize(
                 new AuthorizeRequestDto(tool, arguments), AgentJson.Options);
 
-            using var req = new HttpRequestMessage(HttpMethod.Post, Url(AuthorizePath))
-            {
-                Content = new StringContent(payload, Encoding.UTF8, "application/json")
-            };
-            ApplyAuth(req);
-
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendControlAsync(HttpMethod.Post, AuthorizePath, payload, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 return null;   // 오류 → graceful null(호출자가 fail-closed 처리)
 
@@ -382,9 +404,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, Url(ProjectsPath));
-            ApplyAuth(req);
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendControlAsync(HttpMethod.Get, ProjectsPath, null, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 return Array.Empty<RemoteProject>();   // 404/501 등 미지원 → 빈 목록
 
@@ -418,13 +438,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         try
         {
             var payload = JsonSerializer.Serialize(body, AgentJson.Options);
-            using var req = new HttpRequestMessage(HttpMethod.Post, Url(ProjectsPath))
-            {
-                Content = new StringContent(payload, Encoding.UTF8, "application/json")
-            };
-            ApplyAuth(req);
-
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendControlAsync(HttpMethod.Post, ProjectsPath, payload, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await ReadErrorAsync(resp, ct).ConfigureAwait(false);
@@ -457,13 +471,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         {
             var path    = $"{ProjectsPath}/{Uri.EscapeDataString(remoteProjectId)}/conversations";
             var payload = JsonSerializer.Serialize(body, AgentJson.Options);
-            using var req = new HttpRequestMessage(HttpMethod.Post, Url(path))
-            {
-                Content = new StringContent(payload, Encoding.UTF8, "application/json")
-            };
-            ApplyAuth(req);
-
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendControlAsync(HttpMethod.Post, path, payload, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await ReadErrorAsync(resp, ct).ConfigureAwait(false);
@@ -484,59 +492,23 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         }
     }
 
-    public async Task DeleteRemoteProjectAsync(string remoteProjectId, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(remoteProjectId))
-            return;   // 원격 미동기화(remote_id 없음) → no-op
+    public Task DeleteRemoteProjectAsync(string remoteProjectId, CancellationToken ct = default)
+        => string.IsNullOrWhiteSpace(remoteProjectId)
+            ? Task.CompletedTask   // 원격 미동기화(remote_id 없음) → no-op
+            : DeleteGracefulAsync($"{ProjectsPath}/{Uri.EscapeDataString(remoteProjectId)}", ct);
 
-        try
-        {
-            var path = $"{ProjectsPath}/{Uri.EscapeDataString(remoteProjectId)}";
-            using var req = new HttpRequestMessage(HttpMethod.Delete, Url(path));
-            ApplyAuth(req);
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
-            // 204/200/404(이미 없음) 모두 성공으로 간주 — 삭제는 멱등. 그 외 상태도 graceful no-op.
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            // 오프라인/미지원 → graceful no-op(로컬 삭제는 호출자가 이미 수행).
-        }
-    }
-
-    public async Task DeleteRemoteConversationAsync(string remoteProjectId, string remoteConversationId, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(remoteProjectId) || string.IsNullOrWhiteSpace(remoteConversationId))
-            return;   // 원격 미동기화 → no-op
-
-        try
-        {
-            var path = $"{ProjectsPath}/{Uri.EscapeDataString(remoteProjectId)}/conversations/{Uri.EscapeDataString(remoteConversationId)}";
-            using var req = new HttpRequestMessage(HttpMethod.Delete, Url(path));
-            ApplyAuth(req);
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
-            // 멱등 삭제 — 404 포함 graceful.
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            // 오프라인/미지원 → graceful no-op.
-        }
-    }
+    public Task DeleteRemoteConversationAsync(string remoteProjectId, string remoteConversationId, CancellationToken ct = default)
+        => string.IsNullOrWhiteSpace(remoteProjectId) || string.IsNullOrWhiteSpace(remoteConversationId)
+            ? Task.CompletedTask   // 원격 미동기화 → no-op
+            : DeleteGracefulAsync(
+                $"{ProjectsPath}/{Uri.EscapeDataString(remoteProjectId)}/conversations/{Uri.EscapeDataString(remoteConversationId)}",
+                ct);
 
     public async Task<IReadOnlyList<RemoteSessionSummary>?> ListRemoteSessionsAsync(CancellationToken ct = default)
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, Url(AgentSessionsPath));
-            ApplyAuth(req);
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendControlAsync(HttpMethod.Get, AgentSessionsPath, null, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 return null;   // 404/501/오류 → graceful null
 
@@ -564,9 +536,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         try
         {
             var path = $"{AgentSessionsPath}/{Uri.EscapeDataString(id)}";
-            using var req = new HttpRequestMessage(HttpMethod.Get, Url(path));
-            ApplyAuth(req);
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendControlAsync(HttpMethod.Get, path, null, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 return null;   // 404/오류 → graceful null
 
@@ -594,13 +564,7 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         {
             var path    = $"{AgentSessionsPath}/{Uri.EscapeDataString(id)}";
             var payload = JsonSerializer.Serialize(new SessionUpsertDto(title, data), AgentJson.Options);
-            using var req = new HttpRequestMessage(HttpMethod.Put, Url(path))
-            {
-                Content = new StringContent(payload, Encoding.UTF8, "application/json")
-            };
-            ApplyAuth(req);
-
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
+            using var resp = await SendControlAsync(HttpMethod.Put, path, payload, ct).ConfigureAwait(false);
             return resp.IsSuccessStatusCode;   // 403/오류 → false(예외 없음)
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -613,28 +577,10 @@ public sealed class AgentApiClient(HttpClient httpClient, ISettingsService setti
         }
     }
 
-    public async Task DeleteRemoteSessionAsync(string id, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(id))
-            return;   // no-op
-
-        try
-        {
-            var path = $"{AgentSessionsPath}/{Uri.EscapeDataString(id)}";
-            using var req = new HttpRequestMessage(HttpMethod.Delete, Url(path));
-            ApplyAuth(req);
-            using var resp = await SendControlAsync(req, ct).ConfigureAwait(false);
-            // 204/200/404(이미 없음) 모두 성공으로 간주 — 삭제는 멱등. 그 외도 graceful no-op.
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            // 오프라인/미지원 → graceful no-op.
-        }
-    }
+    public Task DeleteRemoteSessionAsync(string id, CancellationToken ct = default)
+        => string.IsNullOrWhiteSpace(id)
+            ? Task.CompletedTask   // no-op
+            : DeleteGracefulAsync($"{AgentSessionsPath}/{Uri.EscapeDataString(id)}", ct);
 
     private void ApplyAuth(HttpRequestMessage req)
     {

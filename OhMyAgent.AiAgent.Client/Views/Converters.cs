@@ -10,6 +10,19 @@ using HorizontalAlignment = System.Windows.HorizontalAlignment;
 
 namespace OhMyAgent.AiAgent.Client.Views;
 
+/// <summary>
+/// 표시 전용(OneWay) 컨버터의 공통 베이스 — 역변환을 지원하지 않는다.
+/// 바인딩이 실수로 TwoWay 로 걸리면 조용히 무시되는 대신 즉시 드러나도록 예외를 던진다.
+/// 역변환이 의미 있는 컨버터는 IValueConverter 를 직접 구현한다.
+/// </summary>
+public abstract class OneWayConverter : IValueConverter
+{
+    public abstract object Convert(object? value, Type t, object p, CultureInfo c);
+
+    public object ConvertBack(object value, Type t, object p, CultureInfo c)
+        => throw new NotSupportedException();
+}
+
 [ValueConversion(typeof(bool), typeof(Visibility))]
 public sealed class BoolToVisibilityConverter : IValueConverter
 {
@@ -41,66 +54,51 @@ public sealed class InverseBoolConverter : IValueConverter
 }
 
 [ValueConversion(typeof(bool), typeof(SolidColorBrush))]
-public sealed class BoolToStatusBrushConverter : IValueConverter
+public sealed class BoolToStatusBrushConverter : OneWayConverter
 {
-    public object Convert(object value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => value is true
             ? new SolidColorBrush(Color.FromRgb(0x34, 0xD3, 0x99))  // #34D399 Connected
             : new SolidColorBrush(Color.FromRgb(0xFB, 0x71, 0x85)); // #FB7185 Disconnected
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>null =&gt; Collapsed, non-null =&gt; Visible. Used for the inline approval card (PendingApproval).</summary>
 [ValueConversion(typeof(object), typeof(Visibility))]
-public sealed class NullToVisibilityConverter : IValueConverter
+public sealed class NullToVisibilityConverter : OneWayConverter
 {
-    public object Convert(object? value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => value is null ? Visibility.Collapsed : Visibility.Visible;
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>Empty/null string =&gt; Collapsed, otherwise Visible.</summary>
 [ValueConversion(typeof(string), typeof(Visibility))]
-public sealed class StringToVisibilityConverter : IValueConverter
+public sealed class StringToVisibilityConverter : OneWayConverter
 {
-    public object Convert(object? value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => string.IsNullOrEmpty(value as string) ? Visibility.Collapsed : Visibility.Visible;
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>Count &gt; 0 =&gt; Visible (transcript present), 0 =&gt; Collapsed. Used to switch to the transcript view.</summary>
 [ValueConversion(typeof(int), typeof(Visibility))]
-public sealed class CountToVisibilityConverter : IValueConverter
+public sealed class CountToVisibilityConverter : OneWayConverter
 {
-    public object Convert(object? value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => value is int n && n > 0 ? Visibility.Visible : Visibility.Collapsed;
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>Count == 0 =&gt; Visible (empty transcript ⇒ welcome screen), &gt; 0 =&gt; Collapsed.</summary>
 [ValueConversion(typeof(int), typeof(Visibility))]
-public sealed class EmptyCountToVisibilityConverter : IValueConverter
+public sealed class EmptyCountToVisibilityConverter : OneWayConverter
 {
-    public object Convert(object? value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => value is int n && n > 0 ? Visibility.Collapsed : Visibility.Visible;
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>Maps a <see cref="ToolRisk"/> to an accent brush for tool-call card headers.</summary>
 [ValueConversion(typeof(ToolRisk), typeof(SolidColorBrush))]
-public sealed class ToolRiskToBrushConverter : IValueConverter
+public sealed class ToolRiskToBrushConverter : OneWayConverter
 {
-    public object Convert(object value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => new SolidColorBrush(value is ToolRisk risk
             ? risk switch
             {
@@ -111,16 +109,13 @@ public sealed class ToolRiskToBrushConverter : IValueConverter
                 _                    => Color.FromRgb(0x9C, 0xA3, 0xB4),
             }
             : Color.FromRgb(0x8B, 0x94, 0x9E));
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>Maps a <see cref="ToolCallStatus"/> to a status brush (badge background / text).</summary>
 [ValueConversion(typeof(ToolCallStatus), typeof(SolidColorBrush))]
-public sealed class ToolCallStatusToBrushConverter : IValueConverter
+public sealed class ToolCallStatusToBrushConverter : OneWayConverter
 {
-    public object Convert(object value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => new SolidColorBrush(value is ToolCallStatus status
             ? status switch
             {
@@ -132,16 +127,13 @@ public sealed class ToolCallStatusToBrushConverter : IValueConverter
                 _                               => Color.FromRgb(0x9C, 0xA3, 0xB4),
             }
             : Color.FromRgb(0x8B, 0x94, 0x9E));
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>Maps a <see cref="ToolCallStatus"/> to a short glyph + label for the status badge.</summary>
 [ValueConversion(typeof(ToolCallStatus), typeof(string))]
-public sealed class ToolCallStatusToTextConverter : IValueConverter
+public sealed class ToolCallStatusToTextConverter : OneWayConverter
 {
-    public object Convert(object value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => value is ToolCallStatus status
             ? status switch
             {
@@ -153,16 +145,13 @@ public sealed class ToolCallStatusToTextConverter : IValueConverter
                 _                               => string.Empty,
             }
             : string.Empty;
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>Maps a <see cref="ToolRisk"/> to a Korean label for the risk badge.</summary>
 [ValueConversion(typeof(ToolRisk), typeof(string))]
-public sealed class ToolRiskToTextConverter : IValueConverter
+public sealed class ToolRiskToTextConverter : OneWayConverter
 {
-    public object Convert(object value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => value is ToolRisk risk
             ? risk switch
             {
@@ -173,9 +162,6 @@ public sealed class ToolRiskToTextConverter : IValueConverter
                 _                    => risk.ToString(),
             }
             : string.Empty;
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>bool(접힘) =&gt; GridLength. true=0(접힘), false=ExpandedWidth(ConverterParameter 폭, 기본 260).</summary>
@@ -198,18 +184,15 @@ public sealed class BoolToGridLengthConverter : IValueConverter
 }
 
 /// <summary>double × parameter(fraction). 컨테이너 ActualWidth 에 곱해 반응형 MaxWidth 산출.</summary>
-public sealed class MultiplyConverter : IValueConverter
+public sealed class MultiplyConverter : OneWayConverter
 {
-    public object Convert(object value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
     {
         if (value is double d && !double.IsNaN(d) && d > 0 &&
             double.TryParse(p as string, NumberStyles.Any, CultureInfo.InvariantCulture, out var f))
             return d * f;
         return double.PositiveInfinity; // 컨테이너 폭 미확정 시 제한 없음(잘림 방지).
     }
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 // Chat(사람↔사람 메신저) 전용 컨버터 — 설계서 §1.
@@ -217,9 +200,9 @@ public sealed class MultiplyConverter : IValueConverter
 
 /// <summary>long(unix epoch 초) =&gt; 로컬 시각 표시 문자열. 오늘=시각만, 어제="어제", 그 외=날짜.</summary>
 [ValueConversion(typeof(long), typeof(string))]
-public sealed class UnixSecondsToLocalTimeConverter : IValueConverter
+public sealed class UnixSecondsToLocalTimeConverter : OneWayConverter
 {
-    public object Convert(object? value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
     {
         if (value is not long secs || secs <= 0) return string.Empty;
         var local = DateTimeOffset.FromUnixTimeSeconds(secs).ToLocalTime().DateTime;
@@ -232,27 +215,21 @@ public sealed class UnixSecondsToLocalTimeConverter : IValueConverter
             return local.ToString("M월 d일", c);         // 예: "6월 27일"
         return local.ToString("yyyy.M.d", c);
     }
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>int(안읽음 수) &gt; 0 =&gt; Visible. (기존 CountToVisibility 와 동치 — 의미 명료화용 별칭.)</summary>
 [ValueConversion(typeof(int), typeof(Visibility))]
-public sealed class UnreadCountToBadgeVisibilityConverter : IValueConverter
+public sealed class UnreadCountToBadgeVisibilityConverter : OneWayConverter
 {
-    public object Convert(object? value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => value is int n && n > 0 ? Visibility.Visible : Visibility.Collapsed;
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary><see cref="ChatConnectionState"/> =&gt; 상태 점 Brush(연결=green / 재연결·연결중=amber / 끊김=red).</summary>
 [ValueConversion(typeof(ChatConnectionState), typeof(SolidColorBrush))]
-public sealed class ChatConnectionStateToBrushConverter : IValueConverter
+public sealed class ChatConnectionStateToBrushConverter : OneWayConverter
 {
-    public object Convert(object? value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => new SolidColorBrush(value is ChatConnectionState s
             ? s switch
             {
@@ -262,45 +239,33 @@ public sealed class ChatConnectionStateToBrushConverter : IValueConverter
                 _                                => Color.FromRgb(0xFB, 0x71, 0x85), // ErrorDot
             }
             : Color.FromRgb(0xFB, 0x71, 0x85));
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>bool(내 메시지) =&gt; HorizontalAlignment(true=Right / false=Left).</summary>
 [ValueConversion(typeof(bool), typeof(HorizontalAlignment))]
-public sealed class IsMineToAlignmentConverter : IValueConverter
+public sealed class IsMineToAlignmentConverter : OneWayConverter
 {
-    public object Convert(object? value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => value is true ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>bool(내 메시지) =&gt; 버블 Brush(true=ChatMeBubble 파랑 반투명 / false=ChatSurface2).</summary>
 [ValueConversion(typeof(bool), typeof(SolidColorBrush))]
-public sealed class IsMineToBubbleBrushConverter : IValueConverter
+public sealed class IsMineToBubbleBrushConverter : OneWayConverter
 {
-    public object Convert(object? value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
         => new SolidColorBrush(value is true
             ? Color.FromArgb(0x29, 0x38, 0x8B, 0xFD)  // ChatMeBubbleBrush rgba(56,139,253,.16)
             : Color.FromRgb(0x1B, 0x24, 0x33));        // ChatSurface2Brush #1B2433
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
 
 /// <summary>표시이름 → 아바타 이니셜(첫 글자, 대문자). 빈 값은 "?".</summary>
-public sealed class InitialConverter : IValueConverter
+public sealed class InitialConverter : OneWayConverter
 {
-    public object Convert(object? value, Type t, object p, CultureInfo c)
+    public override object Convert(object? value, Type t, object p, CultureInfo c)
     {
         var s = value?.ToString()?.Trim();
         if (string.IsNullOrEmpty(s)) return "?";
         return char.ToUpper(s[0], c).ToString();
     }
-
-    public object ConvertBack(object value, Type t, object p, CultureInfo c)
-        => throw new NotSupportedException();
 }
