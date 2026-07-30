@@ -3,7 +3,10 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using OhMyAgent.AiAgent.Client.Models;
+using OhMyAgent.AiAgent.Client.Models.Loop;
 using OhMyAgent.AiAgent.Client.Services;
+using OhMyAgent.AiAgent.Client.Services.Loop;
 using OhMyAgent.AiAgent.Client.Services.Tools;
 using OhMyAgent.AiAgent.Host;
 
@@ -11,6 +14,9 @@ AppLog.Initialize();
 AppLog.Info("Host", $"헤드리스 시작 — v{AppVersion.Full}");
 
 var cfg = HeadlessConfig.FromEnvironment();   // OHMYAGENT_SERVER_URL / _AUTH_TOKEN / _MODEL / _WORKSPACE / _HEADLESS_APPROVAL
+
+// 취소 토큰을 가장 먼저 만든다 — 기동 선검사(8-a)가 네트워크를 타므로 그 구간도 Ctrl+C 로 끊을 수 있어야 한다.
+using var cts = ConsoleCancellation();   // Ctrl+C / SIGTERM → 취소 토큰
 
 // 0) 헤드리스 디스패처 — UI 스레드 없음. 즉시 실행.
 IUiDispatcher ui = new ImmediateUiDispatcher();
@@ -45,18 +51,41 @@ var scriptExec = new ScriptExecutor();
 
 // 5) 공유 서비스
 var todoService = new TodoService();
+// schedule_wakeup 도구 → 루프 엔진 사이의 우편함. 도구와 컨트롤러가 같은 인스턴스를 봐야
+// "이번 턴에 모델이 정한 다음 시점"이 전달된다(조립 순서: sink → tool → controller).
+var wakeupSink  = new WakeupSink();
+
+// 5a) API 클라이언트 — 도구(generate_image)가 서버를 대리 호출자로 쓰므로 도구 조립보다 먼저 만든다.
+//     설정과 HttpClient 만 필요해 이 위치에서 만들 수 있다(정책·컴팩터는 8) 에서 이 인스턴스를 재사용).
+var api = new AgentApiClient(httpClient, settings);
 
 // 6) headless-safe 도구 (Clipboard 2종 + Screenshot 제외)
-var tools = HeadlessAgentHost.BuildHeadlessTools(scriptExec, toolHttp, todoService);
+var tools = HeadlessAgentHost.BuildHeadlessTools(scriptExec, toolHttp, todoService, wakeupSink, api);
 
 // 7) 권한 게이트 — 핸들러는 정책에 따라 등록. 미등록이면 gated=Deny(안전 기본).
 var permissions = new PermissionService(settings);
 HeadlessPermissionPolicy.Apply(permissions, cfg.ApprovalMode);   // "deny"(기본) | "auto"
 
-// 8) API/정책/컴팩터
-var api        = new AgentApiClient(httpClient, settings);
+// 8) 정책/컴팩터 (api 는 5a 에서 이미 만들어졌다 — generate_image 도구가 그보다 먼저 필요했다)
 var toolPolicy = new ToolPolicyService(api);
 var compactor  = new ContextCompactor(api, settings);
+
+// 8-a) 기동 선검사 — 토큰이 죽었으면 여기서 끝낸다.
+//      헤드리스는 재로그인 UI 가 없어 401 을 만나도 스스로 회복하지 못한다. 그대로 진행하면 "살아있지만
+//      아무 일도 못 하는" 좀비가 되고, 종료 코드가 0 이라 systemd 도 개입하지 못한다(운영에서 관측됨).
+//      실패 사유를 종료 코드로 드러내 재시작·경보가 걸리게 한다.
+switch (await api.CheckReadinessAsync(cts.Token))
+{
+    case ServerReadiness.Disconnected:
+        AppLog.Error("Host", $"서버에 연결할 수 없습니다: {settings.Current.ServerBaseUrl}");
+        Console.Error.WriteLine($"⚠ 서버에 연결할 수 없습니다: {settings.Current.ServerBaseUrl}");
+        return HostExitCode.ServerUnreachable;
+
+    case ServerReadiness.Unauthenticated:
+        AppLog.Error("Host", "인증 토큰이 없거나 만료·무효합니다 — 기동을 중단합니다.");
+        Console.Error.WriteLine("⚠ OHMYAGENT_AUTH_TOKEN 이 없거나 만료·무효합니다. 새 토큰으로 재시작하세요.");
+        return HostExitCode.AuthFailure;
+}
 
 // 8-b) 서버 도구 정책 로드 — App 의 로그인 직후 시맨틱과 동일(AgentSessionViewModel 참조).
 //      404(미구현) = 정책 미운영 확정 → fail-open. 그 외 실패 = fail-closed(전 도구 차단)로 계속 실행하되
@@ -68,6 +97,16 @@ catch (Exception ex)
     AppLog.Warn("Host", $"도구 정책 로드 실패 — fail-closed 로 계속: {ex.Message}");
     Console.Error.WriteLine($"⚠ {ex.Message}");
 }
+
+// 8-b-2) 런타임 인증 실패 감시 — 401 이 연속 임계값에 닿으면 취소 토큰을 당겨 프로세스를 접는다.
+//        토큰 갱신 경로가 없으므로(재로그인 UI 부재) 재시도는 무의미하고, 종료만이 systemd 에
+//        "새 토큰으로 재시작하라"를 전달하는 유일한 수단이다.
+var authFatal   = false;
+var authFailures = new AuthFailureReporter(new AuthFailureMonitor(), () =>
+{
+    authFatal = true;
+    try { cts.Cancel(); } catch (ObjectDisposedException) { /* 이미 종료 경로 */ }
+});
 
 // 8-c) 서버 추가 위험명령 패턴(디폴트에 가산) — 미구현/오류면 내장 블랙리스트만으로 방어.
 try { SecurityValidator.SetServerPatterns(await api.GetCommandSecurityPolicyAsync()); }
@@ -100,8 +139,9 @@ var registry = new ToolRegistry([.. tools, new TaskTool(subOrchestrator, workspa
 var orchestrator = new AgentOrchestrator(api, registry, permissions, workspace, settings, toolPolicy, compactor);
 
 // 12) 실행 코어 + 모드 분기
-var host = new HeadlessAgentHost(orchestrator);
-using var cts = ConsoleCancellation();   // Ctrl+C / SIGTERM → 취소 토큰
+// using — A2A 리스너 경로처럼 중간에 return 하는 분기에서도 루프 Task 가 확실히 접히게 한다.
+using var loop = new LoopController(wakeupSink);
+var host = new HeadlessAgentHost(orchestrator, authFailures, loop);
 
 // 12-a) A2A 서버 모드 — OHMYAGENT_LISTEN 이 있으면 stdin 루프 대신 HttpListener 로 수신(스펙 §1-G).
 //       기존 원샷/대화 경로는 LISTEN 미설정 시 완전 불변.
@@ -112,20 +152,22 @@ if (a2a.IsListenMode)
 
     var regOpts  = AgentRegistryOptions.FromEnvironment(a2a);   // AGENT_NAME/ADVERTISE_URL/CAPABILITIES/REGISTRY
     var authn    = new A2aInboundAuthenticator(a2a, brokerKeyStore, registryClient);
-    var listener = new A2aListener(orchestrator, a2a, authn);
+    var listener = new A2aListener(orchestrator, a2a, authn, authFailures);
 
     var listenerTask = listener.RunAsync(cts.Token);   // blocking 수신 루프(Task)
     AgentRegistryLifecycle? lifecycle = null;
     if (regOpts.RegistryEnabled)
     {
         regOpts.ValidateOrThrow();   // ADVERTISE_URL 0.0.0.0/빈값 → 기동 거부(§D)
-        lifecycle = new AgentRegistryLifecycle(registryClient, regOpts, brokerKeyStore, settings.Current.ModelId);
+        lifecycle = new AgentRegistryLifecycle(
+            registryClient, regOpts, brokerKeyStore, settings.Current.ModelId, authFailures);
         await lifecycle.StartAsync(cts.Token);   // register + 공개키 + heartbeat spawn(실패는 내부 graceful)
     }
 
     try { await listenerTask; }
+    catch (OperationCanceledException) { /* Ctrl+C / 인증 실패 종료 — 정상 경로 */ }
     finally { if (lifecycle is not null) await lifecycle.StopAsync(); }   // best-effort deregister
-    return;
+    return authFatal ? HostExitCode.AuthFailure : HostExitCode.Ok;
 }
 
 var oneShot = cfg.Prompt ?? (Console.IsInputRedirected ? await Console.In.ReadToEndAsync() : null);
@@ -134,7 +176,11 @@ if (!string.IsNullOrWhiteSpace(oneShot))
 else
     await host.RunInteractiveAsync(cts.Token);           // 표준입력 프롬프트 루프
 
-return;
+// 프로세스가 접히기 전에 반복 실행을 확실히 멈춘다 — 남은 턴이 종료 후에도 서버를 때리면 안 된다.
+await loop.StopAndWaitAsync(LoopStopReason.HostShutdown);
+
+// 인증 실패로 접힌 경우에만 비정상 종료 — 그래야 systemd 가 새 토큰으로 재시작을 건다.
+return authFatal ? HostExitCode.AuthFailure : HostExitCode.Ok;
 
 // ── 로컬 함수 ──
 

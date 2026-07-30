@@ -17,7 +17,8 @@ public sealed class AgentOrchestrator(
     ISettingsService settings,
     IToolPolicyService policy,
     ContextCompactor compactor,
-    bool suppressThinking = false) : IAgentOrchestrator
+    bool suppressThinking = false,
+    IAgentActivityRegistry? activities = null) : IAgentOrchestrator
 {
     // 서브에이전트 오케스트레이터는 이 값을 true 로 받는다. 서브에이전트의 사고는 TaskTool 이
     // 어차피 버리므로(최종 텍스트만 회수) 요청하면 토큰만 낭비다. 메인은 false(설정을 따른다).
@@ -47,6 +48,40 @@ public sealed class AgentOrchestrator(
         [EnumeratorCancellation] CancellationToken ct = default,
         int? maxIterations = null)
     {
+        // 계측이 꺼져 있으면(activities == null) 종전 경로와 완전히 동일하다 — 헤드리스·테스트가 비용을 내지 않는다.
+        if (activities is null)
+        {
+            await foreach (var e in RunCoreAsync(userGoal, session, attachments, ct, maxIterations, null)
+                               .ConfigureAwait(false))
+                yield return e;
+            yield break;
+        }
+
+        // 턴 전용 토큰을 만들어 아래 전 구간에 넘긴다. 태스크 매니저의 "이 턴만 중지"가 기존 사용자 중지
+        // 경로(_cts·앱 종료)를 침범하지 않고, 반대로 그쪽이 취소되면 연결을 통해 함께 풀리게 하는 장치다.
+        // 서브에이전트 턴은 자기를 띄운 task 도구가 주변 소유자로 잡혀 그 아래에 중첩된다.
+        using var turn = activities.BeginTurn(ct, maxIterations ?? settings.Current.MaxIterations);
+        await foreach (var e in RunCoreAsync(userGoal, session, attachments, turn.Token, maxIterations, turn)
+                           .ConfigureAwait(false))
+            yield return e;
+    }
+
+    /// <summary>
+    /// 에이전트 루프 본체. 계측용 래퍼(<see cref="RunAsync"/>)와 분리한 이유는 두 가지다 —
+    /// (1) <c>using</c> 으로 턴 항목 수명을 감싸려면 반복자 밖에 프레임이 하나 필요하고,
+    /// (2) 이 메서드가 받는 <paramref name="ct"/> 를 "턴 토큰"으로 못박아 두면 아래 전 구간이
+    ///     외부 취소와 개별 취소를 구분하지 않고 동일하게 다룰 수 있다.
+    /// </summary>
+    private async IAsyncEnumerable<AgentEvent> RunCoreAsync(
+        string userGoal,
+        AgentSession session,
+        IReadOnlyList<Attachment>? attachments,
+        // 호출자가 토큰을 명시 인자로 넘기므로 실제로 쓰이지는 않지만, 반복자에 CancellationToken 매개변수가
+        // 있으면 컴파일러가 이 특성을 요구한다(CS8425). WithCancellation 경로는 래퍼가 이미 흡수한다.
+        [EnumeratorCancellation] CancellationToken ct,
+        int? maxIterations,
+        IAgentActivityScope? turn)
+    {
         var mode = settings.Current.PermissionMode;
 
         // 1) 시스템 프롬프트 시드 — 비어 있을 때만.
@@ -63,6 +98,7 @@ public sealed class AgentOrchestrator(
 
         while (iteration < max && !ct.IsCancellationRequested)
         {
+            turn?.ReportIteration(iteration + 1);   // 태스크 매니저의 반복 진행 표시(관찰만)
             yield return new AgentIterationAdvanced(iteration + 1, max);
 
             // 요청을 만들기 전에 이력이 예산을 넘었는지 확인한다. 대부분의 턴은 NotNeeded 로 즉시 반환된다
@@ -197,7 +233,7 @@ public sealed class AgentOrchestrator(
 
                 using var slots = new SemaphoreSlim(MaxParallelToolCalls);
                 for (var i = 0; i < pendingCalls.Count; i++)
-                    running.Add(RunCallAsync(i, pendingCalls[i], slots, ct));
+                    running.Add(RunCallAsync(i, pendingCalls[i], slots, turn?.Id, ct));
 
                 // 완료되는 대로 결과를 방출한다(느린 하나가 나머지 표시를 막지 않게).
                 while (running.Count > 0)
@@ -266,6 +302,12 @@ public sealed class AgentOrchestrator(
                 }
 
                 var risk = tool.Risk;
+
+                // 태스크 매니저 항목 등록 — 승인 대기 중인 도구도 목록에 보이고 개별 취소가 가능해야 하므로
+                // 실행 직전이 아니라 "시작 이벤트와 같은 시점"에 등록한다. using 이라 아래 yield break
+                // (취소) 경로에서도 반복자 정리와 함께 반드시 해제된다.
+                using var toolScope = activities?.BeginTool(turn?.Id, ct, call.Name, risk, call.Arguments);
+
                 yield return new AgentToolCallStarted(call.Id, call.Name, call.Arguments, risk);
 
                 var gated = mode != PermissionMode.FullAuto && risk != ToolRisk.ReadOnly;
@@ -276,7 +318,8 @@ public sealed class AgentOrchestrator(
                 // 병렬 경로(RunCallAsync)는 ReadOnly 전용이라 Execute 인 ask_agent 가 도달하지 않는다 → 무변경.
                 var ctx = new ToolContext(workspace, settings.Current.PermissionMode, session.InboundHop);
 
-                var (result, cancelled) = await ExecuteCallAsync(tool, call, risk, ctx, ct)
+                var (result, cancelled) = await ExecuteCallAsync(
+                        tool, call, risk, ctx, toolScope?.Token ?? ct, ct, toolScope)
                     .ConfigureAwait(false);
 
                 if (cancelled)
@@ -336,21 +379,29 @@ public sealed class AgentOrchestrator(
     /// 도구 하나를 실행한다(병렬 경로 전용). <b>절대 예외를 던지지 않는다</b> —
     /// 던지면 Task.WhenAny 로 회수할 때 이터레이터 밖으로 튀어 루프 전체가 죽는다.
     /// </summary>
-    private async Task<ParallelCallOutcome> RunCallAsync(int index, ToolCall call, SemaphoreSlim slots, CancellationToken ct)
+    private async Task<ParallelCallOutcome> RunCallAsync(
+        int index, ToolCall call, SemaphoreSlim slots, Guid? turnId, CancellationToken ct)
     {
+        // 등록은 세마포어 대기 "전"에 한다 — 동시 상한(8) 때문에 줄 서 있는 호출도 목록에 보여야 하고,
+        // 대기 중에도 개별 취소가 가능해야 한다. 이 메서드는 호출 시점에 동기 구간이 먼저 돌기 때문에
+        // 배치 전체가 즉시 등록된다.
+        // 위험도는 ReadOnly 로 고정한다 — 병렬 경로는 배치 전원이 ReadOnly 일 때만 선택된다(parallelizable 조건).
+        using var scope = activities?.BeginTool(turnId, ct, call.Name, ToolRisk.ReadOnly, call.Arguments);
+        var toolCt = scope?.Token ?? ct;
+
         try
         {
-            await slots.WaitAsync(ct).ConfigureAwait(false);
+            await slots.WaitAsync(toolCt).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            return new ParallelCallOutcome(index, ToolResult.Fail("사용자가 중지했습니다."), true);
+            return CancelOutcome(index, ct);
         }
 
         try
         {
             // 서버 도구 정책 게이트 — 순차 경로와 동일하게 실행 직전에 평가한다.
-            var gate = await policy.EvaluateAsync(call.Name, call.Arguments, ct).ConfigureAwait(false);
+            var gate = await policy.EvaluateAsync(call.Name, call.Arguments, toolCt).ConfigureAwait(false);
             if (!gate.Allowed)
             {
                 return new ParallelCallOutcome(index,
@@ -361,12 +412,13 @@ public sealed class AgentOrchestrator(
                 return new ParallelCallOutcome(index, ToolResult.Fail($"Unknown tool: {call.Name}"), false);
 
             var ctx = new ToolContext(workspace, settings.Current.PermissionMode);
-            var (result, cancelled) = await ExecuteCallAsync(tool, call, tool.Risk, ctx, ct).ConfigureAwait(false);
+            var (result, cancelled) = await ExecuteCallAsync(tool, call, tool.Risk, ctx, toolCt, ct, scope)
+                .ConfigureAwait(false);
             return new ParallelCallOutcome(index, result, cancelled);
         }
         catch (OperationCanceledException)
         {
-            return new ParallelCallOutcome(index, ToolResult.Fail("사용자가 중지했습니다."), true);
+            return CancelOutcome(index, ct);
         }
         catch (Exception ex)
         {
@@ -405,23 +457,54 @@ public sealed class AgentOrchestrator(
             Thinking: thinking);
     }
 
+    /// <summary>
+    /// 도구 하나만 중지했을 때 모델에게 돌려주는 문구. "스레드를 죽였다"는 식의 표현을 쓰지 않는다 —
+    /// 실제로 일어난 일은 협조적 취소 요청이고, 도구가 그것을 받아들여 끝난 것이다.
+    /// </summary>
+    private const string SingleToolCancelledMessage = "이 도구 실행을 사용자가 중지했습니다.";
+
+    /// <summary>
+    /// 병렬 호출의 취소 결과. 턴 전체 취소(사용자 중지·앱 종료)와 이 도구 하나만 중지된 경우를 구분한다 —
+    /// 후자는 배치의 나머지가 계속 진행돼야 하고, 모델에는 실패로 보고돼 tool_use/tool_result 짝이 유지된다.
+    /// </summary>
+    private static ParallelCallOutcome CancelOutcome(int index, CancellationToken turnCt)
+        => turnCt.IsCancellationRequested
+            ? new ParallelCallOutcome(index, ToolResult.Fail("사용자가 중지했습니다."), true)
+            : new ParallelCallOutcome(index, ToolResult.Fail(SingleToolCancelledMessage), false);
+
     // R3(설계 의도): 도구 예외는 여기서 중앙집중으로 ToolResult.Fail(is_error) 변환 — 모든 도구가
     // 동일 오류계약을 따르고 정상 경로만 구현. 도구별 try/catch 는 의도적으로 두지 않는다.
+    //
+    // 토큰이 둘인 이유: <paramref name="toolCt"/> 는 이 도구 전용(태스크 매니저의 개별 중지),
+    // <paramref name="turnCt"/> 는 턴 전체(사용자 중지·앱 종료)다. 도구에는 전용 토큰을 주고
+    // "턴을 접을지"는 턴 토큰으로만 판단해야 개별 중지가 대화 전체를 끊지 않는다.
     private async Task<(ToolResult Result, bool Cancelled)> ExecuteCallAsync(
-        ITool tool, ToolCall call, ToolRisk risk, ToolContext ctx, CancellationToken ct)
+        ITool tool, ToolCall call, ToolRisk risk, ToolContext ctx,
+        CancellationToken toolCt, CancellationToken turnCt, IAgentActivityScope? scope)
     {
+        // 이 아래에서 도구가 띄우는 자식 프로세스의 소유자를 이 도구로 지정한다(AsyncLocal).
+        // 반복자 본문이 아니라 이 평범한 async 메서드에서 잡아야 값이 보존된다 — IAgentActivityRegistry 주석 참조.
+        using var owner = scope is null ? null : activities?.EnterOwner(scope.Id);
+
         try
         {
-            var decision = await permissions.RequestAsync(call, risk, ctx, ct).ConfigureAwait(false);
+            var decision = await permissions.RequestAsync(call, risk, ctx, toolCt).ConfigureAwait(false);
             if (decision == PermissionDecision.Deny)
                 return (ToolResult.Fail("Denied by user"), false);
 
-            var result = await tool.ExecuteAsync(call.Arguments, ctx, ct).ConfigureAwait(false);
+            var result = await tool.ExecuteAsync(call.Arguments, ctx, toolCt).ConfigureAwait(false);
             return (result, false);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (turnCt.IsCancellationRequested)
         {
             return (ToolResult.Fail("사용자가 중지했습니다."), true);
+        }
+        catch (OperationCanceledException) when (toolCt.IsCancellationRequested)
+        {
+            // 이 도구만 중지됐다 — 턴은 계속 간다(Cancelled=false). 모델은 실패한 도구로 인식하고
+            // 다음 판단을 이어가며, 이력의 tool_use/tool_result 짝도 그대로 유지된다.
+            scope?.Complete(AgentActivityState.Canceled, "사용자가 이 도구만 중지했습니다.");
+            return (ToolResult.Fail(SingleToolCancelledMessage), false);
         }
         catch (AgentException ex)
         {

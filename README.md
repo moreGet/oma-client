@@ -11,14 +11,14 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 
 - **Windows 데스크톱 앱**(`OhMyAgent.AiAgent.Client`, WPF) — 사용자가 직접 쓰는 GUI 클라이언트
 - **헤드리스 에이전트**(`OhMyAgent.AiAgent.Host`, 크로스플랫폼 콘솔) — Linux/Windows 서버에서 UI 없이 상주하며,
-  **에이전트 간 통신(A2A)** 으로 서로를 발견·위임해 협업 ([상세](docs/a2a-registry/))
+  **에이전트 간 통신(A2A)** 으로 서로를 발견·위임해 협업 ([상세](docs/a2a-registry.md))
 
 ---
 
 ## 핵심 특징
 
 - **에이전트 루프**: `질의 → 도구 호출 → 실행 → 결과 반환 → 반복`을 `end_turn` 까지 자동 수행
-- **33개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷, 압축(zip), 사무직 문서·데이터(CSV·Excel·PDF·Word·**PowerPoint·한글 HWPX**), 작업 계획 추적(manage_todos), 서브에이전트 위임(task)까지 (아래 표 참조)
+- **35개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷, 압축(zip), 사무직 문서·데이터(CSV·Excel·PDF·Word·**PowerPoint·한글 HWPX**), 작업 계획 추적(manage_todos), 반복 실행 페이싱(schedule_wakeup), 서브에이전트 위임(task)까지 (아래 표 참조)
 - **데이터 주권 / 국외 반출 차단**: 클라이언트는 **어떤 LLM 벤더에도 직접 접속하지 않고** 사내 서버하고만 통신합니다. 서버가 연동할 모델을 **Azure OpenAI 국내 리전·지역별 폐쇄망 모델·온프레미스(Ollama 등)** 로 고정하면 내부 정보가 **국경을 넘을 경로 자체가 없습니다**. 클라이언트에는 벤더 API 키가 존재하지 않습니다 ([상세](#데이터-주권--국외-반출-차단))
 - **멀티루트 워크스페이스**: 최대 **10개** 작업 디렉토리를 동시 등록, **폴더별 접근 허용/차단 토글**. 모든 파일/셸 작업이 활성 루트 기준으로 resolve되고 경로 탈출은 차단
 - **프로젝트(대화 묶음)**: 여러 대화 세션을 상위 컨테이너로 묶어 관리. **로컬 우선 저장 + 선택적 서버 동기화**, 사이드바에서 대화를 **드래그앤드롭**으로 프로젝트에 분류
@@ -33,6 +33,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 - **서버 제어형 도구/보안**(선택, 2중 안전): 사용 가능 도구를 서버가 통제(`GET /api/v1/tools/policy`, cached/realtime) — 비활성 도구는 모델에 **노출조차 안 됨**. 위험 명령 차단 패턴도 **클라 디폴트 ∪ 서버 추가**(`GET /api/v1/security/command-policy`)로 운영하며, 서버 값이 없으면 클라 내장 디폴트만 적용
 - **버전 관리 / 업데이트 알림**: SemVer + 빌드 git 해시. 서버 버전 점검으로 새/필수 버전 배너 안내(`GET /api/v1/client/version`)
 - **사용자 친화 에러**: 서버 원문(영문/기술 문구) 대신 상태 코드 기준 한국어 안내로 변환. **401에서만 재로그인**, 403/429/404/5xx는 메시지만(로그아웃 없음)
+- **전송 최적화**: 비스트리밍 REST 응답은 **gzip 수용**(`Accept-Encoding`) — 채팅 SSE 는 스트리밍이 버퍼에 갇히지 않도록 **의도적으로 제외**. 큰 요청 본문 gzip 전송(`Content-Encoding: gzip`, ≥32KiB만)은 구현돼 있으나 **기본 꺼짐**이며, 서버가 압축 본문을 해석할 수 있어야 켤 수 있음([요구 스펙](docs/server-compression-spec.md))
 - **로컬 우선**: 채팅 히스토리·프로젝트·설정은 로컬 영속(`%APPDATA%/OhMyAgent`), 서버는 stateless
 - **데스크톱 통합**: 다크 테마, 시스템 트레이 상주, 전역 핫키(기본 `Ctrl+Space`), 플로팅 채팅창
 - **배포 무결성**: 설치 바이너리 SHA-256 / Authenticode / HMAC 매니페스트 검증 (트레이 → 무결성 검사)
@@ -74,7 +75,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 
 ---
 
-## 내장 도구 (33)
+## 내장 도구 (35)
 
 | 도구 | 위험도 | 설명 |
 |------|--------|------|
@@ -96,8 +97,13 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 | `read_hwpx` | ReadOnly | 한글 .hwpx(OWPML) 본문 추출(BCL) |
 | `compress_files` / `extract_archive` | Write | 파일·폴더 → zip 압축 / zip 해제(zip-slip 차단, BCL `System.IO.Compression`) |
 | `manage_todos` | ReadOnly | 에이전트 작업 계획 추적(다단계 작업 분해·진행상태) — 메인 화면 계획 카드에 반영 |
+| `generate_image` | Write | 이미지 생성 — 사내 서버가 이미지 모델을 대리 호출(`POST /api/v1/images/generations`), 결과 PNG를 워크스페이스에 저장하고 모델에는 경로만 반환(base64는 컨텍스트에 넣지 않음). **서버 엔드포인트 대기**([요구 스펙](docs/server-image-api.md)) |
+| `schedule_wakeup` | ReadOnly | 자율 페이싱 `/loop` 에서 모델이 다음 실행 시점을 스스로 예약(`delaySeconds`·`reason`·`done`). 루프 밖 호출과 서브에이전트 호출은 거부 |
 | `task` | ReadOnly | 하위 작업을 **서브에이전트**에 위임(별도 오케스트레이터). 서브에이전트 도구 목록은 `TaskTool.AllowedToolNames` 로 제한되며 `task`·`manage_todos` 는 제외(무한 중첩 방지) |
 
+> 위 35개는 **데스크톱 클라이언트 기준**입니다. 헤드리스 호스트는 클립보드·스크린샷 3개를 빼고
+> [A2A 도구](docs/a2a-registry.md) `discover_agents`·`ask_agent` 2개를 더해 **34개**를 노출합니다(전체 고유 도구 **37개**).
+>
 > 도구 실행 결정 순서: **모델 요청 → 서버 도구 정책 게이트 → 로컬 권한 게이트(승인 카드) → 샌드박스(경로 검증) → 실행**.
 > Destructive / Write / Execute 도구는 권한 모드에 따라 **실행 전 승인 카드**를 띄웁니다.
 > 코어 도구는 BCL/WPF/WinForms 내장 기능만 사용합니다(zip·pptx읽기·hwpx읽기·docx읽기 포함 — 전부 `System.IO.Compression`/`System.IO.Packaging`/`System.Xml`).
@@ -122,7 +128,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 |----------|------|------|
 | `OhMyAgent.AiAgent.Core` | `net10.0` (크로스플랫폼) | 통신·오케스트레이터·도구·보안 등 **UI 비의존 코어**. Client·Host 공유 |
 | `OhMyAgent.AiAgent.Client` | `net10.0-windows` (WPF) | 데스크톱 앱(UI). Core 참조 |
-| `OhMyAgent.AiAgent.Host` | `net10.0` (콘솔) | **헤드리스 에이전트**. Core만 참조, UI·클립보드·스크린샷 도구 제외. Linux 단일 파일 배포 + [에이전트 간 통신(A2A)](docs/a2a-registry/) |
+| `OhMyAgent.AiAgent.Host` | `net10.0` (콘솔) | **헤드리스 에이전트**. Core만 참조, UI·클립보드·스크린샷 도구 제외. Linux 단일 파일 배포 + [에이전트 간 통신(A2A)](docs/a2a-registry.md) |
 
 ## 빌드 & 실행
 
@@ -145,6 +151,15 @@ WPF(`net10.0-windows`)라 **Windows에서만** 빌드·실행됩니다. WSL에�
   -consoleloggerparameters:ErrorsOnly
 ```
 권한 설정은 `.claude/settings.local.json`(gitignore됨) 참조 — `CLAUDE.md`의 "WSL 환경" 절.
+
+**배포용 인스톨러**는 Inno Setup으로 만듭니다:
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
+# 산출물: artifacts\OhMyAgent-Setup-1.3.0.exe (~55MB)
+```
+publish → 바이너리 서명 → 컴파일 → 인스톨러 서명 순서를 스크립트가 지킵니다. **self-contained** 로 묶어
+대상 PC에 .NET 설치가 필요 없고, **per-user 설치**(`%LOCALAPPDATA%\Programs\OhMyAgent`)라 관리자 권한도
+필요 없습니다. 서명·아이콘·무결성 매니페스트 처리는 [`installer/README.md`](installer/README.md) 참고.
 
 ### B. 헤드리스 호스트 — Linux 서버 (단일 실행 파일)
 
@@ -170,7 +185,8 @@ ssh user@server 'chmod +x /opt/agent/host && \
   /opt/agent/host'          # 원샷: OHMYAGENT_PROMPT="..." / 대화: 표준입력 루프
 ```
 
-주요 실행 env(자세히는 [`docs/a2a-registry/`](docs/a2a-registry/)):
+주요 실행 env(A2A 계약은 [`docs/a2a-registry.md`](docs/a2a-registry.md), systemd 상주 운영은
+[`docs/headless-deployment.md`](docs/headless-deployment.md)):
 
 | env | 용도 |
 |-----|------|
@@ -180,6 +196,10 @@ ssh user@server 'chmod +x /opt/agent/host && \
 | `OHMYAGENT_LISTEN` | **A2A 리스너 모드** — 다른 에이전트의 요청을 수신(예: `http://0.0.0.0:8080/`) |
 | `OHMYAGENT_ADVERTISE_URL` · `OHMYAGENT_AGENT_NAME` · `OHMYAGENT_CAPABILITIES` | 레지스트리 등록 정보(리스너 모드) |
 | `OHMYAGENT_A2A_MODE` | 수신 인증 `broker`(레지스트리 기본) / `token` / `anon` |
+
+> **인증 실패는 종료로 드러납니다** — 기동 시 토큰을 선검사하고, 죽었으면 종료 코드 `77`로 즉시 종료합니다.
+> 런타임에도 401/403이 연속 3회면 종료합니다(성공 1회면 초기화 — 일시적 401은 흡수). 서버 미도달은 `69`.
+> systemd `RestartPreventExitStatus=77 78` 로 "재시작해도 안 낫는 실패"만 멈추게 하세요.
 
 > **셸 도구(`run_command`)는 OS 자동 분기**: Windows는 powershell/cmd, Linux는 `/bin/bash`.
 > 클립보드·스크린샷 도구는 헤드리스에서 제외됩니다.
@@ -211,8 +231,30 @@ dotnet test  OhMyAgent.AiAgent.Client.sln              # 전체 테스트
 4. **작업 디렉토리(워크스페이스)** 등록 — 최대 10개까지 추가하고 폴더별 접근 토글로 활성/비활성 제어
 5. **권한 모드** 선택(기본 Manual 권장)
 6. (선택) **프로젝트 생성** 후 사이드바에서 대화를 드래그앤드롭으로 분류, 필요 시 프로젝트별 **서버 동기화**
-7. 채팅창(`Ctrl+Space`)에 목표 입력 → 에이전트 루프 실행. **+ 버튼으로 파일 첨부** 가능(전송 시 base64 인코딩, ≤10MiB)
+7. 채팅창(`Ctrl+Space`)에 목표 입력 → 에이전트 루프 실행. **Enter 전송 / Shift+Enter 줄바꿈**(여러 줄 입력),
+   `@` 입력 시 워크스페이스 파일 자동완성. 첨부·슬래시 커맨드는 컴포저의 **에이전트 서랍**에 모여 있습니다
+   (파일 첨부는 전송 시 base64 인코딩, ≤10MiB)
 8. 상단바 **쿼터 칩**에서 남은 사용량(일/주/월) 확인 — 새로고침 버튼으로 갱신
+
+### 슬래시 커맨드
+
+입력창에 `/` 로 시작하는 **한 줄**을 보내면 모델에 전달되지 않고 클라이언트가 직접 처리합니다
+(여러 줄 본문은 커맨드로 보지 않습니다 — 경로 붙여넣기가 커맨드로 오인되지 않도록).
+GUI·헤드리스가 같은 파서를 공유합니다.
+
+| 커맨드 | 동작 |
+|--------|------|
+| `/clear` (`/new`) | 대화를 초기화하고 새 세션 시작 |
+| `/retry` | 마지막으로 보낸 메시지를 입력창에 되불러 편집 |
+| `/help` (`/?`) | 사용 가능한 커맨드 안내 |
+| `/loop 5m <프롬프트>` | **고정 간격** 반복 — 지정 간격마다 같은 프롬프트를 새 턴으로 실행 |
+| `/loop <프롬프트>` | **자율 페이싱** 반복 — 매 턴 끝에 모델이 `schedule_wakeup` 으로 다음 실행 시점을 스스로 정함 |
+| `/loop stop` / `/loop status` | 루프 중지 / 현재 상태(반복 횟수·다음 실행까지 남은 시간) |
+| `/exit` (`/quit`) | 헤드리스 대화 모드 종료 (GUI 에서는 안내만) |
+
+> 간격은 **단위 접미사 필수**(`30s`·`5m`·`2h`). 단위 없는 숫자는 프롬프트의 일부로 봅니다.
+> 폭주 방지: 반복 상한 기본 50회(`LoopMaxIterations`), 간격 `[10초, 24시간]`·자율 지연 `[5초, 1시간]` 클램프,
+> 턴 연속 3회 실패 시 자동 중지, 프로세스당 루프 1개. 루프 상태는 영속되지 않습니다(프로세스 종료 = 루프 종료).
 
 > **최대 토큰(MaxTokens)은 서버가 제어**합니다. 클라이언트 설정에서는 제거되었고, 와이어(`max_tokens`)에는 기본 상수만 전송됩니다.
 
@@ -247,7 +289,8 @@ dotnet test  OhMyAgent.AiAgent.Client.sln              # 전체 테스트
 `stop_reason == tool_use` 면 클라이언트가 도구를 실행해 `tool` 메시지로 재요청(루프 지속), `end_turn` 이면 종료.
 `tool_call.arguments` 는 JSON 문자열로 주고받으며 클라이언트가 객체로 복원합니다.
 
-상세: [`docs/AGENT_ARCHITECTURE_PLAN.md`](docs/AGENT_ARCHITECTURE_PLAN.md) · [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)
+상세: [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) · [`docs/tool-system.md`](docs/tool-system.md) ·
+[`docs/server-compression-spec.md`](docs/server-compression-spec.md)(gzip 요구 스펙 — 요청 압축은 nginx 가 아니라 **API 앱** 담당)
 
 > **연결 ≠ 로그인**: `/health` 는 인증이 필요 없으므로(Public) 로그인 전에도 서버에 "연결"은 됩니다.
 > 앱은 연결 상태와 인증 상태를 구분하여 `Disconnected`(서버 다운) / `Unauthenticated`(로그인 필요) /
@@ -278,7 +321,9 @@ dotnet test  OhMyAgent.AiAgent.Client.sln              # 전체 테스트
 
 주요 설정: `ServerBaseUrl`, `AuthToken`(로그인 시 자동, **DPAPI 로 암호화 저장**), `ModelId`,
 `WorkspaceRoot`(주 루트), `Workspaces`(멀티루트 목록, 폴더별 `Enabled` 토글, 최대 10),
-`PermissionMode`(기본 `Manual`), `MaxIterations`(기본 25), `UiScale`(0.9–1.6 클램프), `Hotkey`.
+`PermissionMode`(기본 `Manual`), `MaxIterations`(기본 25), `LoopMaxIterations`(`/loop` 반복 상한, 기본 50),
+`UiScale`(0.9–1.6 클램프), `Hotkey`,
+`CompressRequests`(기본 `false` — 요청 본문 gzip. **서버 지원 확인 후에만** 켤 것, 미지원 시 400/415).
 `SchemaVersion`은 `6` — v4→v5 에서 `WorkspaceRoot`를 `Workspaces` 단일 항목으로 승격하고 `MaxTokens`
 설정을 제거했으며, v5→v6 에서 `AuthToken` 을 DPAPI 암호화로 전환했습니다.
 
@@ -292,9 +337,11 @@ dotnet test  OhMyAgent.AiAgent.Client.sln              # 전체 테스트
 ```
 <repo-root>/
 ├── README.md · CHANGELOG.md · CLAUDE.md
-├── docs/                     AGENT_ARCHITECTURE_PLAN · API_CONTRACT · tool-system(도구 설계) ·
-│                             realtime-chat(메신저) · server-*.md(쿼터/버전/도구정책/명령보안) ·
-│                             a2a-registry/(에이전트 간 통신·레지스트리 계약) · design-tokens ·
+├── docs/                     API_CONTRACT(서버 연동 계약) · tool-system(도구 설계) ·
+│                             realtime-chat(메신저) · server-*.md(프로필·쿼터·버전·도구정책·서비스계정·이미지·
+│                             압축(gzip) 요구 스펙 · open-requests(미해결 요구 종합)) ·
+│                             a2a-registry(에이전트 간 통신·레지스트리 계약) ·
+│                             headless-deployment(배포·운영) · design-tokens ·
 │                             발표자료(presentation_*.html)
 │
 ├── OhMyAgent.AiAgent.Core/            (net10.0 · 크로스플랫폼 코어 라이브러리 — Client·Host 공유)

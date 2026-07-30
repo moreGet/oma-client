@@ -11,7 +11,9 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OhMyAgent.AiAgent.Client.Models;
+using OhMyAgent.AiAgent.Client.Models.Loop;
 using OhMyAgent.AiAgent.Client.Services;
+using OhMyAgent.AiAgent.Client.Services.Loop;
 using OhMyAgent.AiAgent.Client.ViewModels.Transcript;
 
 namespace OhMyAgent.AiAgent.Client.ViewModels;
@@ -35,9 +37,26 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     private readonly IToolPolicyService _policy;
     private readonly ISessionSyncService _sessionSync;
     private readonly ITodoService _todos;
+    private readonly ILoopController _loop;
+
+    /// <summary>
+    /// 상단바 "진행 N" 칩이 읽는 태스크 매니저 등기소. 생성자 인자가 아니라 나중에 대입하는 이유는
+    /// 이 VM 의 생성자 시그니처가 런처 계약으로 고정돼 있기 때문이다(<see cref="Projects"/> 와 같은 관례).
+    /// 배선되지 않으면 칩은 그냥 나타나지 않는다(0 개) — 기존 동작이 깨지지 않는다.
+    /// </summary>
+    private IAgentActivityRegistry? _activities;
 
     private AgentSession _session = new();
     private CancellationTokenSource? _cts;
+
+    /// <summary>
+    /// /loop 수명 전체를 덮는 취소원(개별 턴의 <see cref="_cts"/> 와 다르다).
+    /// 로그아웃·새 대화·Dispose 가 이걸 끊어야 컨트롤러의 대기(Delay)까지 함께 접힌다.
+    /// </summary>
+    private CancellationTokenSource? _loopCts;
+
+    /// <summary>이번 턴에서 관측한 서버 오류(AgentError). 루프의 연속 실패 판정 근거 — 턴 시작 시 비운다.</summary>
+    private string? _turnErrorMessage;
 
     // 앱 수명 싱글턴 서비스 이벤트 구독 해제 경로(Dispose에서 호출). 형제 Chat VM들과 동일 관례.
     private readonly Action _unsubscribe;
@@ -62,7 +81,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]
     [NotifyCanExecuteChangedFor(nameof(StopCommand))]
     [NotifyCanExecuteChangedFor(nameof(LoadChatSessionCommand))]
-    [NotifyCanExecuteChangedFor(nameof(AttachFileCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RequestAttachFileCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowStopButton))]
+    [NotifyPropertyChangedFor(nameof(ShowSendButton))]
     private bool _isBusy;
 
     [ObservableProperty] private bool _isConnected;
@@ -104,6 +125,41 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     /// 거기에 진행 상태를 덮어쓰면 연결 표시가 사라진다.
     /// </summary>
     [ObservableProperty] private string _iterationDisplayText = string.Empty;
+
+    // ── /loop 반복 실행 상태 ───────────────────────────────────────────
+
+    /// <summary>
+    /// /loop 로 시작한 반복 실행이 살아 있는지. 대기(다음 실행까지 카운트다운) 중에도 true 다 —
+    /// 그래서 중지 버튼 표시는 <see cref="IsBusy"/> 가 아니라 <see cref="ShowStopButton"/> 을 봐야 한다.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SendCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StopCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowStopButton))]
+    private bool _isLoopRunning;
+
+    /// <summary>
+    /// 상단바 루프 표기 — "루프 실행 중 · 반복 3/50 · 다음 실행까지 2분 14초". 미실행 시 빈 문자열(숨김).
+    ///
+    /// <see cref="IterationDisplayText"/> 와 혼동 금지: 그쪽은 <b>한 턴 안의</b> 오케스트레이터 반복,
+    /// 이쪽은 <b>턴 자체를</b> 몇 번째 반복하는지다. 둘은 동시에 값을 가질 수 있어 나란히 표시한다.
+    /// </summary>
+    [ObservableProperty] private string _loopStatusText = string.Empty;
+
+    /// <summary>
+    /// 중지 버튼 노출 조건. 루프 대기 중에는 턴이 안 돌아 <see cref="IsBusy"/> 가 false 라,
+    /// IsBusy 만 보면 "중지할 수단이 화면에서 사라지는" 상태가 생긴다.
+    /// </summary>
+    public bool ShowStopButton => IsBusy || IsLoopRunning;
+
+    /// <summary>
+    /// 전송 버튼 노출 조건. <see cref="ShowStopButton"/> 의 반대가 <b>아니다</b> —
+    /// 루프 대기 중(IsLoopRunning &amp;&amp; !IsBusy)에는 전송과 중지가 <b>함께</b> 보여야 한다.
+    /// <see cref="CanSend"/> 가 루프 중에도 슬래시 커맨드를 허용하는데(A2) 버튼이 없으면
+    /// "/loop stop" 을 Enter 로만 보낼 수 있게 되어, 마우스 사용자는 루프를 멈출 길이 사라진다.
+    /// 턴이 실제로 도는 동안(IsBusy)에만 전송을 감춘다.
+    /// </summary>
+    public bool ShowSendButton => !IsBusy;
 
     /// <summary>상단 토큰 표시를 in/out ↔ 세션 누적 총량으로 토글(텍스트 클릭이 바인딩).</summary>
     [RelayCommand]
@@ -159,6 +215,16 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     /// <summary>좌측 사이드바 접힘 상태. ToggleSidebarCommand로 토글, 설정에 영속(세션 간 유지).</summary>
     [ObservableProperty] private bool _isSidebarCollapsed;
 
+    // ── 창 상태 ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 메인 창 최상위 고정(항상 위). 상단바 핀 토글이 바인딩하고, 설정에 영속(세션 간 유지).
+    ///
+    /// <c>Window.Topmost</c> 는 VM 이 만질 수 없는 View 속성이라 여기서는 "의도"만 들고 있고,
+    /// 실제 반영은 MainWindow 코드비하인드가 이 속성을 구독해서 한다.
+    /// </summary>
+    [ObservableProperty] private bool _isAlwaysOnTop;
+
     // ── UI scale (accessibility) ───────────────────────────────────────
 
     /// <summary>UI 전체 배율(접근성). 메인창 루트 ScaleTransform이 바인딩. 변경은 설정창에서만 → SettingsChanged로 반영.</summary>
@@ -206,7 +272,8 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         ISuggestionService suggestions,
         IToolPolicyService policy,
         ISessionSyncService sessionSync,
-        ITodoService todos)
+        ITodoService todos,
+        ILoopController loop)
     {
         _orchestrator = orchestrator;
         _api = api;
@@ -219,10 +286,14 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         _policy = policy;
         _sessionSync = sessionSync;
         _todos = todos;
+        _loop = loop;
         FileMention = new FileMentionViewModel(workspace);
 
         // 도구(manage_todos)가 백그라운드 스레드에서 갱신 → UI 디스패처로 마샬해 Todos 컬렉션 재구성.
         _todos.TodosChanged += OnTodosChanged;
+
+        // 루프 이벤트도 백그라운드 스레드 발화 — 상단바/전사 반영은 전부 디스패처를 거친다.
+        _loop.LoopChanged += OnLoopChanged;
 
         // 세션 경계(새 대화/전환/복원/로그아웃)는 모두 Transcript.Clear()를 부르므로, 그때 작업 계획 카드도 리셋.
         Transcript.CollectionChanged += (_, e) =>
@@ -247,6 +318,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         {
             _todos.TodosChanged -= OnTodosChanged;
             _settings.SettingsChanged -= OnSettingsChanged;
+            _loop.LoopChanged -= OnLoopChanged;
         };
 
         SeedFromSettings();
@@ -280,9 +352,19 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         _ = _settings.UpdateSidebarCollapsedAsync(value);
     }
 
+    partial void OnIsAlwaysOnTopChanged(bool value)
+    {
+        if (_suppressPersist) return;
+        _ = _settings.UpdateAlwaysOnTopAsync(value);
+    }
+
     /// <summary>좌측 사이드바를 접거나 편다(상단바 햄버거 버튼이 바인딩).</summary>
     [RelayCommand]
     private void ToggleSidebar() => IsSidebarCollapsed = !IsSidebarCollapsed;
+
+    /// <summary>메인 창 최상위 고정을 켜고 끈다(상단바 핀 버튼이 바인딩).</summary>
+    [RelayCommand]
+    private void ToggleAlwaysOnTop() => IsAlwaysOnTop = !IsAlwaysOnTop;
 
     // ── Initialization ─────────────────────────────────────────────────
 
@@ -312,10 +394,11 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
             CurrentPermissionMode = s.PermissionMode;
             WindowOpacity = s.Opacity;
 
-            // 상단바/사이드바/접근성 — 설정에서 복원(역기록 가드 구간).
+            // 상단바/사이드바/접근성/창 상태 — 설정에서 복원(역기록 가드 구간).
             QuotaChipWindow = s.QuotaChipWindow;
             IsSidebarCollapsed = s.SidebarCollapsed;
             UiScale = s.UiScale;
+            IsAlwaysOnTop = s.AlwaysOnTop;
 
             // F — greeting from settings display name, falling back to the OS user name.
             var rawName = string.IsNullOrWhiteSpace(s.UserDisplayName) ? Environment.UserName : s.UserDisplayName;
@@ -554,7 +637,14 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
 
     // ── Commands ───────────────────────────────────────────────────────
 
-    private bool CanSend() => !IsBusy && !string.IsNullOrWhiteSpace(InputText);
+    /// <summary>
+    /// 루프가 도는 동안에는 일반 프롬프트 전송을 막는다 — 같은 <see cref="AgentSession"/> 에 턴이
+    /// 겹치면 대화 이력이 뒤섞인다. 슬래시 커맨드(/loop stop 등)는 빠져나갈 길이라 계속 허용한다.
+    /// </summary>
+    private bool CanSend()
+        => !IsBusy
+           && !string.IsNullOrWhiteSpace(InputText)
+           && (!IsLoopRunning || InputText.TrimStart().StartsWith('/'));
 
     /// <summary>마지막으로 보낸 사용자 메시지(위 화살표/‎/retry 로 되불러 편집). 셸 히스토리처럼 단순 1개.</summary>
     public string LastSentMessage { get; private set; } = string.Empty;
@@ -598,6 +688,26 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         var attachmentPayloads = await BuildAttachmentPayloadsAsync(token).ConfigureAwait(false);
         await UiInvokeAsync(() => Attachments.Clear()).ConfigureAwait(false);
 
+        await RunTurnAsync(goal, attachmentPayloads, token).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 턴 1회의 실행 본체 — 수동 전송과 /loop 반복이 공유한다(<see cref="LoopTurnRunner"/> 로 주입).
+    /// 사용자 메시지 추가·첨부 인코딩 같은 준비는 호출자가 끝내고 들어온다.
+    /// 예외를 밖으로 던지지 않고 성공 여부만 돌려준다 — 루프가 연속 실패를 세어 스스로 멈춰야 하기 때문.
+    /// </summary>
+    private async Task<LoopTurnOutcome> RunTurnAsync(
+        string goal, IReadOnlyList<Attachment>? attachments, CancellationToken token)
+    {
+        _turnErrorMessage = null;
+
+        // 루프 러너는 백그라운드 스레드에서 들어온다 — 상태 변경은 반드시 디스패처를 거친다.
+        await UiInvokeAsync(() =>
+        {
+            IsBusy = true;
+            StatusText = "실행 중...";
+        }).ConfigureAwait(false);
+
         // 토큰 델타는 버퍼에 모아 ~50ms/1KB 간격으로 일괄 반영 — 매 토큰 디스패치+문자열 재레이아웃(O(n²)) 폭주 방지.
         var pendingText = new StringBuilder();
         var sinceFlush = Stopwatch.StartNew();
@@ -611,9 +721,12 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
             await UiInvokeAsync(() => EnsureAssistant().Text += chunk).ConfigureAwait(false);
         }
 
+        // 실패 사유(예외 경로). AgentError 이벤트 경로는 _turnErrorMessage 가 받는다.
+        string? failure = null;
+
         try
         {
-            await foreach (var evt in _orchestrator.RunAsync(goal, _session, attachmentPayloads, token).ConfigureAwait(false))
+            await foreach (var evt in _orchestrator.RunAsync(goal, _session, attachments, token).ConfigureAwait(false))
             {
                 if (evt is AgentTextDelta delta)
                 {
@@ -632,6 +745,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         }
         catch (OperationCanceledException)
         {
+            failure = "사용자가 중지했습니다.";
             await UiInvokeAsync(() =>
             {
                 StatusText = "중지됨";
@@ -640,6 +754,7 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         }
         catch (Exception ex)
         {
+            failure = ex.Message;
             await UiInvokeAsync(() =>
             {
                 HasError = true;
@@ -667,6 +782,11 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
             // 턴 완료로 사용량이 변동 — best-effort 쿼터 재조회(턴당 1회).
             _ = RefreshQuotaAsync();
         }
+
+        // AgentError 는 예외가 아니라 이벤트로 온다 — 여기서 합류시키지 않으면 루프가
+        // "3연속 실패"를 영영 감지하지 못하고 오류만 찍으며 계속 돈다.
+        var reason = failure ?? _turnErrorMessage;
+        return reason is null ? LoopTurnOutcome.Ok() : LoopTurnOutcome.Fail(reason);
     }
 
     /// <summary>슬래시 커맨드 실행. 모델 호출 없이 클라이언트가 직접 처리한다.</summary>
@@ -689,16 +809,283 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
                 AddNotice(SlashCommands.HelpText);
                 break;
 
+            case SlashCommandKind.Loop:
+                await HandleLoopCommandAsync(cmd.Loop ?? new LoopArgs(LoopAction.Status, null, string.Empty))
+                    .ConfigureAwait(true);
+                break;
+
+            case SlashCommandKind.Exit:
+                // 파서는 공유하지만 /exit 는 헤드리스(CLI) 전용 의미다. GUI 는 안내만 하고 넘긴다.
+                InputText = string.Empty;
+                Transcript.Add(new SystemNoticeViewModel
+                {
+                    Text = "/exit 는 헤드리스(CLI) 대화 모드 전용입니다. 창을 닫거나 트레이에서 종료하세요.",
+                });
+                break;
+
             case SlashCommandKind.Unknown:
                 AddNotice(SlashCommands.UnknownText(cmd.Raw));
                 break;
         }
     }
 
-    private bool CanStop() => IsBusy;
+    // ── /loop 반복 실행 ────────────────────────────────────────────────
+
+    /// <summary>
+    /// /loop 시작·중지·상태. 시작만 컨트롤러를 건드리고, 나머지는 안내 문구다.
+    /// async 가 아니다 — 여기서 턴을 기다리면 입력이 얼어붙는다(TryStart 는 비차단).
+    /// </summary>
+    private Task HandleLoopCommandAsync(LoopArgs args)
+    {
+        InputText = string.Empty;
+
+        switch (args.Action)
+        {
+            case LoopAction.Stop:
+                _loop.Stop(LoopStopReason.UserStopped);
+                Transcript.Add(new SystemNoticeViewModel { Text = "반복 실행을 중지했습니다." });
+                break;
+
+            case LoopAction.Status:
+                Transcript.Add(new SystemNoticeViewModel
+                {
+                    Text = LoopStatusFormatter.DescribeDetailed(_loop.Status),
+                });
+                break;
+
+            case LoopAction.Start:
+                if (string.IsNullOrWhiteSpace(args.Prompt))
+                {
+                    Transcript.Add(new SystemNoticeViewModel
+                    {
+                        Text = "반복할 프롬프트가 필요합니다. 예: /loop 5m 빌드 상태 확인",
+                    });
+                    break;
+                }
+
+                // 루프 수명 전용 CTS — 개별 턴의 _cts 와 분리해야 "턴만 중지" 와 "루프 통째로 중지" 가 구분된다.
+                _loopCts?.Dispose();
+                _loopCts = new CancellationTokenSource();
+
+                var request = new LoopStartRequest(
+                    args.Interval is null ? LoopMode.Autonomous : LoopMode.FixedInterval,
+                    args.Interval,
+                    args.Prompt.Trim(),
+                    _settings.Current.LoopMaxIterations);
+
+                if (!_loop.TryStart(request, RunLoopTurnAsync, _loopCts.Token, out var error))
+                {
+                    Transcript.Add(new SystemNoticeViewModel
+                    {
+                        Text = error ?? "반복 실행을 시작하지 못했습니다.",
+                    });
+                }
+                break;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// <see cref="LoopTurnRunner"/> 구현 — 컨트롤러가 매 반복 호출한다.
+    /// 첨부는 싣지 않는다(루프는 텍스트 프롬프트만 반복한다는 설계 결정).
+    /// </summary>
+    private async Task<LoopTurnOutcome> RunLoopTurnAsync(LoopTurnContext ctx, CancellationToken ct)
+    {
+        await UiInvokeAsync(() =>
+        {
+            _currentAssistant = null; _currentThinking = null;
+            _toolCards.Clear();
+            Transcript.Add(new UserTurnViewModel
+            {
+                Text = $"[루프 {ctx.Iteration}/{ctx.MaxIterations}] {ctx.Prompt}",
+            });
+        }).ConfigureAwait(false);
+
+        // 중지 버튼(_cts)이 "지금 도는 턴"도 끊을 수 있도록 루프 토큰에 연결해 둔다.
+        _cts?.Dispose();
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        return await RunTurnAsync(ctx.Prompt, null, _cts.Token).ConfigureAwait(false);
+    }
+
+    /// <summary>루프 이벤트 → 상단바/전사 반영. 컨트롤러가 백그라운드 스레드에서 발화한다.</summary>
+    private void OnLoopChanged(object? sender, LoopEvent e) => _ = UiInvokeAsync(() =>
+    {
+        switch (e)
+        {
+            case LoopStarted:
+            case LoopTurnStarting:
+            case LoopWaiting:
+            case LoopTick:
+                IsLoopRunning = true;
+                LoopStatusText = LoopStatusFormatter.Describe(_loop.Status);
+                break;
+
+            case LoopNotice notice:
+                Transcript.Add(new SystemNoticeViewModel { Text = notice.Text });
+                break;
+
+            case LoopStopped stopped:
+                IsLoopRunning = false;
+                LoopStatusText = string.Empty;
+                Transcript.Add(new SystemNoticeViewModel
+                {
+                    // 사유 문구는 Core 와 공유한다 — 헤드리스 stderr 와 표현이 갈리면 안 된다.
+                    Text = $"반복 실행 종료 — {LoopStatusFormatter.StopReasonText(stopped.Reason)}, 총 {stopped.Iterations}회",
+                });
+                break;
+        }
+    });
+
+    // ── 에이전트 동작 진입점(런처 창 타일 + 컴포저 첨부) ────────────────
+    //
+    // 표면은 두 번 옮겨졌다: 컴포저의 "에이전트" 서랍(Popup) → 좌측 사이드바 평면 항목 →
+    // 지금은 별도 런처 창(AgentLauncherWindow)의 격자 타일이다. 사이드바에는 그 창을 여는
+    // 항목 하나만 남고(OpenAgentLauncherCommand), 파일 첨부만 컴포저 "+" 에도 함께 남는다
+    // (자주 쓰는 동작이라 의도적 중복).
+    //
+    // 이 커맨드들의 이름·동작은 세 표면을 거치며 한 번도 바꾸지 않았다(바인딩 계약 유지). 개폐 상태를
+    // 만지는 코드도 없다 — 런처는 창이라 창 수명이 곧 상태이고, 창을 닫는 순서는 래퍼
+    // (AgentLauncherViewModel.Launch)가 쥔다. 그러니 여기에 개폐 플래그를 되살리지 말 것.
+
+    /// <summary>사이드바 "에이전트" 항목 → 런처 창을 열어 달라는 요청(App 이 코디네이터로 받는다).</summary>
+    public event EventHandler? AgentLauncherRequested;
+
+    /// <summary>
+    /// 사이드바 "에이전트" 항목. 창 생성·수명·Owner 는 View 계층(App + AgentLauncherCoordinator)이
+    /// 쥐고 있으므로 VM 은 "열어 달라"는 요청만 보낸다.
+    /// 구독자가 없으면 조용히 삼키지 않고 전사에 남긴다 — App 배선이 빠지면 사용자에게는
+    /// "눌렀는데 아무 일도 안 남"으로만 보여 원인을 찾을 수 없다(무증상 회귀 방지).
+    /// </summary>
+    [RelayCommand]
+    private void OpenAgentLauncher()
+    {
+        if (AgentLauncherRequested is null)
+        {
+            AppLog.Warn("AgentLauncher", "런처 창 열기 요청을 받을 구독자가 없다(App 배선 누락).");
+            Transcript.Add(new SystemNoticeViewModel { Text = "에이전트 런처 창을 열 수 없습니다(내부 배선 누락)." });
+            return;
+        }
+
+        AgentLauncherRequested.Invoke(this, EventArgs.Empty);
+    }
+
+    // ── 태스크 매니저 진입점(상단바 "진행 N" 칩 + 런처 타일) ──────────────
+    //
+    // 창을 여는 경로를 여기 하나로 모은 이유: 런처 타일은 AgentLauncherViewModel.Launch 래퍼를 통해
+    // 이 커맨드를 재사용한다(닫고 → 실행). 그래서 App 배선은 TaskManagerRequested 한 곳만 잡으면 되고,
+    // 배선이 빠졌을 때의 안내 문구도 한 번만 정의된다.
+
+    /// <summary>상단바 "진행 N" 칩 / 런처 타일 → 태스크 매니저 창을 열어 달라는 요청.</summary>
+    public event EventHandler? TaskManagerRequested;
+
+    /// <summary>
+    /// 태스크 매니저 창 열기. 런처와 같은 이유로 창 수명은 View 계층(App + TaskManagerCoordinator)이 쥔다.
+    /// 구독자가 없으면 조용히 삼키지 않고 전사에 남긴다(무증상 회귀 방지 — 런처와 같은 장치).
+    /// </summary>
+    [RelayCommand]
+    private void OpenTaskManager()
+    {
+        if (TaskManagerRequested is null)
+        {
+            AppLog.Warn("TaskManager", "태스크 매니저 창 열기 요청을 받을 구독자가 없다(App 배선 누락).");
+            Transcript.Add(new SystemNoticeViewModel { Text = "작업 관리 창을 열 수 없습니다(내부 배선 누락)." });
+            return;
+        }
+
+        TaskManagerRequested.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 진행 중(취소 요청 포함) 작업 수. 0 이면 상단바 칩을 감춘다 —
+    /// 평소에 "진행 0" 이 상주하면 칩이 정보가 아니라 배경이 된다.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveTasks))]
+    [NotifyPropertyChangedFor(nameof(ActiveTaskChipText))]
+    private int _activeTaskCount;
+
+    /// <summary>칩 표시 여부.</summary>
+    public bool HasActiveTasks => ActiveTaskCount > 0;
+
+    /// <summary>칩 문구. 폭을 예측 가능하게 유지하려고 짧게 둔다(상단바 좌측이 이미 혼잡하다).</summary>
+    public string ActiveTaskChipText => $"진행 {ActiveTaskCount}";
+
+    /// <summary>
+    /// 상단바 칩에 태스크 매니저 등기소를 연결한다(App 조립에서 1회).
+    ///
+    /// <c>Changed</c> 는 <b>구조 변화에만</b> 발화하며 임의의 배경 스레드에서 온다 → UI 마샬 필수.
+    /// 경과 시간용 1초 타이머는 여기 두지 않는다 — 칩은 개수만 보여 주므로 구조 변화만 알면 충분하고,
+    /// 창을 열지 않은 동안 매초 프로세스를 관측할 이유가 없다(그 타이머는 태스크 매니저 창의 몫이다).
+    /// 해제 경로를 두지 않는 근거: 등기소와 이 VM 은 둘 다 App 수명 싱글턴이다.
+    /// </summary>
+    internal void AttachActivityRegistry(IAgentActivityRegistry activities)
+    {
+        _activities = activities ?? throw new ArgumentNullException(nameof(activities));
+        activities.Changed += (_, _) => _ = UiInvokeAsync(RefreshActiveTaskCount);
+        RefreshActiveTaskCount();
+    }
+
+    private void RefreshActiveTaskCount()
+        => ActiveTaskCount = _activities?.Snapshot().RunningCount ?? 0;
+
+    /// <summary>"파일 첨부" — 파일 대화상자는 View 책임이라 코드비하인드에 요청만 보낸다.</summary>
+    public event EventHandler? AttachFileRequested;
+
+    /// <summary>입력창을 프리필한 뒤 포커스·캐럿을 넘겨달라는 요청(코드비하인드가 처리).</summary>
+    public event EventHandler? ComposerFocusRequested;
+
+    /// <summary>
+    /// 첨부 진입점 — 컴포저 "+" 버튼과 런처 창 "파일 첨부" 타일이 <b>둘 다</b> 여기로 온다(의도된 중복).
+    /// 파일 대화상자는 View 소유라 여기서는 <see cref="AttachFileRequested"/> 로 요청만 보내고,
+    /// 메인 창 코드비하인드가 고른 경로를 <see cref="AddAttachmentPublic"/> 로 되돌려 준다.
+    /// 런처에서 눌렀을 때는 래퍼가 창을 먼저 닫으므로 대화상자가 런처 뒤로 숨지 않는다.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanAttachFile))]
+    private void RequestAttachFile()
+        => AttachFileRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>런처 타일 "마지막 입력(/retry)" — 이력은 건드리지 않고 입력창에 되불러 편집하게 한다.</summary>
+    [RelayCommand]
+    private void RetryLast()
+    {
+        if (string.IsNullOrEmpty(LastSentMessage))
+        {
+            Transcript.Add(new SystemNoticeViewModel { Text = "되불러올 이전 메시지가 없습니다." });
+            return;
+        }
+
+        InputText = LastSentMessage;
+        ComposerFocusRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 런처 타일 "반복 실행(/loop)" — 여기서 바로 시작하지 않는다. 간격과 프롬프트는 사용자가 정해야 하므로
+    /// 입력창에 "/loop " 만 깔아 주고 이어 치게 한다.
+    /// </summary>
+    [RelayCommand]
+    private void StartLoop()
+    {
+        InputText = "/loop ";
+        ComposerFocusRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>런처 타일 "도움말(/help)" — 입력창에 치지 않고 바로 안내를 전사에 남긴다.</summary>
+    [RelayCommand]
+    private void ShowHelp()
+        => Transcript.Add(new SystemNoticeViewModel { Text = SlashCommands.HelpText });
+
+    /// <summary>루프 대기 중에는 <see cref="IsBusy"/> 가 false 라 IsBusy 만 보면 중지 수단이 사라진다.</summary>
+    private bool CanStop() => IsBusy || IsLoopRunning;
 
     [RelayCommand(CanExecute = nameof(CanStop))]
-    private void Stop() => _cts?.Cancel();
+    private void Stop()
+    {
+        // 루프를 먼저 끊는다 — 턴만 취소하면 컨트롤러가 곧바로 다음 반복을 띄운다.
+        _loop.Stop(LoopStopReason.UserStopped);
+        _cts?.Cancel();
+    }
 
     /// <summary>
     /// 로그아웃 시 호출 — 실행 중인 에이전트 작업을 취소하고 세션/화면 상태를 모두 초기화한다.
@@ -706,7 +1093,13 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     /// </summary>
     public void PrepareForLogout()
     {
+        // 루프를 먼저 끊는다 — 안 그러면 로그아웃 후에도 백그라운드에서 다음 턴이 뜬다(토큰 없이 실패 반복).
+        _loop.Stop(LoopStopReason.UserStopped);
+        try { _loopCts?.Cancel(); } catch { /* 이미 dispose됨 — 무시 */ }
         try { _cts?.Cancel(); } catch { /* 이미 dispose됨 — 무시 */ }
+
+        IsLoopRunning = false;
+        LoopStatusText = string.Empty;
 
         Transcript.Clear();
         _toolCards.Clear();
@@ -803,11 +1196,17 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     [RelayCommand]
     private async Task ClearAsync()
     {
+        // 새 세션은 기존 루프를 무효로 만든다(반복 프롬프트가 빈 대화에 다시 꽂히면 맥락이 어긋난다).
+        _loop.Stop(LoopStopReason.UserStopped);
+        try { _loopCts?.Cancel(); } catch { /* 이미 dispose됨 — 무시 */ }
+
         // C — save the current session before starting a fresh chat.
         await SaveCurrentSessionAsync().ConfigureAwait(false);
 
         await UiInvokeAsync(() =>
         {
+            IsLoopRunning = false;
+            LoopStatusText = string.Empty;
             Transcript.Clear();
             _toolCards.Clear();
             _currentAssistant = null; _currentThinking = null;
@@ -877,17 +1276,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     }
 
     private bool CanAttachFile() => !IsBusy;
-
-    /// <summary>
-    /// D — gate-only command for the composer "+" button. The actual
-    /// <c>OpenFileDialog</c> is invoked from MainWindow code-behind, which then
-    /// calls <see cref="AddAttachmentPublic"/> for each selected path.
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanAttachFile))]
-    private void AttachFile()
-    {
-        // No-op: dialog is owned by the View (MVVM-safe). See AddAttachmentPublic.
-    }
 
     private bool CanRemoveAttachment(Attachment? a) => a is not null;
 
@@ -1199,6 +1587,9 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     /// </summary>
     private void ProjectError(AgentError err)
     {
+        // 이 턴은 실패로 기록한다 — 루프의 연속 실패 차단이 이 흔적을 근거로 스스로 멈춘다.
+        _turnErrorMessage = string.IsNullOrWhiteSpace(err.Message) ? (err.Code ?? "오류") : err.Message;
+
         switch (ClassifyAgentError(err.Code))
         {
             case AgentErrorKind.Cancelled:
@@ -1347,6 +1738,11 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     public void Dispose()
     {
         _unsubscribe();
+
+        // 루프 컨트롤러는 이 VM 이 소유한다(App.DisposeAll 은 따로 건드리지 않는다).
+        // Dispose 가 내부 CTS 취소 + 루프 Task join 까지 책임진다 — 종료 후 살아남는 반복이 없어야 한다.
+        try { _loop.Dispose(); } catch { /* 종료 중 — 무시 */ }
+        try { _loopCts?.Dispose(); } catch { /* 종료 중 — 무시 */ }
 
         // 실행 중 취소 흐름(Stop/PrepareForLogout 의 _cts?.Cancel())은 그대로 두고,
         // 마지막으로 남은 CTS 인스턴스만 반납한다. 종료 중 경합/이미-dispose는 무시.

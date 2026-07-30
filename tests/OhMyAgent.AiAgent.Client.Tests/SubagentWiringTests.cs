@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net.Http;
 using OhMyAgent.AiAgent.Client.Models;
 using OhMyAgent.AiAgent.Client.Services;
+using OhMyAgent.AiAgent.Client.Services.Loop;
 using OhMyAgent.AiAgent.Client.Services.Tools;
 using Xunit;
 
@@ -39,6 +40,7 @@ public class SubagentWiringTests
         new HttpFetchTool(new HttpClient()),
         new ScreenshotTool(),
         new ManageTodosTool(new TodoService()),
+        new ScheduleWakeupTool(new WakeupSink()),
         new ReadCsvTool(),
         new WriteCsvTool(),
         new ReadExcelTool(),
@@ -50,6 +52,8 @@ public class SubagentWiringTests
         new ReadHwpxTool(),
         new CompressFilesTool(),
         new ExtractArchiveTool(),
+        // 서버를 호출하지 않는다 — 목록 구성에만 쓰이는 인스턴스다.
+        new GenerateImageTool(new AgentApiClient(new HttpClient(), new FakeSettingsService())),
     ];
 
     /// <summary>App.StartupAsync 의 필터와 동일.</summary>
@@ -88,6 +92,24 @@ public class SubagentWiringTests
     {
         // ManageTodosTool 은 ReadOnly 라 Risk 필터로는 걸러지지 않는다 — 허용목록이 유일한 방어선이다.
         Assert.DoesNotContain("manage_todos", SubagentTools().Select(t => t.Name));
+    }
+
+    [Fact]
+    public void SubagentCannotHijackParentLoopPacing()
+    {
+        // ScheduleWakeupTool 도 ReadOnly 라 Risk 필터를 그냥 통과한다 — manage_todos 와 같은 구멍이다.
+        // 서브에이전트가 부모의 /loop 다음 실행 시점을 정해버리면, 사용자가 시작한 루프의 페이싱이
+        // 위임 작업에 납치된다. 허용목록이 유일한 방어선이므로 여기서 잠근다.
+        Assert.DoesNotContain("schedule_wakeup", SubagentTools().Select(t => t.Name));
+    }
+
+    [Fact]
+    public void SubagentCannotBurnImageQuota()
+    {
+        // generate_image 는 Risk=Write 라 Risk 필터로도 걸리지만, 허용목록이 유일한 계약이므로 여기서 못 박는다.
+        // 서브에이전트는 사용자가 직접 지시하지 않은 하위 루프다 — 그 루프가 유료 이미지 생성을 반복 호출하면
+        // 사용자가 승인한 적 없는 쿼터 소모가 일어나고, ReadOnly 도구만 도는 조사 임무에 필요하지도 않다.
+        Assert.DoesNotContain("generate_image", SubagentTools().Select(t => t.Name));
     }
 
     [Fact]

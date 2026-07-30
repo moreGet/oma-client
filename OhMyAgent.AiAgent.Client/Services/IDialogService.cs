@@ -19,4 +19,11 @@ public interface IDialogService
 
     /// <summary>텍스트 입력 프롬프트. 확인 시 입력값(빈 문자열 허용), 취소 시 <c>null</c>.</summary>
     string? PromptText(string title, string message, string defaultValue = "", bool multiline = false);
+
+    /// <summary>
+    /// 되돌릴 수 없는 동작의 확인. 진행=true, 취소=false.
+    /// 기본 선택은 <b>취소</b>여야 한다 — 목록 화면에서 Enter 를 습관적으로 누르다 프로세스를
+    /// 강제 종료하는 사고를 막는 장치다(태스크 매니저의 전역 중지·프로세스 정리·강제 종료가 쓴다).
+    /// </summary>
+    bool Confirm(string title, string message, DialogSeverity severity = DialogSeverity.Warning);
 }

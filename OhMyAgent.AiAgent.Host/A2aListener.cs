@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using OhMyAgent.AiAgent.Client.Models;
 using OhMyAgent.AiAgent.Client.Services;
 
 namespace OhMyAgent.AiAgent.Host;
@@ -12,7 +13,9 @@ namespace OhMyAgent.AiAgent.Host;
 /// 계약을 대칭 재사용한다(호출자는 AgentApiClient 무수정). 라우팅·인증·홉·동시성 게이트를 거쳐 요청별
 /// new AgentSession 으로 orchestrator 를 끝까지 돌리고(자기 도구 루프) 최종 프로즈만 스트리밍한다.
 /// </summary>
-public sealed class A2aListener(IAgentOrchestrator orchestrator, A2aOptions opts, A2aInboundAuthenticator authn)
+public sealed class A2aListener(
+    IAgentOrchestrator orchestrator, A2aOptions opts, A2aInboundAuthenticator authn,
+    AuthFailureReporter authFailures)
 {
     public async Task RunAsync(CancellationToken ct)
     {
@@ -105,7 +108,17 @@ public sealed class A2aListener(IAgentOrchestrator orchestrator, A2aOptions opts
 
                 var session = new AgentSession { InboundHop = hop };   // 수신 홉을 세션에 실어 ask_agent 가 +1 전파
                 await foreach (var ev in orchestrator.RunAsync(prompt!, session, ct: ct).ConfigureAwait(false))
+                {
+                    // 상류(사내 서버) 인증 실패는 A2A 호출자에게 그대로 투영하되, 여기서도 집계한다 —
+                    // 리스너 모드는 표준입력 루프를 돌지 않으므로 이 경로가 유일한 관측점이다.
+                    switch (ev)
+                    {
+                        case AgentError e: authFailures.ObserveErrorCode("A2A", e.Code, e.Message); break;
+                        case AgentDone:    authFailures.RecordSuccess(); break;
+                    }
+
                     await writer.WriteAsync(ev, ct).ConfigureAwait(false);   // 투영 정책 §1-C
+                }
             }
             finally { gate.Release(); }
         }

@@ -8,7 +8,14 @@ using OhMyAgent.AiAgent.Client.Models;
 
 namespace OhMyAgent.AiAgent.Client.Services.Tools;
 
-public sealed class StartProcessTool : ITool
+/// <summary>
+/// 워크스페이스 안의 실행 파일을 띄운다. <paramref name="activities"/> 는 선택적 관찰자다(null 이면 종전과 동일).
+///
+/// 이 도구는 fire-and-forget 이다 — 도구가 반환한 뒤에도 프로세스는 계속 산다. 그래서 태스크 매니저에는
+/// "해제 시점이 없는" 항목으로 등록하고(<see cref="IAgentActivityRegistry.TrackDetachedProcess"/>),
+/// 소유 도구가 끝난 뒤에도 살아 있는 이 항목이 곧 <b>고아 프로세스 정리의 실제 대상</b>이 된다.
+/// </summary>
+public sealed class StartProcessTool(IAgentActivityRegistry? activities = null) : ITool
 {
     private static readonly JsonElement Schema = ToolSchemas.Parse(
         """
@@ -77,11 +84,44 @@ public sealed class StartProcessTool : ITool
             if (proc is null)
                 return Task.FromResult(ToolResult.Fail($"프로세스를 시작하지 못했습니다: {path}"));
 
+            Track(proc, fullPath, arguments);
+
             return Task.FromResult(ToolResult.Json(new { started = true, pid = proc.Id, path = fullPath }));
         }
         catch (Exception ex)
         {
             return Task.FromResult(ToolResult.Fail($"프로세스 시작 실패: {ex.Message}"));
         }
+    }
+
+    /// <summary>
+    /// 태스크 매니저에 등록한다. 관찰 전용이라 <b>어떤 실패도 도구 결과에 영향을 주지 않는다</b> —
+    /// 프로세스는 이미 떴고, 등록 실패로 그것을 되돌리면 오히려 사용자가 의도한 동작을 깨뜨린다.
+    /// 시작 시각을 못 읽으면 null 로 남기고, 그 항목은 신원 확인 불가로 강제 종료 대상에서 제외된다.
+    /// </summary>
+    private void Track(Process proc, string fullPath, string? arguments)
+    {
+        if (activities is null) return;
+
+        try
+        {
+            DateTimeOffset? startedAt = null;
+            try { startedAt = new DateTimeOffset(proc.StartTime).ToUniversalTime(); }
+            catch (Exception) { /* 승격/타 계정 프로세스는 조회가 거부될 수 있다 */ }
+
+            var detail = string.IsNullOrWhiteSpace(arguments) ? fullPath : $"{fullPath} {arguments}";
+            activities.TrackDetachedProcess(
+                new TrackedProcessIdentity(proc.Id, SafeName(proc), startedAt), detail);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("StartProcessTool", $"자식 프로세스 추적 등록 실패: {ex.Message}");
+        }
+    }
+
+    private static string SafeName(Process proc)
+    {
+        try { return proc.ProcessName; }
+        catch (Exception) { return string.Empty; }
     }
 }

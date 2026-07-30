@@ -276,6 +276,13 @@ public class SettingsService : ISettingsService
         RaiseSettingsChanged();
     }
 
+    public async Task UpdateAlwaysOnTopAsync(bool alwaysOnTop)
+    {
+        Current.AlwaysOnTop = alwaysOnTop;
+        await SaveAsync().ConfigureAwait(false);
+        RaiseSettingsChanged();
+    }
+
     private void RaiseSettingsChanged()
     {
         var handler = SettingsChanged;

@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -8,6 +9,7 @@ using System.Windows.Forms;
 using OhMyAgent.AiAgent.Client.Models;
 using OhMyAgent.AiAgent.Client.Services;
 using OhMyAgent.AiAgent.Client.Services.Chat;
+using OhMyAgent.AiAgent.Client.Services.Loop;
 using OhMyAgent.AiAgent.Client.Services.Tools;
 using OhMyAgent.AiAgent.Client.ViewModels;
 using OhMyAgent.AiAgent.Client.ViewModels.Chat;
@@ -24,6 +26,7 @@ public partial class App : Application
     private MainWindow?               _mainWindow;
     private NotifyIcon?               _trayIcon;
     private HttpClient?               _httpClient;
+    private HttpClient?               _restHttpClient;
     private HttpClient?               _toolHttpClient;
     private ISettingsService?         _settingsService;
     private IGlobalHotkeyService?     _globalHotkey;
@@ -36,6 +39,11 @@ public partial class App : Application
     private IProjectService?          _projectService;
     private IBinaryIntegrityService?  _binaryIntegrity;
     private IDialogService?           _dialogService;
+    private IAgentActivityRegistry?   _activityRegistry;
+    private ILoopController?          _loopController;
+    private TaskManagerViewModel?     _taskManagerVm;   // 작업 관리 창 DataContext(App 수명 1개, 창마다 재사용)
+    // 트레이로 숨길 때 소유 창을 정리해야 해서 지역 변수가 아니라 필드로 든다(HideToTray 참조).
+    private IAgentLauncherCoordinator? _agentLauncher;
 
     // ── 실시간 메신저(사람↔사람) — LLM 채팅과 별개 모듈 ──
     private ChatIdentity?              _chatIdentity;   // 채팅 VM 트리가 참조로 공유하는 현재 사용자 신원
@@ -50,6 +58,13 @@ public partial class App : Application
     internal IDialogService Dialogs => _dialogService!;
     /// <summary>MainWindow 사이드바 배지 중계용 — 메신저 VM 노출(없으면 null).</summary>
     internal ChatMessengerViewModel? ChatMessengerVm => _chatMessengerVm;
+    /// <summary>
+    /// 태스크 매니저(실행 중 작업·자식 프로세스 등기소). Core 싱글턴 1개를 오케스트레이터·도구가 공유한다.
+    /// <c>TaskManagerViewModel</c>(작업 관리 창)과 상단바 "진행 N" 칩이 이것을 구독·조작한다(§13d).
+    /// </summary>
+    internal IAgentActivityRegistry ActivityRegistry => _activityRegistry!;
+    /// <summary>태스크 매니저의 `/loop` 행 전용 — 루프 상태·중지의 단일 진실 원천(등기소에 복제하지 않는다).</summary>
+    internal ILoopController LoopController => _loopController!;
 
     // async void — 미관측 예외 시 조용한 시작 크래시를 막도록 본문을 감싸 최상위에서 방어한다.
     protected override async void OnStartup(StartupEventArgs e)
@@ -137,14 +152,33 @@ public partial class App : Application
         //    (BaseAddress 는 첫 요청 후 변경이 불가해, 서버 주소를 바꿔도 재시작 전까지 반영되지 않았다.)
         _httpClient = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
 
+        //    2a) 컨트롤플레인(비스트리밍) 전용 — 응답 압축을 켠다. 세션 목록/세션 본문·프로젝트처럼
+        //    JSON 이 큰 응답이 gzip 으로 내려오면 그대로 이득이고, 서버가 압축을 지원하지 않으면
+        //    Accept-Encoding 이 무시될 뿐이라 손해가 없다.
+        //    채팅 SSE 는 이 클라이언트를 쓰지 않는다 — AutomaticDecompression 은 핸들러 단위라
+        //    요청별로 끌 수 없고, 이벤트 스트림에 압축이 걸리면 토큰이 버퍼에 갇힐 수 있다.
+        _restHttpClient = new HttpClient(new SocketsHttpHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All
+        })
+        {
+            Timeout = Timeout.InfiniteTimeSpan   // 요청별 상한은 AgentApiClient.SendControlAsync 가 건다.
+        };
+
         // 2b) 다이얼로그 서비스 — 코드비하인드의 직접 MessageBox/절차적 입력창을 대체(의존성 없음).
         _dialogService = new DialogService();
 
         // 3) Workspace 샌드박스
         var workspace = new WorkspaceContext(_settingsService);
 
-        // 4) 스크립트 실행기 (run_command 엔진)
-        var scriptExec = new ScriptExecutor();
+        // 3b) 태스크 매니저 등기소 — 실행 중인 턴·도구·자식 프로세스를 한곳에 모은다(싱글턴 1개).
+        //     오케스트레이터보다 먼저 만들어야 계측 대상 전원(스크립트 실행기·도구·오케스트레이터 2개)에
+        //     같은 인스턴스를 넘길 수 있다. Core 에 있어 헤드리스도 같은 계측을 쓸 수 있다.
+        var activityRegistry = new AgentActivityRegistry();
+        _activityRegistry = activityRegistry;
+
+        // 4) 스크립트 실행기 (run_command 엔진) — 자식 PID 를 아는 유일한 지점이라 등기소를 넘긴다.
+        var scriptExec = new ScriptExecutor(activityRegistry);
 
         // 4b) http_fetch 전용 HttpClient (앱 API용 _httpClient 와 분리된 인스턴스).
         //     자동 리다이렉트는 꺼져 있다 — HttpFetchTool 이 홉마다 SSRF 검증을 하며 직접 따라간다.
@@ -152,6 +186,16 @@ public partial class App : Application
 
         // 4c) 작업 계획(todo) 공유 저장소 — manage_todos 도구가 쓰고 메인 VM이 구독해 화면에 반영(싱글톤 1개).
         var todoService = new TodoService();
+
+        // 4d) /loop 배선 — 조립 순서가 곧 의존 방향이다(sink → 도구 → 컨트롤러).
+        //     싱크는 schedule_wakeup 도구와 루프 컨트롤러 사이의 단방향 우편함이고,
+        //     컨트롤러는 오케스트레이터를 모른 채 턴 실행 델리게이트만 받는다(VM 이 주입).
+        //     컨트롤러의 수명/Dispose 는 AgentSessionViewModel 이 소유한다.
+        var wakeupSink = new WakeupSink();
+        var loopController = new LoopController(wakeupSink);
+        // 태스크 매니저가 /loop 행(실행/대기·반복 횟수·다음 실행까지 남은 시간)을 직접 읽는다.
+        // 루프 상태는 이미 LoopController 가 스냅샷+이벤트로 갖고 있으므로 등기소에 복제하지 않는다(단일 진실 원천).
+        _loopController = loopController;
 
         // 5) 파일/셸 도구 + 시스템(환경/클립보드/프로세스/HTTP/스크린샷) 도구 묶음 (배열 순서 = 표시 순서)
         var tools = new ITool[]
@@ -173,12 +217,13 @@ public partial class App : Application
             new ClipboardWriteTool(),
             new ListProcessesTool(),
             new ListProcessesMemoryKbTool(),
-            new StartProcessTool(),
+            new StartProcessTool(activityRegistry),   // 띄운 프로세스가 도구보다 오래 산다 → 고아 정리 대상
             new KillProcessTool(),
             new HttpFetchTool(_toolHttpClient),
             new ScreenshotTool(),
-            // ── 에이전트 메타 도구 (다단계 작업 계획 추적) ──
+            // ── 에이전트 메타 도구 (다단계 작업 계획 추적 / 반복 실행 페이싱) ──
             new ManageTodosTool(todoService),
+            new ScheduleWakeupTool(wakeupSink),
             // ── 사무직 문서·데이터 도구 묶음 (CSV: BCL / Excel: ClosedXML / PDF: PdfPig / Word: BCL) ──
             new ReadCsvTool(),
             new WriteCsvTool(),
@@ -198,7 +243,7 @@ public partial class App : Application
         var permissions = new PermissionService(_settingsService);
 
         // 7) API 클라이언트
-        _api = new AgentApiClient(_httpClient, _settingsService);
+        _api = new AgentApiClient(_httpClient, _settingsService, _restHttpClient);
 
         // 7a) 서버 도구 정책 게이트(싱글톤 1개) — 오케스트레이터·VM가 동일 인스턴스를 공유한다.
         _toolPolicy = new ToolPolicyService(_api);
@@ -215,13 +260,23 @@ public partial class App : Application
         var subagentTools = tools.Where(t => TaskTool.AllowedToolNames.Contains(t.Name)).ToArray();
         var subOrchestrator = new AgentOrchestrator(
             _api, new ToolRegistry(subagentTools), permissions, workspace, _settingsService, _toolPolicy, compactor,
-            suppressThinking: true);
+            suppressThinking: true, activities: activityRegistry);
 
-        // 9) 도구 레지스트리 = 기본 도구 + task
-        var registry = new ToolRegistry([.. tools, new TaskTool(subOrchestrator, workspace)]);
+        // 9) 도구 레지스트리 = 기본 도구 + task + generate_image
+        //    generate_image 를 tools[] 가 아니라 여기서 넣는 이유: 이미지 모델을 서버가 대리 호출하므로
+        //    _api 가 필요한데, _api 는 tools[] 보다 뒤(7단계)에서 만들어진다. 이 위치는 부수효과로
+        //    "서브에이전트에 노출되지 않는다"는 보장도 준다 — subagentTools 는 tools[] 에서 파생되기 때문이다
+        //    (위임 작업이 이미지 쿼터를 태우면 안 된다. SubagentWiringTests 가 이 사실을 잠근다).
+        var registry = new ToolRegistry([
+            .. tools,
+            new TaskTool(subOrchestrator, workspace),
+            new GenerateImageTool(_api),
+        ]);
 
         // 10) 오케스트레이터 (에이전트 루프) — 정책 게이트를 가장 앞단에 끼운다.
-        var orchestrator = new AgentOrchestrator(_api, registry, permissions, workspace, _settingsService, _toolPolicy, compactor);
+        var orchestrator = new AgentOrchestrator(
+            _api, registry, permissions, workspace, _settingsService, _toolPolicy, compactor,
+            activities: activityRegistry);
 
         // 9a) 바이너리 무결성 검사 서비스 (설치 디렉토리 SHA256 검증, Windows 전용)
         _binaryIntegrity = new BinaryIntegrityService(new AuthenticodeVerifier());
@@ -241,7 +296,7 @@ public partial class App : Application
         // 10) 루트 ViewModel
         _mainVm = new AgentSessionViewModel(
             orchestrator, _api, permissions, workspace, _settingsService,
-            chatHistory, attachments, suggestions, _toolPolicy, sessionSync, todoService);
+            chatHistory, attachments, suggestions, _toolPolicy, sessionSync, todoService, loopController);
 
         // 10b) 프로젝트 사이드바 VM 조립·주입 (#4). 메인 DataContext에서 Projects.* 로 바인딩.
         _mainVm.Projects = new ProjectsViewModel(_projectService, chatHistory);
@@ -267,7 +322,8 @@ public partial class App : Application
         //      신원 = JWT(sub) = member UUID. /users/me 엔 id 없음 → 토큰 디코드가 유일 소스.
         //      ChatIdentity 를 참조로 공유해, 재로그인 시 MemberId 만 갱신하면 VM 트리 전체가 따라온다
         //      (문자열로 넘기면 각 VM 이 복사본을 들어 사용자가 바뀌어도 판정 기준이 옛 사용자로 남는다).
-        var chatApi   = new ChatApiClient(_httpClient!, _settingsService!);
+        // 메신저 API 는 전부 비스트리밍 REST(실시간은 별도 WebSocket) — 압축 클라이언트를 쓴다.
+        var chatApi   = new ChatApiClient(_restHttpClient!, _settingsService!);
         var chatSocket = new ChatSocketClient(_settingsService!);
         _chatRealtime = new ChatRealtimeService(chatApi, chatSocket, _settingsService!, ui);
 
@@ -280,6 +336,35 @@ public partial class App : Application
         _chatCoordinator = new ChatMessengerCoordinator(
             () => chatWindow ??= new ChatMessengerWindow(_chatMessengerVm!),
             _trayNotification!);
+
+        // 창이 닫혀(트레이) 있을 때 온 남의 메시지는 트레이 풍선으로 알린다 — 없으면 새 메시지가 와도
+        // 사용자가 창을 열어보기 전까지 아무 신호가 없다. 이벤트는 이미 UI 스레드로 마샬돼 온다.
+        _chatRealtime.MessageUpserted += OnChatMessageForTray;
+
+        // 13c) 에이전트 런처 창 — 사이드바 "에이전트" 항목이 여는 격자 런처(단일 인스턴스).
+        //      창 타입은 UI 단계 산출물이라 코디네이터는 Func<Window> 로 받는다(메신저와 같은 이유).
+        //      VM 은 1개만 만들어 창 인스턴스들 사이에서 재사용한다(세션 커맨드 구독이 창마다 쌓이지 않게).
+        var agentLauncherVm = new AgentLauncherViewModel(_mainVm);
+        _agentLauncher = new AgentLauncherCoordinator(
+            agentLauncherVm,
+            () => new AgentLauncherWindow(agentLauncherVm),
+            () => _mainWindow);
+        _mainVm.AgentLauncherRequested += (_, _) => _agentLauncher!.Show();
+
+        // 13d) 작업 관리(태스크 매니저) 창 — 런처 6번째 타일과 상단바 "진행 N" 칩이 여는 목록 창.
+        //      코디네이터는 런처와 같은 패턴(단일 인스턴스 · Owner=메인 · Func<Window> 팩토리)이지만
+        //      추가로 VM 의 1초 타이머·등기소 구독을 창 수명에 맞춰 붙였다 떼는 책임을 진다.
+        //      VM 은 1개만 만들어 창 인스턴스들 사이에서 재사용한다(구독이 창마다 쌓이지 않게).
+        _taskManagerVm = new TaskManagerViewModel(activityRegistry, loopController, ui, _dialogService);
+        var taskManager = new TaskManagerCoordinator(
+            _taskManagerVm,
+            () => new TaskManagerWindow(_taskManagerVm!),
+            () => _mainWindow);
+        _mainVm.TaskManagerRequested += (_, _) => taskManager.Show();
+
+        // 상단바 칩은 개수만 보여 주므로 구조 변화(Changed)만 구독한다 — 경과 시간용 1초 타이머는
+        // 창이 열려 있는 동안만 도는 태스크 매니저 VM 쪽에만 있다.
+        _mainVm.AttachActivityRegistry(activityRegistry);
 
         // 14) Global Hotkey 서비스 생성 (HWND는 SourceInitialized 후 획득)
         _globalHotkey = new GlobalHotkeyService();
@@ -375,6 +460,17 @@ public partial class App : Application
     /// 창을 트레이로 숨기고 풍선 힌트를 표시한다.
     public void HideToTray(Window window)
     {
+        // 소유 창(Owner=메인)은 Win32 규칙상 소유자를 Hide 해도 함께 숨지 않는다. 그래서 트레이로
+        // 숨긴 뒤에도 화면에 남는데, 남겨야 하는 창과 남으면 안 되는 창의 판단이 갈린다:
+        //  · 런처는 항목을 고르면 사라지는 일회성 표면이고 모든 타일의 결과가 메인 창에서 나타난다
+        //    (입력창 프리필·포커스·전사·첨부 대화상자). 메인이 숨은 상태에서 타일을 누르면 아무 것도
+        //    보이지 않아 무증상 실패가 된다 → 함께 닫는다(닫아도 잃는 상태가 없다).
+        //  · 작업 관리 창은 "지켜보는 창"이다. 목록·중지·강제 종료가 전부 그 창 안에서 완결되므로
+        //    메인이 숨어도 그대로 쓸 수 있고, 오히려 트레이로 접어 둔 채 진행을 지켜보는 것이
+        //    이 창의 정상적인 사용법이다 → 남긴다(사용자가 닫는 것이 유일한 종료 경로).
+        if (ReferenceEquals(window, _mainWindow))
+            _agentLauncher?.Close();
+
         window.Hide();
         _trayNotification?.ShowHideHint(_settingsService?.Current.Hotkey.ToDisplayString() ?? "Ctrl+Space");
     }
@@ -476,6 +572,24 @@ public partial class App : Application
         _ = _chatMessengerVm.StartCommand.ExecuteAsync(null);
     }
 
+    /// 메신저 창이 안 보일 때 온 남의 새 메시지 → 트레이 풍선 알림.
+    /// (수정·삭제 이벤트, 내 메시지, 창이 떠 있는 경우는 제외.)
+    private void OnChatMessageForTray(object? sender, RoomMessageEvent e)
+    {
+        if (e.IsEdited || e.IsDeleted) return;
+        if (_chatIdentity is null || _chatIdentity.IsMine(e.Message.SenderId)) return;
+        if (_chatCoordinator is null || _chatCoordinator.IsOpen) return;
+
+        var sender_ = _chatRealtime?.DisplayName(e.Message.SenderId);
+        var title = string.IsNullOrWhiteSpace(sender_) ? "새 메시지" : sender_!;
+        var body = string.IsNullOrWhiteSpace(e.Message.Content)
+            ? "파일을 보냈습니다"
+            : e.Message.Content.ReplaceLineEndings(" ").Trim();
+        if (body.Length > 120) body = body[..120] + "…";
+
+        _trayNotification?.ShowInfo(title, body);
+    }
+
     /// 로그인이 필요한 모든 상황(로그아웃 · 세션 만료/401)의 단일 진입점.
     /// 실행 중 작업·세션을 강제 종료하고, 모든 보조 창을 닫고 메인은 숨긴 뒤 로그인 화면만 남긴다.
     /// 로그인 성공 시 메인 복귀, 그냥 닫으면 앱 종료(시작 게이트와 동일).
@@ -535,6 +649,9 @@ public partial class App : Application
         // 종료 경로에서만 호출한다(재로그인 ReturnToLogin 은 PrepareForLogout 만 쓰고 VM 재사용).
         try { _mainVm?.Dispose(); } catch { /* ignore */ }
 
+        // 작업 관리 창 VM — 1초 타이머와 등기소·루프 구독을 끊는다(창이 열린 채 종료되는 경로 대비).
+        try { _taskManagerVm?.Dispose(); } catch { /* ignore */ }
+
         try { _globalHotkey?.Dispose(); } catch { /* ignore */ }
         try
         {
@@ -546,6 +663,7 @@ public partial class App : Application
         }
         catch { /* ignore */ }
         try { _httpClient?.Dispose(); }     catch { /* ignore */ }
+        try { _restHttpClient?.Dispose(); } catch { /* ignore */ }
         try { _toolHttpClient?.Dispose(); } catch { /* ignore */ }
     }
 

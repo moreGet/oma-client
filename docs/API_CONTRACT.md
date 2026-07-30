@@ -326,4 +326,4 @@ public sealed record ErrorEvent(string Code, string Message)               : Age
 
 ---
 
-> 관련 문서: [AGENT_ARCHITECTURE_PLAN.md](./AGENT_ARCHITECTURE_PLAN.md) — 전체 전환 계획
+> 관련 문서: [tool-system.md](./tool-system.md) — 도구 시스템 설계 · [a2a-registry.md](./a2a-registry.md) — 에이전트 간 통신 계약

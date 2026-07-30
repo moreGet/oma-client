@@ -259,6 +259,26 @@ public sealed class IsMineToBubbleBrushConverter : OneWayConverter
             : Color.FromRgb(0x1B, 0x24, 0x33));        // ChatSurface2Brush #1B2433
 }
 
+/// <summary>
+/// 태스크 매니저 계층 깊이(int) → 왼쪽 들여쓰기 <see cref="Thickness"/>.
+///
+/// 등기소 스냅샷이 이미 깊이 우선 정렬 + 깊이 계산까지 끝내 주므로 뷰는 트리를 다시 조립하지 않고
+/// 이 여백만 준다. <b>이름 열에만</b> 적용한다 — 행 전체를 밀면 상태·경과·동작 열이 어긋나 표로 읽히지 않는다.
+/// 한 단계 16 DIP 는 계약이 지정한 값이다.
+/// </summary>
+[ValueConversion(typeof(int), typeof(Thickness))]
+public sealed class DepthToIndentConverter : IValueConverter
+{
+    /// <summary>한 단계 들여쓰기 폭(DIP).</summary>
+    public const double Step = 16;
+
+    public object Convert(object? value, Type t, object p, CultureInfo c)
+        => value is int depth && depth > 0 ? new Thickness(depth * Step, 0, 0, 0) : new Thickness(0);
+
+    public object ConvertBack(object value, Type t, object p, CultureInfo c)
+        => throw new NotSupportedException();
+}
+
 /// <summary>표시이름 → 아바타 이니셜(첫 글자, 대문자). 빈 값은 "?".</summary>
 public sealed class InitialConverter : OneWayConverter
 {

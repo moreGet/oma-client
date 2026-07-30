@@ -38,7 +38,9 @@ public sealed class ScreenshotTool : ITool
 
             using var ms = new MemoryStream();
             bitmap.Save(ms, ImageFormat.Png);
-            var base64 = Convert.ToBase64String(ms.ToArray());
+            // ToArray() 는 PNG 를 한 벌 더 복사한다 — 4K 화면이면 수 MB 가 헛돈다.
+            // 내부 버퍼를 그대로 인코딩한다(확장 가능 MemoryStream 이라 GetBuffer 사용 가능).
+            var base64 = Convert.ToBase64String(ms.GetBuffer(), 0, (int)ms.Length);
 
             return Task.FromResult(ToolResult.Json(new
             {

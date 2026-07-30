@@ -88,7 +88,7 @@ App.xaml.cs 에서 도구 배열 생성
 즉 클라가 **"나 이런 거 할 수 있어"를 스키마(데이터)로** 모델에 알려주고, **실행 코드는 클라에** 둡니다.
 
 > **노출·실행 일관성**: 노출 필터(`IsExposed`)는 실행 게이트(`EvaluateAsync`)와 **동일 규칙**(cached 모드: disabled 우선 → enabled 화이트리스트)을 씁니다.
-> 비활성 도구는 모델이 **보지도 못하고**(노출 차단) 설령 호출해도 **실행도 차단**됩니다. 자세한 설계는 [`server-controlled-security-and-tools.md`](server-controlled-security-and-tools.md) 참조.
+> 비활성 도구는 모델이 **보지도 못하고**(노출 차단) 설령 호출해도 **실행도 차단**됩니다. 서버 정책 계약은 [`server-tool-policy-api.md`](server-tool-policy-api.md) 참조.
 
 ---
 
@@ -118,7 +118,7 @@ App.xaml.cs 에서 도구 배열 생성
 
 ---
 
-## 5. 내장 도구 26개
+## 5. 내장 도구 34개 (데스크톱 기준)
 
 | 그룹 | 도구 | 위험도 |
 |------|------|--------|
@@ -129,9 +129,16 @@ App.xaml.cs 에서 도구 배열 생성
 | 시스템 | `get_environment` · `clipboard_read` · `clipboard_write` | ReadOnly / Write |
 | 프로세스 | `list_processes` · `list_processes_memory_kb` · `start_process` · `kill_process` | ReadOnly / Execute / Destructive |
 | 네트워크·비전 | `http_fetch` · `screenshot` | Execute / ReadOnly |
-| 문서·데이터(사무직) | `read_csv` · `write_csv` · `read_excel` · `write_excel` · `read_pdf` · `read_document` | ReadOnly / Write |
+| 에이전트 메타 | `manage_todos` · `schedule_wakeup` · `task` | ReadOnly |
+| 문서·데이터(사무직) | `read_csv` · `write_csv` · `read_excel` · `write_excel` · `read_pdf` · `read_document` · `read_pptx` · `write_pptx` · `read_hwpx` | ReadOnly / Write |
+| 압축 | `compress_files` · `extract_archive` | Write |
 
-> 파일·셸·시스템 20종은 BCL/WPF/WinForms 내장 기능만 사용. 문서·데이터 6종 중 Excel은 **ClosedXML**, PDF는 **PdfPig**(둘 다 순수 관리코드·오프라인/보안망 적합)를 쓰고, CSV·Word(.docx)는 BCL만 사용한다.
+> 파일·셸·시스템 20종은 BCL/WPF/WinForms 내장 기능만 사용. 문서·데이터 중 Excel은 **ClosedXML**, PDF는 **PdfPig**(둘 다 순수 관리코드·오프라인/보안망 적합)를 쓰고, CSV·Word(.docx)·PPTX·HWPX·zip 은 BCL만 사용한다.
+>
+> **에이전트 메타 3종은 서브에이전트에 노출하지 않는다** — `TaskTool.AllowedToolNames` 에서 제외된다.
+> `task` 는 무한 중첩 방지, `manage_todos`·`schedule_wakeup` 은 서브에이전트가 부모의 작업 계획·`/loop` 페이싱을 덮어쓰지 못하게 하기 위함이다.
+>
+> 헤드리스 호스트는 클립보드 2종·`screenshot` 을 빼고 A2A 도구 `discover_agents`·`ask_agent` 를 더해 **33개**를 노출한다(전체 고유 **36개**).
 
 ---
 

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -12,6 +13,7 @@ namespace OhMyAgent.AiAgent.Client.Services.Tools;
 public sealed class ReadCsvTool : ITool
 {
     private const int DefaultMaxRows = 1000;
+    private const int BufferChars = 8192;
 
     private static readonly JsonElement Schema = ToolSchemas.Parse(
         """
@@ -32,24 +34,7 @@ public sealed class ReadCsvTool : ITool
         var hasHeader = ToolSchemas.GetBool(args, "has_header", true);
         var maxRows = ToolSchemas.GetInt(args, "max_rows") ?? DefaultMaxRows;
 
-        var text = await File.ReadAllTextAsync(full, Encoding.UTF8, ct).ConfigureAwait(false);
-        var records = ParseCsv(text, delim);
-
-        string[]? headers = null;
-        var start = 0;
-        if (hasHeader && records.Count > 0)
-        {
-            headers = records[0].ToArray();
-            start = 1;
-        }
-
-        var rows = new List<string[]>();
-        var total = records.Count - start;
-        for (var i = start; i < records.Count && rows.Count < maxRows; i++)
-        {
-            ct.ThrowIfCancellationRequested();
-            rows.Add(records[i].ToArray());
-        }
+        var (headers, rows, total) = await ParseCsvAsync(full, delim, hasHeader, maxRows, ct).ConfigureAwait(false);
 
         return ToolResult.Json(new
         {
@@ -57,48 +42,90 @@ public sealed class ReadCsvTool : ITool
             headers,
             rows,
             row_count = rows.Count,
-            total_rows = total < 0 ? 0 : total,
+            total_rows = total,
             truncated = total > rows.Count,
         });
     }
 
-    /// <summary>RFC 4180 약식 파서 — 따옴표 안의 구분자/개행/이스케이프("")를 처리.</summary>
-    private static List<List<string>> ParseCsv(string text, char delim)
+    /// <summary>
+    /// RFC 4180 약식 파서 — 따옴표 안의 구분자/개행/이스케이프("")를 처리.
+    /// 파일을 통째로 올리지 않고 한 버퍼씩 흘려보내며, 반환할 ≤maxRows 행만 보유하고
+    /// 나머지는 세기만 하고 버린다 — 대용량 CSV 에서도 피크 메모리가 maxRows 에 비례한다.
+    /// </summary>
+    private static async Task<(string[]? Headers, List<string[]> Rows, int Total)> ParseCsvAsync(
+        string full, char delim, bool hasHeader, int maxRows, CancellationToken ct)
     {
-        var rows = new List<List<string>>();
+        string[]? headers = null;
+        var rows = new List<string[]>();
+        var total = 0;      // 헤더를 제외한 전체 행 수(보유하지 않은 행 포함).
+        var rowIndex = 0;
+
         var row = new List<string>();
         var field = new StringBuilder();
         var inQuotes = false;
+        // 따옴표 안에서 방금 '"' 를 만났다 — 다음 문자가 '"' 면 이스케이프, 아니면 닫는 따옴표.
+        // 원본의 1문자 lookahead 를 버퍼 경계에서도 안전하도록 상태로 바꾼 것.
+        var pendingQuote = false;
 
-        for (var i = 0; i < text.Length; i++)
+        using var reader = new StreamReader(full, Encoding.UTF8);
+        var buffer = new char[BufferChars];
+        int read;
+        while ((read = await reader.ReadAsync(buffer.AsMemory(), ct).ConfigureAwait(false)) > 0)
         {
-            var c = text[i];
-            if (inQuotes)
+            for (var i = 0; i < read; i++)
             {
-                if (c == '"')
+                var c = buffer[i];
+
+                if (pendingQuote)
                 {
-                    if (i + 1 < text.Length && text[i + 1] == '"') { field.Append('"'); i++; }
-                    else inQuotes = false;
+                    pendingQuote = false;
+                    if (c == '"') { field.Append('"'); continue; }   // "" → 리터럴 따옴표
+                    inQuotes = false;                                // 닫는 따옴표 — 이 문자는 아래에서 평문 처리
+                }
+
+                if (inQuotes)
+                {
+                    if (c == '"') pendingQuote = true;
+                    else field.Append(c);
+                    continue;
+                }
+
+                if (c == '"') inQuotes = true;
+                else if (c == delim) { row.Add(field.ToString()); field.Clear(); }
+                else if (c == '\r') { /* skip — \n 에서 행 종료 */ }
+                else if (c == '\n')
+                {
+                    row.Add(field.ToString()); field.Clear();
+                    EmitRow();
                 }
                 else field.Append(c);
             }
-            else if (c == '"') inQuotes = true;
-            else if (c == delim) { row.Add(field.ToString()); field.Clear(); }
-            else if (c == '\r') { /* skip — \n 에서 행 종료 */ }
-            else if (c == '\n')
-            {
-                row.Add(field.ToString()); field.Clear();
-                rows.Add(row); row = new List<string>();
-            }
-            else field.Append(c);
+            ct.ThrowIfCancellationRequested();
         }
 
         // 마지막 행(개행 없이 끝나는 경우)
         if (field.Length > 0 || row.Count > 0)
         {
             row.Add(field.ToString());
-            rows.Add(row);
+            EmitRow();
         }
-        return rows;
+
+        return (headers, rows, total);
+
+        // 완성된 행을 소비하고 버퍼(row)를 재사용한다 — 헤더 1행 또는 상한 이내의 행만 실제로 보유.
+        void EmitRow()
+        {
+            if (hasHeader && rowIndex == 0)
+            {
+                headers = row.ToArray();
+            }
+            else
+            {
+                total++;
+                if (rows.Count < maxRows) rows.Add(row.ToArray());
+            }
+            rowIndex++;
+            row.Clear();
+        }
     }
 }

@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using OhMyAgent.AiAgent.Client.Models;
 using OhMyAgent.AiAgent.Client.Models.Mcp;
 
 namespace OhMyAgent.AiAgent.Client.Services;
@@ -13,8 +14,12 @@ namespace OhMyAgent.AiAgent.Client.Services;
 /// System.Diagnostics.Process 기반 셸 실행기.
 /// Windows: PowerShell / CMD (바이트 불변). Linux/macOS: 모든 타입 → /bin/bash -c.
 /// 동시 실행 프로세스 수를 SemaphoreSlim 으로 제한.
+///
+/// <paramref name="activities"/> 는 선택적 관찰자다(null 이면 종전과 완전히 동일하게 동작한다).
+/// 여기가 자식 PID 를 아는 유일한 지점이라 태스크 매니저의 "강제 종료"가 성립하려면 이곳에서 등록해야 한다 —
+/// 관리 스레드는 강제 종료할 수 없으므로 실제로 멈출 수 있는 대상은 이 자식 프로세스뿐이다.
 /// </summary>
-public class ScriptExecutor : IScriptExecutor
+public class ScriptExecutor(IAgentActivityRegistry? activities = null) : IScriptExecutor
 {
     private const int MaxConcurrency = 4;
     private readonly SemaphoreSlim _concurrencyLimit = new(MaxConcurrency, MaxConcurrency);
@@ -111,16 +116,18 @@ public class ScriptExecutor : IScriptExecutor
     public async Task<ScriptResult> ExecutePowerShellAsync(string script, int timeoutMs = 30000, string? workingDirectory = null, CancellationToken ct = default)
     {
         var inv = ResolveShell(ScriptType.PowerShell, script, OperatingSystem.IsWindows());
-        return await ExecuteAsync(BuildStartInfo(inv, workingDirectory), timeoutMs, ct).ConfigureAwait(false);
+        return await ExecuteAsync(BuildStartInfo(inv, workingDirectory), timeoutMs, script, ct).ConfigureAwait(false);
     }
 
     public async Task<ScriptResult> ExecuteCmdAsync(string command, int timeoutMs = 30000, string? workingDirectory = null, CancellationToken ct = default)
     {
         var inv = ResolveShell(ScriptType.Cmd, command, OperatingSystem.IsWindows());
-        return await ExecuteAsync(BuildStartInfo(inv, workingDirectory), timeoutMs, ct).ConfigureAwait(false);
+        return await ExecuteAsync(BuildStartInfo(inv, workingDirectory), timeoutMs, command, ct).ConfigureAwait(false);
     }
 
-    private async Task<ScriptResult> ExecuteAsync(ProcessStartInfo psi, int timeoutMs, CancellationToken ct)
+    /// <summary><paramref name="commandText"/> 는 태스크 매니저 표시용 원문이다(실행에는 쓰이지 않는다).</summary>
+    private async Task<ScriptResult> ExecuteAsync(
+        ProcessStartInfo psi, int timeoutMs, string commandText, CancellationToken ct)
     {
         await _concurrencyLimit.WaitAsync(ct).ConfigureAwait(false);
         var stopwatch = Stopwatch.StartNew();
@@ -159,6 +166,10 @@ public class ScriptExecutor : IScriptExecutor
 
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
+
+            // 자식 프로세스 추적 — 이 블록을 어떤 경로로 벗어나도(정상 종료·타임아웃·취소·예외)
+            // using 이 해제를 보장한다. 해제가 빠지면 살아 있는 프로세스가 "고아"로 오판된다.
+            using var tracked = Track(process, commandText);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(timeoutMs);
@@ -211,6 +222,31 @@ public class ScriptExecutor : IScriptExecutor
         finally
         {
             _concurrencyLimit.Release();
+        }
+    }
+
+    /// <summary>
+    /// 방금 띄운 셸 프로세스를 태스크 매니저에 등록한다. 관찰 전용이므로 <b>어떤 실패도 실행에 영향을 주지 않는다</b>
+    /// (계측이 실행을 깨뜨리면 안 된다). PID 단독은 신원이 되지 않아 시작 시각·이름을 함께 기록한다 — PID 는 재사용된다.
+    /// </summary>
+    private IDisposable? Track(Process process, string commandText)
+    {
+        if (activities is null) return null;
+
+        try
+        {
+            DateTimeOffset? startedAt = null;
+            try { startedAt = new DateTimeOffset(process.StartTime).ToUniversalTime(); }
+            catch (Exception) { /* 시작 시각을 못 읽으면 강제 종료 대상에서 제외된다(엄한 쪽) */ }
+
+            return activities.TrackChildProcess(
+                new TrackedProcessIdentity(process.Id, process.ProcessName, startedAt),
+                commandText);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("ScriptExecutor", $"자식 프로세스 추적 등록 실패: {ex.Message}");
+            return null;
         }
     }
 

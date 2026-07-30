@@ -103,6 +103,11 @@ public sealed class ChatSocketClient(ISettingsService settings) : IChatSocketCli
         }
 
         _pumpTask = null;
+
+        // 다음 ConnectAsync 는 "첫 연결"이다. 이걸 리셋하지 않으면 로그아웃→로그인 직후 첫 연결에서
+        // Reconnected 가 발화해, 필요 없는 전체 재동기화(방마다 messages+reads 재조회)가 한 벌 나간다.
+        _hasConnectedBefore = false;
+
         SetState(ChatConnectionState.Disconnected);
     }
 

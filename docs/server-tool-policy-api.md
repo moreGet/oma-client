@@ -92,6 +92,65 @@
 
 ---
 
+## 도구 인벤토리 — 서버가 제어할 수 있는 도구 전체 (37개)
+
+`enabled`/`disabled` 에 넣을 **정확한 도구명**입니다. 이름은 클라이언트 코드의 `ITool.Name` 이 정본이며, 오타는 조용히 무시됩니다(존재하지 않는 이름은 아무 도구도 매치하지 않음).
+
+**위험도**는 클라이언트의 로컬 승인 게이트 기준입니다 — `ReadOnly` 는 승인 없이 실행, `Write`/`Destructive`/`Execute` 는 권한 모드에 따라 실행 전 승인 카드가 뜹니다. 서버 정책은 이와 **별개의 상위 게이트**입니다(정책이 차단하면 모델에 도구 자체가 노출되지 않습니다).
+
+**노출** 열: `D`=데스크톱 클라이언트, `H`=헤드리스 호스트.
+
+| 도구명 | 위험도 | 노출 | 분류 | 비고 |
+|--------|--------|:---:|------|------|
+| `read_file` | ReadOnly | D·H | 파일 | |
+| `write_file` | Write | D·H | 파일 | |
+| `edit_file` | Write | D·H | 파일 | |
+| `list_directory` | ReadOnly | D·H | 파일 | |
+| `glob` | ReadOnly | D·H | 파일 | |
+| `grep` | ReadOnly | D·H | 파일 | |
+| `create_directory` | Write | D·H | 파일 | |
+| `move` | Destructive | D·H | 파일 | |
+| `copy` | Destructive | D·H | 파일 | |
+| `delete` | Destructive | D·H | 파일 | |
+| `run_command` | Execute | D·H | 셸·프로세스 | 위험 명령 차단 목록이 별도 적용(`/api/v1/security/command-policy`) |
+| `start_process` | Execute | D·H | 셸·프로세스 | |
+| `kill_process` | Destructive | D·H | 셸·프로세스 | |
+| `list_processes` | ReadOnly | D·H | 셸·프로세스 | |
+| `list_processes_memory_kb` | ReadOnly | D·H | 셸·프로세스 | |
+| `get_environment` | ReadOnly | D·H | 셸·프로세스 | 정보 유출 경로라 모드와 무관하게 **항상 승인**(`clipboard_read`·`screenshot` 과 같은 취급) |
+| `http_fetch` | Execute | D·H | 네트워크 | 사내 HTTP 호출 |
+| `read_csv` | ReadOnly | D·H | 문서·데이터 | |
+| `write_csv` | Write | D·H | 문서·데이터 | |
+| `read_excel` | ReadOnly | D·H | 문서·데이터 | |
+| `write_excel` | Write | D·H | 문서·데이터 | |
+| `read_pdf` | ReadOnly | D·H | 문서·데이터 | |
+| `read_document` | ReadOnly | D·H | 문서·데이터 | Word |
+| `read_pptx` | ReadOnly | D·H | 문서·데이터 | |
+| `write_pptx` | Write | D·H | 문서·데이터 | |
+| `read_hwpx` | ReadOnly | D·H | 문서·데이터 | 한글 HWPX |
+| `compress_files` | Write | D·H | 압축 | |
+| `extract_archive` | Write | D·H | 압축 | zip-slip 차단 |
+| `clipboard_read` | ReadOnly | **D** | 시스템·UI | 데스크톱 전용. 모드와 무관하게 **항상 승인** |
+| `clipboard_write` | Write | **D** | 시스템·UI | 데스크톱 전용 |
+| `screenshot` | ReadOnly | **D** | 시스템·UI | 데스크톱 전용. 모드와 무관하게 **항상 승인** |
+| `manage_todos` | ReadOnly | D·H | 에이전트 메타 | 작업 계획 추적. 서브에이전트에는 비노출 |
+| `schedule_wakeup` | ReadOnly | D·H | 에이전트 메타 | 자율 페이싱 `/loop` 의 다음 실행 예약. 서브에이전트에는 비노출 |
+| `task` | ReadOnly | D·H | 에이전트 메타 | 서브에이전트 위임. 서브에이전트에는 비노출(무한 중첩 방지) |
+| `discover_agents` | ReadOnly | **H** | A2A | 헤드리스 전용 — 에이전트 레지스트리 조회 |
+| `ask_agent` | Execute | **H** | A2A | 헤드리스 전용 — 다른 에이전트에 작업 위임 |
+| `generate_image` | Write | D·H | 이미지 | **서버 엔드포인트 대기** — `docs/server-image-api.md` 참고 |
+
+**합계**: 데스크톱 **35개** · 헤드리스 **34개** · 고유 **37개**.
+
+> `task` 로 위임된 **서브에이전트**는 이 목록의 부분집합만 받습니다(`TaskTool.AllowedToolNames`) — `ReadOnly` 조사 도구만이며 `task`·`manage_todos`·`schedule_wakeup`·`generate_image` 는 제외됩니다. **서버 정책은 서브에이전트에도 그대로 적용됩니다**(같은 게이트를 지납니다).
+
+### 서버 정책을 짤 때 참고
+
+- **분류 단위로 끄는 것이 실용적입니다** — 예: 셸 실행을 막고 싶으면 `run_command`·`start_process`·`kill_process` 를 함께 넣어야 합니다. 하나만 막으면 다른 경로로 우회됩니다.
+- `read_*` 계열만 허용하는 **조사 전용 프로필**을 만들 수 있습니다(`enabled` 화이트리스트에 `read_file`·`glob`·`grep`·`list_directory` + 문서 읽기 계열).
+- `disabled` 가 `enabled` 보다 **우선**하므로, 넓게 허용하고 위험한 것만 빼는 운영이 가장 관리하기 쉽습니다.
+- 도구가 추가되면 이 표도 갱신됩니다. **서버가 `enabled` 화이트리스트를 쓰는 경우, 새 도구는 자동으로 차단됩니다** — 신규 도구 배포 시 화이트리스트 갱신을 잊지 마세요.
+
 ## 클라이언트 동작 요약 (구현 완료분)
 
 | 상황 | 결과 |

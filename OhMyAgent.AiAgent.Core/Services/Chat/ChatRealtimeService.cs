@@ -162,7 +162,18 @@ public sealed class ChatRealtimeService(
         _unread.Clear();
         _directCounterpart.Clear();
         _lastMarkTick.Clear();
+        // 이름 캐시도 버린다 — 남겨두면 다음 로그인 사용자가 이전 조직 구성원 이름을 그대로 보게 된다.
+        _names.Clear();
         _activeRoomId = null;
+
+        // 상태를 직접 내린다. UnhookSocket 을 먼저 하는 건 의도적이지만(정리 중 잔여 이벤트 차단),
+        // 그 탓에 소켓의 Disconnected 전이가 여기까지 오지 않아 로그아웃 후에도 ConnectionState 가
+        // Connected 로 굳고 타이틀바 연결점이 초록으로 남았다(라이브 테스트로 확인).
+        if (_connectionState != ChatConnectionState.Disconnected)
+        {
+            _connectionState = ChatConnectionState.Disconnected;
+            await RaiseAsync(() => ConnectionStateChanged?.Invoke(this, ChatConnectionState.Disconnected)).ConfigureAwait(false);
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -183,7 +194,7 @@ public sealed class ChatRealtimeService(
             var messages = await api.GetMessagesAsync(roomId, limit, before, ct).ConfigureAwait(false);
             var state = GetOrAddRoom(roomId);
             foreach (var m in messages)
-                state.UpsertMessage(m);   // id dedup 병합
+                state.TrackMessage(m);   // id dedup 추적
             return messages;
         }
         catch (ChatApiException ex)
@@ -472,7 +483,7 @@ public sealed class ChatRealtimeService(
     {
         var state = GetOrAddRoom(message.RoomId);
         var isDeletedFinal = isDeleted || (message.Deleted ?? false);
-        var isNew = state.UpsertMessage(message);   // id dedup 병합(신규면 true)
+        var isNew = state.TrackMessage(message);   // id dedup 추적(신규면 true)
 
         _ = RaiseAsync(() => MessageUpserted?.Invoke(this, new RoomMessageEvent(message, isEdited, isDeletedFinal)));
 
@@ -536,7 +547,7 @@ public sealed class ChatRealtimeService(
                 var state = GetOrAddRoom(roomId);
                 foreach (var m in messages)
                 {
-                    var isNew = state.UpsertMessage(m);   // 신규만 true
+                    var isNew = state.TrackMessage(m);   // 신규만 true
                     if (isNew)
                     {
                         var captured = m;
@@ -611,18 +622,28 @@ public sealed class ChatRealtimeService(
     private sealed class RoomState
     {
         private readonly object _gate = new();
-        private readonly Dictionary<string, ChatMessage> _messages = new();   // id → message
         private readonly Dictionary<string, long> _lastReadByMember = new();  // member → last_read_at(단조)
         private readonly HashSet<string> _online = new();
 
-        /// <summary>id dedup 병합. 신규면 true, 기존 갱신이면 false.</summary>
-        public bool UpsertMessage(ChatMessage message)
+        // 본 메시지 id — dedup 판정에만 쓰므로 본문(ChatMessage)은 보유하지 않는다(메시지 소유는 VM).
+        // 상한 없는 보유는 장시간 세션에서 방마다 무한히 자라므로 FIFO 로 오래된 id 를 잊는다.
+        // 에코 dedup 은 수 초 내에 끝나므로 상한 밖으로 밀려난 id 가 재수신될 일은 사실상 없다.
+        private const int MaxTrackedIds = 2000;
+        private readonly HashSet<string> _seenIds = new(StringComparer.Ordinal);
+        private readonly Queue<string> _seenOrder = new();
+
+        /// <summary>id dedup 추적. 신규면 true, 이미 본 id 면 false.</summary>
+        public bool TrackMessage(ChatMessage message)
         {
             lock (_gate)
             {
-                var isNew = !_messages.ContainsKey(message.Id);
-                _messages[message.Id] = message;
-                return isNew;
+                if (!_seenIds.Add(message.Id))
+                    return false;
+
+                _seenOrder.Enqueue(message.Id);
+                if (_seenOrder.Count > MaxTrackedIds)
+                    _seenIds.Remove(_seenOrder.Dequeue());
+                return true;
             }
         }
 

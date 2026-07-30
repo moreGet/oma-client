@@ -1,9 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using OhMyAgent.AiAgent.Client.Models;
@@ -22,123 +20,36 @@ public sealed class ChatHistoryService : IChatHistoryService
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "OhMyAgent", "sessions");
 
-    private readonly object _ioLock = new();
+    private readonly JsonFileStore<ChatSessionRecord> _store =
+        new(SessionsDirectory, "ChatHistoryService", "세션");
 
     public async Task<IReadOnlyList<ChatSessionSummary>> ListAsync(CancellationToken ct = default)
     {
-        return await Task.Run(() =>
-        {
-            lock (_ioLock)
-            {
-                var summaries = new List<ChatSessionSummary>();
-                if (!Directory.Exists(SessionsDirectory))
-                    return (IReadOnlyList<ChatSessionSummary>)summaries;
+        // 요약 6필드만 쓰지만 레코드 전체를 역직렬화해야 한다(Messages.Count).
+        // 저장소가 파일을 하나씩 읽어 투영하고 버리므로, 긴 대화 파일이 세션 수만큼 쌓이지는 않는다.
+        var summaries = await _store.ListAsync(record => new ChatSessionSummary(
+            record.Id,
+            record.Title,
+            record.UpdatedUtc,
+            record.WorkspaceRoot,
+            record.Messages.Count,
+            record.ProjectId), ct).ConfigureAwait(false);
 
-                foreach (var file in Directory.EnumerateFiles(SessionsDirectory, "*.json"))
-                {
-                    ct.ThrowIfCancellationRequested();
-                    try
-                    {
-                        var json = File.ReadAllText(file);
-                        var record = JsonSerializer.Deserialize<ChatSessionRecord>(json, AgentJson.Options);
-                        if (record is null)
-                            continue;
-
-                        summaries.Add(new ChatSessionSummary(
-                            record.Id,
-                            record.Title,
-                            record.UpdatedUtc,
-                            record.WorkspaceRoot,
-                            record.Messages.Count,
-                            record.ProjectId));
-                    }
-                    catch (Exception ex)
-                    {
-                        // 손상 파일은 건너뛴다.
-                        AppLog.Warn("ChatHistoryService", $"skip corrupt '{file}'", ex);
-                    }
-                }
-
-                summaries.Sort((a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
-                return (IReadOnlyList<ChatSessionSummary>)summaries;
-            }
-        }, ct).ConfigureAwait(false);
+        summaries.Sort((a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));   // 최신 갱신 우선
+        return summaries;
     }
 
     public async Task<ChatSessionRecord?> LoadAsync(string id, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(id))
-            return null;
-
-        return await Task.Run(() =>
-        {
-            lock (_ioLock)
-            {
-                var path = PathFor(id);
-                if (!File.Exists(path))
-                    return null;
-                try
-                {
-                    var json = File.ReadAllText(path);
-                    return JsonSerializer.Deserialize<ChatSessionRecord>(json, AgentJson.Options);
-                }
-                catch (Exception ex)
-                {
-                    AppLog.Warn("ChatHistoryService", $"LoadAsync failed for '{id}'", ex);
-                    return null;
-                }
-            }
-        }, ct).ConfigureAwait(false);
-    }
+        => await _store.LoadAsync(id, ct).ConfigureAwait(false);
 
     public async Task SaveAsync(ChatSessionRecord record, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(record);
-
-        await Task.Run(() =>
-        {
-            lock (_ioLock)
-            {
-                try
-                {
-                    Directory.CreateDirectory(SessionsDirectory);
-                    var path = PathFor(record.Id);
-                    var tmp  = path + ".tmp";
-                    var json = JsonSerializer.Serialize(record, AgentJson.Options);
-                    File.WriteAllText(tmp, json);
-                    File.Move(tmp, path, overwrite: true);   // 부분 쓰기 방지: 원자적 교체
-                }
-                catch (Exception ex)
-                {
-                    AppLog.Warn("ChatHistoryService", $"SaveAsync failed for '{record.Id}'", ex);
-                    throw new AgentException($"세션 저장 실패: {record.Id}", ex);
-                }
-            }
-        }, ct).ConfigureAwait(false);
+        await _store.SaveAsync(record.Id, record, ct).ConfigureAwait(false);
     }
 
     public async Task DeleteAsync(string id, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(id))
-            return;
-
-        await Task.Run(() =>
-        {
-            lock (_ioLock)
-            {
-                try
-                {
-                    var path = PathFor(id);
-                    if (File.Exists(path))
-                        File.Delete(path);
-                }
-                catch (Exception ex)
-                {
-                    AppLog.Warn("ChatHistoryService", $"DeleteAsync failed for '{id}'", ex);
-                }
-            }
-        }, ct).ConfigureAwait(false);
-    }
+        => await _store.DeleteAsync(id, ct).ConfigureAwait(false);
 
     public ChatSessionRecord CreateNew(string? workspaceRoot = null, string? projectId = null)
     {
@@ -178,10 +89,4 @@ public sealed class ChatHistoryService : IChatHistoryService
             : oneLine;
     }
 
-    private static string PathFor(string id)
-    {
-        // id는 호출자(Guid 또는 record.Id)에서 오나, 경로 탈출 방지를 위해 파일명만 사용.
-        var safe = Path.GetFileName(id);
-        return Path.Combine(SessionsDirectory, safe + ".json");
-    }
 }

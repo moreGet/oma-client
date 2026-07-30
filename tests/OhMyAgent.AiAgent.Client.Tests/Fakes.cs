@@ -5,8 +5,47 @@ using System.Threading.Tasks;
 using System.Text.Json;
 using OhMyAgent.AiAgent.Client.Models;
 using OhMyAgent.AiAgent.Client.Services;
+using OhMyAgent.AiAgent.Client.Services.Loop;
 
 namespace OhMyAgent.AiAgent.Client.Tests;
+
+/// <summary>
+/// 가상 시계. 대기를 즉시 완료시키고 시간만 앞으로 민다 — 이게 없으면 LoopController 테스트가
+/// 실제로 몇 분을 기다려야 하고, 그러면 아무도 폭주 방지 로직을 테스트하지 않게 된다.
+/// </summary>
+internal sealed class FakeLoopClock : ILoopClock
+{
+    private readonly object _lock = new();
+    private readonly List<TimeSpan> _delays = [];
+    private DateTimeOffset _now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    /// <summary>true 면 취소가 올 때까지 대기를 붙잡는다 — "대기 중 중지" 응답성 검증용.</summary>
+    public bool BlockUntilCanceled { get; set; }
+
+    public IReadOnlyList<TimeSpan> Delays
+    {
+        get { lock (_lock) return _delays.ToArray(); }
+    }
+
+    public DateTimeOffset UtcNow
+    {
+        get { lock (_lock) return _now; }
+    }
+
+    public async Task DelayAsync(TimeSpan delay, CancellationToken ct)
+    {
+        lock (_lock) _delays.Add(delay);
+
+        if (BlockUntilCanceled)
+        {
+            await Task.Delay(Timeout.Infinite, ct);   // 취소만이 이 대기를 푼다
+            return;
+        }
+
+        ct.ThrowIfCancellationRequested();
+        lock (_lock) _now += delay;
+    }
+}
 
 /// <summary>인메모리 설정 스텁. WorkspaceContext 생성자 요구를 채우는 용도.</summary>
 internal sealed class FakeSettingsService : ISettingsService
@@ -26,6 +65,7 @@ internal sealed class FakeSettingsService : ISettingsService
     public Task UpdateQuotaChipWindowAsync(string window) { Current.QuotaChipWindow = window; return Raise(); }
     public Task UpdateSidebarCollapsedAsync(bool collapsed) { Current.SidebarCollapsed = collapsed; return Raise(); }
     public Task UpdateUiScaleAsync(double scale) { Current.UiScale = scale; return Raise(); }
+    public Task UpdateAlwaysOnTopAsync(bool alwaysOnTop) { Current.AlwaysOnTop = alwaysOnTop; return Raise(); }
 
     public Task UpdateWorkspacesAsync(IReadOnlyList<WorkspaceFolder> folders)
     {
@@ -63,6 +103,7 @@ internal abstract class StubAgentApi : IAgentApiClient
     public virtual IAsyncEnumerable<AgentStreamEvent> SendAsync(AgentRequest request, CancellationToken ct = default) => NotUsed<IAsyncEnumerable<AgentStreamEvent>>();
     public virtual Task<ToolPolicyFetch> GetToolPolicyAsync(CancellationToken ct = default) => NotUsed<Task<ToolPolicyFetch>>();
     public virtual Task<ToolAuthorization?> AuthorizeToolAsync(string tool, JsonElement arguments, CancellationToken ct = default) => NotUsed<Task<ToolAuthorization?>>();
+    public virtual Task<ImageGenerationResponse> GenerateImagesAsync(ImageGenerationRequest request, CancellationToken ct = default) => NotUsed<Task<ImageGenerationResponse>>();
 
     public Task<bool> CheckHealthAsync(CancellationToken ct = default) => NotUsed<Task<bool>>();
     public Task<ServerReadiness> CheckReadinessAsync(CancellationToken ct = default) => NotUsed<Task<ServerReadiness>>();

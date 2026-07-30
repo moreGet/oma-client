@@ -16,6 +16,10 @@ public class AppSettings
     public string WorkspaceRoot { get; set; } = "";            // 주 루트(primary). 첫 활성 폴더와 동기화. empty => Desktop fallback
     public PermissionMode PermissionMode { get; set; } = PermissionMode.Manual;
     public int MaxIterations { get; set; } = 25;
+
+    // /loop 한 번에 허용할 최대 반복 수. 폭주 방지의 마지막 방벽이라 LoopPolicy 가 1..1000 으로 다시 클램프한다
+    // (설정 파일 오타 하나로 무한 루프가 되면 안 된다). 기본값 보유 → SchemaVersion bump 불필요.
+    public int LoopMaxIterations { get; set; } = 50;
     public string ServerBaseUrl { get; set; } = "http://localhost:8080";
     public string AuthScheme { get; set; } = "Bearer";          // "Bearer" | "ApiKey"
     public string ModelId { get; set; } = "";
@@ -58,4 +62,15 @@ public class AppSettings
     // 확장 사고 표시. 기본 false — 서버 기본 모델(3.5-sonnet)은 확장 사고를 지원하지 않으므로
     // 켜면 그 모델에선 400 이 난다. 사고 지원 모델(4.x/5)로 설정된 경우에만 켠다.
     public bool ShowThinking { get; set; } = false;
+
+    // 메인 창을 항상 다른 프로그램 위에 띄운다(상단바 핀 토글). 기본 false —
+    // 켜진 상태가 세션 간 유지되지 않으면 "가려지지 않게" 하려는 목적 자체가 무의미해진다.
+    // 기본값 보유 + 구버전 파일엔 키가 없어 false 로 역직렬화되므로 SchemaVersion bump 불필요.
+    public bool AlwaysOnTop { get; set; } = false;
+
+    // 큰 요청 본문을 gzip 으로 보낸다(Content-Encoding: gzip). 기본 false —
+    // 서버가 압축된 본문을 해석하지 못하면 400/415 로 요청 자체가 실패하기 때문에,
+    // 서버 반영이 확인된 환경에서만 켠다. 요구 스펙: docs/server-compression-spec.md
+    // 켜더라도 CompressRequestMinBytes 미만인 작은 요청은 그대로 평문으로 나간다.
+    public bool CompressRequests { get; set; } = false;
 }

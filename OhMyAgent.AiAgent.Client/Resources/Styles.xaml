@@ -673,4 +673,185 @@
         <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
     </Style>
 
+    <!-- ══════════════════════════════════════════════════════════════
+         에이전트 런처 창 — 앱 아이콘 격자 타일
+         ══════════════════════════════════════════════════════════════ -->
+
+    <!-- 런처 타일 (큰 글리프 위 · 라벨 아래). SidebarItemButton 은 한 줄 행 레이아웃이라
+         격자 타일로 쓸 수 없어 별도 정의한다.
+         크기를 고정(Width/Height)하지 않고 Stretch + MinWidth/MinHeight 로 둔 이유: 런처는 크기 조절이
+         되는 창이고 UniformGrid 가 셀을 나눠 주므로, 고정 크기면 창을 키워도 타일이 좌상단에 몰린다. -->
+    <Style x:Key="LauncherTileButton" TargetType="Button">
+        <Setter Property="Background"      Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground"      Value="{StaticResource TextSecondary}"/>
+        <Setter Property="FontFamily"      Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize"        Value="{StaticResource FontSizeSmall}"/>
+        <Setter Property="MinWidth"        Value="100"/>
+        <Setter Property="MinHeight"       Value="86"/>
+        <Setter Property="Margin"          Value="{StaticResource SpaceXsAll}"/>
+        <Setter Property="Cursor"          Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="Transparent"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource RadiusXl}"
+                            Padding="6,10">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface3Bg}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                        </Trigger>
+                        <!-- 키보드로도 쓰는 표면(Tab·방향키)이라 포커스 위치가 보여야 한다. -->
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface2Bg}"/>
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface2Bg}"/>
+                        </Trigger>
+                        <!-- 비활성(예: 실행 중 파일 첨부) 시각 표시. 이게 없으면 눌러도 반응 없는 타일이
+                             활성과 같은 색으로 보인다(호버 하이라이트만 사라져 원인을 알 수 없다).
+                             전경 색만으로는 이미 TextMuted 인 힌트 줄이 그대로 남아 Opacity 도 함께 낮춘다. -->
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                            <Setter TargetName="Root" Property="Opacity" Value="0.5"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 타일 글리프/라벨/힌트 — 전경색을 지정하지 않는다(라벨·글리프는 타일 버튼의 Foreground 를 상속해야
+         호버·비활성 트리거가 함께 먹는다). 힌트만 항상 흐린 색이다. -->
+    <Style x:Key="LauncherTileGlyph" TargetType="TextBlock">
+        <Setter Property="FontFamily"           Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
+        <Setter Property="FontSize"             Value="{StaticResource FontSizeHeading}"/>
+        <Setter Property="HorizontalAlignment"  Value="Center"/>
+        <Setter Property="Margin"               Value="0,0,0,6"/>
+    </Style>
+
+    <Style x:Key="LauncherTileLabel" TargetType="TextBlock">
+        <Setter Property="FontFamily"           Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize"             Value="{StaticResource FontSizeSmall}"/>
+        <Setter Property="FontWeight"           Value="SemiBold"/>
+        <Setter Property="HorizontalAlignment"  Value="Center"/>
+        <Setter Property="TextAlignment"        Value="Center"/>
+        <Setter Property="TextWrapping"         Value="Wrap"/>
+    </Style>
+
+    <Style x:Key="LauncherTileHint" TargetType="TextBlock">
+        <Setter Property="FontFamily"           Value="{StaticResource MonoFont}"/>
+        <Setter Property="FontSize"             Value="{StaticResource FontSizeMicro}"/>
+        <Setter Property="Foreground"           Value="{StaticResource TextMuted}"/>
+        <Setter Property="HorizontalAlignment"  Value="Center"/>
+        <Setter Property="Margin"               Value="0,2,0,0"/>
+    </Style>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         작업 관리(태스크 매니저) 창
+         ══════════════════════════════════════════════════════════════ -->
+
+    <!-- 목록 행의 동작 버튼("중지"). ComposerChipButton 과 모양은 같은 계열이지만 별도로 두는 이유:
+         (1) 목록에 수십 개가 깔리므로 더 작아야 하고, (2) 비활성 표시가 반드시 있어야 한다 —
+         CanCancel/CanKill 이 false 인 행에서 버튼이 활성처럼 보이면 사용자는 눌러 보고 나서야 안다
+         (지난 QA 가 ComposerIconButton 에서 지적한 것과 같은 결함). -->
+    <Style x:Key="TaskRowActionButton" TargetType="Button">
+        <Setter Property="Background"      Value="Transparent"/>
+        <Setter Property="Foreground"      Value="{StaticResource TextSecondary}"/>
+        <Setter Property="FontFamily"      Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize"        Value="{StaticResource FontSizeXSmall}"/>
+        <Setter Property="MinWidth"        Value="52"/>
+        <Setter Property="Margin"          Value="4,0,0,0"/>
+        <Setter Property="Cursor"          Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource RadiusSm}"
+                            Padding="8,3">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background"  Value="{StaticResource Surface3Bg}"/>
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource BorderLight}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface2Bg}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                            <Setter TargetName="Root" Property="Opacity" Value="0.5"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 파괴적 동작("강제 종료"). 되돌릴 수 없는 유일한 버튼이라 호버에서 색으로 경고한다 —
+         "중지"(협조적)와 눈으로 구분되지 않으면 사용자가 둘을 같은 무게로 누른다. -->
+    <Style x:Key="TaskRowDangerButton" TargetType="Button" BasedOn="{StaticResource TaskRowActionButton}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource RadiusSm}"
+                            Padding="8,3">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background"  Value="{StaticResource Surface3Bg}"/>
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ErrorDot}"/>
+                            <Setter Property="Foreground" Value="{StaticResource ErrorDot}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Surface2Bg}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                            <Setter TargetName="Root" Property="Opacity" Value="0.5"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 하단 전역 동작(전역 중지 · 관련 프로세스 정리 · 새로고침). OutlineButton 은 Padding 22,11 /
+         FontSizeBodyLarge 라 목록 창 하단 바에 넣으면 바가 로그인 화면처럼 커진다 → 치수만 줄여 상속한다. -->
+    <Style x:Key="TaskFooterButton" TargetType="Button" BasedOn="{StaticResource OutlineButton}">
+        <Setter Property="Padding"   Value="12,6"/>
+        <Setter Property="FontSize"  Value="{StaticResource FontSizeSmall}"/>
+        <Setter Property="Margin"    Value="6,0,0,0"/>
+    </Style>
+
+    <!-- 목록 열 머리글 / 구역 제목 -->
+    <Style x:Key="TaskColumnHeader" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{StaticResource TextMuted}"/>
+        <Setter Property="FontFamily"  Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize"    Value="{StaticResource FontSizeMicro}"/>
+        <Setter Property="FontWeight"  Value="SemiBold"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
 </ResourceDictionary>

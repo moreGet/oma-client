@@ -1,9 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using OhMyAgent.AiAgent.Client.Models;
@@ -11,8 +9,10 @@ using OhMyAgent.AiAgent.Client.Models;
 namespace OhMyAgent.AiAgent.Client.Services;
 
 /// <summary>
-/// 프로젝트 로컬 영속 — 파일당 1프로젝트 JSON. ChatHistoryService 와 동일 패턴(원자적 upsert, AgentJson.Options).
-/// 대화 귀속/카운트는 IChatHistoryService 를 통해 세션을 읽어 산출, 동기화는 IAgentApiClient 위임.
+/// 프로젝트 로컬 영속 — 파일당 1프로젝트 JSON. 저장 자체는 <see cref="JsonFileStore{T}"/> 가 맡는다
+/// (ChatHistoryService 와 같은 저장소를 공유 — 원자적 교체·경로 탈출 차단이 한 곳에서 정의된다).
+/// 이 클래스는 프로젝트 고유의 일만 한다: 대화 귀속/카운트는 IChatHistoryService 로 세션을 읽어 산출하고,
+/// 원격 동기화는 IAgentApiClient 에 위임한다.
 /// </summary>
 public sealed class ProjectService(IChatHistoryService history, IAgentApiClient api) : IProjectService
 {
@@ -20,7 +20,8 @@ public sealed class ProjectService(IChatHistoryService history, IAgentApiClient 
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "OhMyAgent", "projects");
 
-    private readonly object _ioLock = new();
+    private readonly JsonFileStore<ProjectRecord> _store =
+        new(ProjectsDirectory, "ProjectService", "프로젝트");
 
     public async Task<IReadOnlyList<ProjectSummary>> ListAsync(CancellationToken ct = default)
     {
@@ -31,65 +32,19 @@ public sealed class ProjectService(IChatHistoryService history, IAgentApiClient 
             .GroupBy(s => s.ProjectId!)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
 
-        return await Task.Run(() =>
-        {
-            lock (_ioLock)
-            {
-                var summaries = new List<ProjectSummary>();
-                if (!Directory.Exists(ProjectsDirectory))
-                    return (IReadOnlyList<ProjectSummary>)summaries;
+        var summaries = await _store.ListAsync(record => new ProjectSummary(
+            record.Id,
+            record.Name,
+            counts.TryGetValue(record.Id, out var c) ? c : 0,
+            record.UpdatedUtc,
+            record.Synced), ct).ConfigureAwait(false);
 
-                foreach (var file in Directory.EnumerateFiles(ProjectsDirectory, "*.json"))
-                {
-                    ct.ThrowIfCancellationRequested();
-                    try
-                    {
-                        var json = File.ReadAllText(file);
-                        var record = JsonSerializer.Deserialize<ProjectRecord>(json, AgentJson.Options);
-                        if (record is null)
-                            continue;
-
-                        var count = counts.TryGetValue(record.Id, out var c) ? c : 0;
-                        summaries.Add(new ProjectSummary(
-                            record.Id, record.Name, count, record.UpdatedUtc, record.Synced));
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLog.Warn("ProjectService", $"skip corrupt '{file}'", ex);
-                    }
-                }
-
-                summaries.Sort((a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
-                return (IReadOnlyList<ProjectSummary>)summaries;
-            }
-        }, ct).ConfigureAwait(false);
+        summaries.Sort((a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));   // 최신 갱신 우선
+        return summaries;
     }
 
     public async Task<ProjectRecord?> LoadAsync(string id, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(id))
-            return null;
-
-        return await Task.Run(() =>
-        {
-            lock (_ioLock)
-            {
-                var path = PathFor(id);
-                if (!File.Exists(path))
-                    return null;
-                try
-                {
-                    var json = File.ReadAllText(path);
-                    return JsonSerializer.Deserialize<ProjectRecord>(json, AgentJson.Options);
-                }
-                catch (Exception ex)
-                {
-                    AppLog.Warn("ProjectService", $"LoadAsync failed for '{id}'", ex);
-                    return null;
-                }
-            }
-        }, ct).ConfigureAwait(false);
-    }
+        => await _store.LoadAsync(id, ct).ConfigureAwait(false);
 
     public async Task<ProjectRecord> CreateAsync(string name, CancellationToken ct = default)
     {
@@ -142,22 +97,7 @@ public sealed class ProjectService(IChatHistoryService history, IAgentApiClient 
                 await AssignConversationAsync(s.Id, null, ct).ConfigureAwait(false);
         }
 
-        await Task.Run(() =>
-        {
-            lock (_ioLock)
-            {
-                try
-                {
-                    var path = PathFor(id);
-                    if (File.Exists(path))
-                        File.Delete(path);
-                }
-                catch (Exception ex)
-                {
-                    AppLog.Warn("ProjectService", $"DeleteAsync failed for '{id}'", ex);
-                }
-            }
-        }, ct).ConfigureAwait(false);
+        await _store.DeleteAsync(id, ct).ConfigureAwait(false);
     }
 
     public async Task AssignConversationAsync(string sessionId, string? projectId, CancellationToken ct = default)
@@ -234,32 +174,5 @@ public sealed class ProjectService(IChatHistoryService history, IAgentApiClient 
     }
 
     private async Task SaveAsync(ProjectRecord record, CancellationToken ct)
-    {
-        await Task.Run(() =>
-        {
-            lock (_ioLock)
-            {
-                try
-                {
-                    Directory.CreateDirectory(ProjectsDirectory);
-                    var path = PathFor(record.Id);
-                    var tmp  = path + ".tmp";
-                    var json = JsonSerializer.Serialize(record, AgentJson.Options);
-                    File.WriteAllText(tmp, json);
-                    File.Move(tmp, path, overwrite: true);   // 원자적 교체
-                }
-                catch (Exception ex)
-                {
-                    AppLog.Warn("ProjectService", $"SaveAsync failed for '{record.Id}'", ex);
-                    throw new AgentException($"프로젝트 저장 실패: {record.Id}", ex);
-                }
-            }
-        }, ct).ConfigureAwait(false);
-    }
-
-    private static string PathFor(string id)
-    {
-        var safe = Path.GetFileName(id);   // 경로 탈출 방지: 파일명만 사용.
-        return Path.Combine(ProjectsDirectory, safe + ".json");
-    }
+        => await _store.SaveAsync(record.Id, record, ct).ConfigureAwait(false);
 }
