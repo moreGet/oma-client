@@ -19,6 +19,11 @@
     <views:MultiplyConverter                x:Key="Multiply"/>
     <views:BoolToGridLengthConverter        x:Key="BoolToGridLength"/>
 
+    <!-- ── 태스크 매니저 ───────────────────────────────────────────── -->
+    <!-- 계층 깊이 → 왼쪽 여백(한 단계 16). 트리 컨트롤을 쓰지 않는 이유는 스냅샷이 이미
+         깊이 우선 정렬 + 깊이 계산을 끝내 오기 때문이다(다시 조립하면 진실이 둘이 된다). -->
+    <views:DepthToIndentConverter           x:Key="DepthToIndent"/>
+
     <!-- ── Chat (사람↔사람 메신저) · 설계서 §1 ─────────────────────── -->
     <views:UnixSecondsToLocalTimeConverter     x:Key="UnixSecondsToLocalTime"/>
     <views:UnreadCountToBadgeVisibilityConverter x:Key="UnreadCountToBadgeVisibility"/>

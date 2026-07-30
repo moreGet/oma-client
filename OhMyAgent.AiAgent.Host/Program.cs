@@ -55,15 +55,18 @@ var todoService = new TodoService();
 // "이번 턴에 모델이 정한 다음 시점"이 전달된다(조립 순서: sink → tool → controller).
 var wakeupSink  = new WakeupSink();
 
+// 5a) API 클라이언트 — 도구(generate_image)가 서버를 대리 호출자로 쓰므로 도구 조립보다 먼저 만든다.
+//     설정과 HttpClient 만 필요해 이 위치에서 만들 수 있다(정책·컴팩터는 8) 에서 이 인스턴스를 재사용).
+var api = new AgentApiClient(httpClient, settings);
+
 // 6) headless-safe 도구 (Clipboard 2종 + Screenshot 제외)
-var tools = HeadlessAgentHost.BuildHeadlessTools(scriptExec, toolHttp, todoService, wakeupSink);
+var tools = HeadlessAgentHost.BuildHeadlessTools(scriptExec, toolHttp, todoService, wakeupSink, api);
 
 // 7) 권한 게이트 — 핸들러는 정책에 따라 등록. 미등록이면 gated=Deny(안전 기본).
 var permissions = new PermissionService(settings);
 HeadlessPermissionPolicy.Apply(permissions, cfg.ApprovalMode);   // "deny"(기본) | "auto"
 
-// 8) API/정책/컴팩터
-var api        = new AgentApiClient(httpClient, settings);
+// 8) 정책/컴팩터 (api 는 5a 에서 이미 만들어졌다 — generate_image 도구가 그보다 먼저 필요했다)
 var toolPolicy = new ToolPolicyService(api);
 var compactor  = new ContextCompactor(api, settings);
 

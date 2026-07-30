@@ -70,15 +70,28 @@
 
                 <!-- 상단 네비 아이콘 항목 -->
                 <StackPanel Grid.Row="0">
-                    <!-- 새 채팅 → ClearCommand -->
+                    <!-- 새 채팅 → ClearCommand. 런처 창으로 옮겨간 항목이 아니라 여기 그대로 남는다 —
+                         가장 자주 쓰는 내비 항목이라 1클릭 자리를 지킨다.
+                         런처의 "새 대화" 타일이 같은 커맨드지만 표면이 달라(사이드바 vs 별도 창) 나란히
+                         보이지 않으므로 의도적으로 둘 다 둔다. 커맨드 힌트는 "/clear 로도 된다"를 알린다. -->
                     <Button Style="{StaticResource SidebarItemButton}"
                             Command="{Binding ClearCommand}"
-                            ToolTip="새 채팅 (트랜스크립트 초기화)">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE70F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                            ToolTip="새 채팅 (트랜스크립트 초기화) — /clear">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*" MinWidth="120"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="&#xE70F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="{StaticResource FontSizeSubtitle}" Width="24" VerticalAlignment="Center"/>
-                            <TextBlock Text="새 채팅" VerticalAlignment="Center" FontWeight="SemiBold"/>
-                        </StackPanel>
+                            <TextBlock Grid.Column="1" Text="새 채팅" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="2" Text="/clear"
+                                       FontFamily="{StaticResource MonoFont}"
+                                       FontSize="{StaticResource FontSizeXSmall}"
+                                       Foreground="{StaticResource TextMuted}"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
                     </Button>
                 </StackPanel>
 
@@ -237,8 +250,29 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- 하단 메신저 + 설정 -->
+                <!-- 하단 에이전트 + 메신저 + 설정 -->
                 <StackPanel Grid.Row="2">
+                    <!-- 에이전트 — 항목 3개(마지막 메시지·반복 실행·도움말)를 사이드바에 평평하게 늘어놓지 않고
+                         별도 창(런처)의 앱 아이콘 격자로 옮겼다. 여기 남는 것은 그 창을 여는 항목 하나뿐이다.
+                         사이드바를 접으면 이 항목도 함께 사라진다(메신저·설정과 동일한 기존 동작) — 대체 경로는
+                         슬래시 커맨드(/loop /retry /help /clear)와 컴포저 "+" 첨부다.
+                         커맨드는 창을 직접 열지 않고 VM 이 요청 이벤트를 내며, App.xaml.cs 가 코디네이터로 배선한다. -->
+                    <Button Style="{StaticResource SidebarItemButton}"
+                            Command="{Binding OpenAgentLauncherCommand}"
+                            ToolTip="에이전트 기능 모음 창 열기">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*" MinWidth="120"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="&#xE71D;"
+                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       FontSize="{StaticResource FontSizeSubtitle}"
+                                       Width="24" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="에이전트" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Button>
+
                     <!-- 메신저 진입(안읽음 배지). 토글은 code-behind → App.ToggleMessenger(). -->
                     <Button Style="{StaticResource SidebarItemButton}" ToolTip="메신저"
                             Click="MenuItem_Messenger_Click">
@@ -288,8 +322,19 @@
             <Border Grid.Row="0" Background="{StaticResource WindowBg}"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Grid Margin="16,0">
+                    <!-- 좌측 칩 줄과 우측 캡션 버튼을 열로 분리한다. 둘을 같은 셀에 겹쳐 두면 칩이 늘어날 때
+                         (연결 상태문 + 승인 대기 + 진행 N + 토큰 + 반복 + /loop + 쿼터 = 최악 폭이 기본 창
+                         너비를 넘는다) 캡션 버튼 위로 그려져 슬라이더·닫기 버튼이 칩에 파묻힌다.
+                         열로 나누면 좌측이 남는 폭에서 레이아웃 클립되므로 캡션 버튼은 항상 온전하다 —
+                         칩 개수가 늘어도(핀 버튼처럼 우측이 늘어도) 구조적으로 겹칠 수 없다.
+                         잘리는 문구는 각 칩의 ToolTip 에 그대로 남아 정보 손실은 없다. -->
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
                     <!-- 상태 표시 (좌): 연결 상태 점 + 상태문 + 승인 대기 배지 + 토큰 사용량 -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
                         <!-- 사이드바 접기/펼치기 토글 (접혀도 항상 보이는 위치) -->
                         <Button Command="{Binding ToggleSidebarCommand}" Style="{StaticResource CaptionButton}"
                                 Width="30" Height="28" Margin="0,0,8,0"
@@ -310,6 +355,46 @@
                             <TextBlock Text="승인 대기" Foreground="{StaticResource WarningBrush}"
                                        FontSize="{StaticResource FontSizeXSmall}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </Border>
+
+                        <!-- ── "진행 N" 칩 — 실행 중인 턴·도구·자식 프로세스 개수, 클릭하면 작업 관리 창 ──
+                             진행 중이 0 이면 감춘다(평소 "진행 0" 이 상주하면 칩이 정보가 아니라 배경이 된다).
+                             폭은 아이콘 + "진행 N" 으로 고정적이라 예측 가능하다(약 62px). 캡션바 우측 여유가
+                             328px 로 줄어 있어(지난 QA §3-2) 좌측이 더 늘어나면 겹치므로, 아래 /loop 칩의
+                             MaxWidth 를 320 → 260 으로 낮춰 총 폭을 상쇄했다(전체 문구는 그쪽 툴팁에 그대로 남는다).
+                             모양은 아래 반복 횟수·/loop 칩과 같은 관례(Surface2Bg + BorderBrush + RadiusMd + Padding 7,2)이고,
+                             누를 수 있다는 표시로 Cursor=Hand + 호버 하이라이트만 더한다. -->
+                        <Button Command="{Binding OpenTaskManagerCommand}"
+                                Margin="8,0,0,0" VerticalAlignment="Center" Cursor="Hand"
+                                Background="{StaticResource Surface2Bg}"
+                                Foreground="{StaticResource TextSecondary}"
+                                FontSize="{StaticResource FontSizeXSmall}"
+                                ToolTip="실행 중인 작업 수 — 클릭하면 작업 관리 창에서 중지·강제 종료할 수 있습니다"
+                                Visibility="{Binding HasActiveTasks, Converter={StaticResource BoolToVisibility}}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Root"
+                                            Background="{TemplateBinding Background}"
+                                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                            CornerRadius="{StaticResource RadiusMd}" Padding="7,2">
+                                        <ContentPresenter VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Root" Property="Background"  Value="{StaticResource Surface3Bg}"/>
+                                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource BorderLight}"/>
+                                            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           FontSize="{StaticResource FontSizeXSmall}"
+                                           VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <TextBlock Text="{Binding ActiveTaskChipText}" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
 
                         <!-- 토큰 사용량: 클릭 시 마지막 응답 ↔ 세션 누적 토큰 전환. Visibility 는 계속 LastUsageText 기준 -->
                         <Button Command="{Binding ToggleUsageViewCommand}"
@@ -340,7 +425,10 @@
 
                         <!-- /loop 반복 실행 상태 — 위 칩(턴 내부 반복)과는 다른 값이라 덮어쓰지 않고 나란히 둔다.
                              문구가 길어질 수 있어("… 다음 실행까지 2분 14초") MaxWidth 로 잘라 우측 캡션 버튼을 밀지 않게 하고,
-                             전체 문구는 툴팁으로 남긴다. -->
+                             전체 문구는 툴팁으로 남긴다.
+                             MaxWidth 를 320 → 260 으로 낮춘 이유: 위에 "진행 N" 칩(약 62px)이 새로 들어왔고
+                             캡션바 우측 여유가 328px 뿐이라(지난 QA §3-2) 좌측 총 폭을 그만큼 상쇄해야 한다.
+                             잘려도 전체 문구는 이 Border 의 ToolTip 에 그대로 남는다. -->
                         <Border Margin="8,0,0,0" VerticalAlignment="Center"
                                 Background="{StaticResource Surface2Bg}"
                                 BorderBrush="{StaticResource AccentSoftBrush}" BorderThickness="1"
@@ -350,7 +438,7 @@
                             <TextBlock Text="{Binding LoopStatusText}"
                                        Foreground="{StaticResource AccentSoftBrush}"
                                        FontSize="{StaticResource FontSizeXSmall}" VerticalAlignment="Center"
-                                       MaxWidth="320" TextTrimming="CharacterEllipsis"/>
+                                       MaxWidth="260" TextTrimming="CharacterEllipsis"/>
                         </Border>
 
                         <!-- ── 토큰 쿼터 칩 + 팝업 (HasQuota 일 때만) ── -->
@@ -516,14 +604,32 @@
                         </Grid>
                     </StackPanel>
 
-                    <!-- 캡션 버튼 (우) -->
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <!-- 캡션 버튼 (우) — Auto 열이라 좌측 칩이 아무리 늘어나도 밀리거나 가려지지 않는다. -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <!-- 투명도 슬라이더 -->
                         <TextBlock Text="투명도" VerticalAlignment="Center" Margin="0,0,6,0"
                                    FontSize="{StaticResource FontSizeXSmall}" Foreground="{StaticResource TextMuted}"/>
                         <Slider Minimum="0.3" Maximum="1.0" Value="{Binding WindowOpacity, Mode=TwoWay}"
                                 Width="80" Height="20" VerticalAlignment="Center" Margin="0,0,12,0"
                                 SmallChange="0.05" LargeChange="0.1" ToolTip="창 투명도"/>
+                        <!-- 항상 위 고정(핀). Window.Topmost 는 code-behind 가 VM.IsAlwaysOnTop 을 따라 쓴다 —
+                             XAML 에서 Topmost 를 바인딩하면 code-behind 의 로컬값이 바인딩을 끊어
+                             이후 토글이 조용히 먹지 않으므로 여기서는 커맨드만 건다. 켜짐은 색으로만 표시. -->
+                        <Button Content="&#xE718;" Command="{Binding ToggleAlwaysOnTopCommand}"
+                                Width="34" Height="28" Margin="0,0,2,0"
+                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="{StaticResource FontSizeXSmall}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource CaptionButton}">
+                                    <Setter Property="ToolTip" Value="항상 위에 고정 (켜면 다른 창에 가려지지 않음)"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsAlwaysOnTop}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                            <Setter Property="ToolTip" Value="항상 위 고정 해제"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                         <Button Content="&#xE921;" Click="MinimizeButton_Click"
                                 Style="{StaticResource CaptionButton}" Width="34" Height="28"
                                 FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="{StaticResource FontSizeXSmall}" ToolTip="최소화"/>
@@ -899,162 +1005,21 @@
                         <!-- 하단 툴바 -->
                         <Grid Grid.Row="2" Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/> <!-- 에이전트 서랍 -->
+                                <ColumnDefinition Width="Auto"/> <!-- 파일 첨부 -->
                                 <ColumnDefinition Width="Auto"/> <!-- 권한모드(승인요청) -->
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/> <!-- 모델 칩 -->
                                 <ColumnDefinition Width="Auto"/> <!-- 전송/중지 -->
                             </Grid.ColumnDefinitions>
 
-                            <!-- 에이전트 서랍 토글 — 첨부/슬래시 커맨드가 툴바를 잠식하지 않도록 한 버튼 뒤로 접었다.
-                                 아이콘만으로는 무슨 기능인지 알기 어려워 라벨을 함께 둔다(스타일의 고정 32 폭은 Auto 로 푼다). -->
-                            <ToggleButton x:Name="AgentDrawerToggle" Grid.Column="0"
-                                          Style="{StaticResource ComposerIconToggleButton}"
-                                          Width="Auto" MinWidth="32"
-                                          IsChecked="{Binding IsAgentDrawerOpen, Mode=TwoWay}"
-                                          ToolTip="에이전트 기능 — 파일 첨부 · 새 대화 · 마지막 메시지 · 반복 실행 · 도움말">
-                                <StackPanel Orientation="Horizontal" Margin="9,0">
-                                    <TextBlock Text="&#xE99A;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                               FontSize="{StaticResource FontSizeSubtitle}" VerticalAlignment="Center"/>
-                                    <TextBlock Text="에이전트" Margin="6,0,0,0"
-                                               FontFamily="{StaticResource AppFont}"
-                                               FontSize="{StaticResource FontSizeSmall}" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </ToggleButton>
-
-                            <!-- 에이전트 서랍 Popup.
-                                 StaysOpen="False" 라 바깥을 클릭하면 팝업이 스스로 닫힌다 — 이때 IsOpen=false 가
-                                 IsAgentDrawerOpen 으로 되써지지 않으면 소스가 true 로 굳어 서랍이 영영 다시 열리지 않는다.
-                                 그래서 Mode=TwoWay 는 필수다(과거 회귀). 항목 커맨드는 각자 VM 안에서 서랍을 닫으므로
-                                 여기서 중복으로 닫지 않는다. -->
-                            <Popup Grid.Column="0"
-                                   IsOpen="{Binding IsAgentDrawerOpen, Mode=TwoWay}"
-                                   PlacementTarget="{Binding ElementName=AgentDrawerToggle}"
-                                   Placement="Top"
-                                   StaysOpen="False"
-                                   AllowsTransparency="True"
-                                   PopupAnimation="Fade">
-                                <Border Background="{StaticResource SurfaceBg}"
-                                        BorderBrush="{StaticResource BorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="{StaticResource RadiusLg}"
-                                        Padding="6" Margin="0,0,0,6"
-                                        Effect="{StaticResource CardShadow}">
-                                    <StackPanel Width="248">
-                                        <TextBlock Text="에이전트" Style="{StaticResource SidebarSectionHeader}"
-                                                   Margin="10,4,0,4"/>
-
-                                        <!-- 파일 첨부 — 파일 대화상자는 View 책임이라 VM 이 이벤트로 요청한다.
-                                             AttachFileCommand(게이트 전용 no-op)가 아니라 RequestAttachFileCommand 를 쓴다. -->
-                                        <Button Style="{StaticResource SidebarItemButton}"
-                                                Command="{Binding RequestAttachFileCommand}"
-                                                ToolTip="대화에 파일을 첨부합니다">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*" MinWidth="130"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="&#xE710;"
-                                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="{StaticResource FontSizeBody}"
-                                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                                <TextBlock Grid.Column="1" Text="파일 첨부" VerticalAlignment="Center"/>
-                                            </Grid>
-                                        </Button>
-
-                                        <Button Style="{StaticResource SidebarItemButton}"
-                                                Command="{Binding ClearCommand}"
-                                                ToolTip="전사를 비우고 새 대화를 시작합니다">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*" MinWidth="130"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="&#xE8E5;"
-                                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="{StaticResource FontSizeBody}"
-                                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                                <TextBlock Grid.Column="1" Text="새 대화" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="2" Text="/clear"
-                                                           FontFamily="{StaticResource MonoFont}"
-                                                           FontSize="{StaticResource FontSizeXSmall}"
-                                                           Foreground="{StaticResource TextMuted}"
-                                                           VerticalAlignment="Center"/>
-                                            </Grid>
-                                        </Button>
-
-                                        <Button Style="{StaticResource SidebarItemButton}"
-                                                Command="{Binding RetryLastCommand}"
-                                                ToolTip="직전에 보낸 메시지를 입력창에 되불러 편집합니다">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*" MinWidth="130"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="&#xE72C;"
-                                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="{StaticResource FontSizeBody}"
-                                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                                <TextBlock Grid.Column="1" Text="마지막 메시지" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="2" Text="/retry"
-                                                           FontFamily="{StaticResource MonoFont}"
-                                                           FontSize="{StaticResource FontSizeXSmall}"
-                                                           Foreground="{StaticResource TextMuted}"
-                                                           VerticalAlignment="Center"/>
-                                            </Grid>
-                                        </Button>
-
-                                        <!-- 반복 실행은 바로 시작하지 않는다 — 간격·프롬프트를 사용자가 이어 쳐야 해서
-                                             VM 이 입력창에 "/loop " 만 깔고 포커스를 넘긴다. -->
-                                        <Button Style="{StaticResource SidebarItemButton}"
-                                                Command="{Binding StartLoopCommand}"
-                                                ToolTip="입력창에 &quot;/loop &quot; 를 넣습니다 — 간격과 프롬프트를 이어서 입력하세요">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*" MinWidth="130"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="&#xE895;"
-                                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="{StaticResource FontSizeBody}"
-                                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                                <TextBlock Grid.Column="1" Text="반복 실행" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="2" Text="/loop"
-                                                           FontFamily="{StaticResource MonoFont}"
-                                                           FontSize="{StaticResource FontSizeXSmall}"
-                                                           Foreground="{StaticResource TextMuted}"
-                                                           VerticalAlignment="Center"/>
-                                            </Grid>
-                                        </Button>
-
-                                        <Button Style="{StaticResource SidebarItemButton}"
-                                                Command="{Binding ShowHelpCommand}"
-                                                ToolTip="사용 가능한 슬래시 커맨드를 대화에 표시합니다">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*" MinWidth="130"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="&#xE897;"
-                                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="{StaticResource FontSizeBody}"
-                                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                                <TextBlock Grid.Column="1" Text="도움말" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="2" Text="/help"
-                                                           FontFamily="{StaticResource MonoFont}"
-                                                           FontSize="{StaticResource FontSizeXSmall}"
-                                                           Foreground="{StaticResource TextMuted}"
-                                                           VerticalAlignment="Center"/>
-                                            </Grid>
-                                        </Button>
-                                    </StackPanel>
-                                </Border>
-                            </Popup>
+                            <!-- 파일 첨부 — 파일 대화상자는 View 책임이라 VM 이 이벤트로 요청한다.
+                                 이 VM 에 AttachFileCommand 는 없다(그건 ChatRoomViewModel 것) — RequestAttachFileCommand 를 쓴다.
+                                 CanExecute = !IsBusy 라 실행 중에는 자동 비활성 — IsEnabled 를 따로 걸지 않는다. -->
+                            <Button Grid.Column="0"
+                                    Style="{StaticResource ComposerIconButton}"
+                                    Command="{Binding RequestAttachFileCommand}"
+                                    Content="&#xE710;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                    ToolTip="파일 첨부"/>
 
                             <!-- 권한 모드 선택 (수동 승인 / 안전 작업 자동 / 전체 자동) -->
                             <ComboBox Grid.Column="1" Margin="6,0,0,0" MinWidth="0"

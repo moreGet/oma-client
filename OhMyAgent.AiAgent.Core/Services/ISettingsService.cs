@@ -31,4 +31,7 @@ public interface ISettingsService
     Task UpdateQuotaChipWindowAsync(string window);   // 소문자화 후 {auto,day,week,month} 외면 "auto"로 보정
     Task UpdateSidebarCollapsedAsync(bool collapsed);
     Task UpdateUiScaleAsync(double scale);            // Math.Clamp(scale, 0.9, 1.6)
+
+    // 창 상태 — 메인 창 최상위 고정(상단바 핀 토글). 세션 간 유지가 요구사항이라 즉시 저장한다.
+    Task UpdateAlwaysOnTopAsync(bool alwaysOnTop);
 }

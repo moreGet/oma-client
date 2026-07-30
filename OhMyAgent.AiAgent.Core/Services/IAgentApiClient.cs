@@ -35,6 +35,14 @@ public interface IAgentApiClient
     /// <summary>GET /api/v1/me/quota (Bearer). 200→QuotaResponse, 401/500/오프라인/파싱실패→null(graceful, 예외 없음).</summary>
     Task<QuotaResponse?> GetQuotaAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// POST /api/v1/images/generations (Bearer) — 서버가 이미지 모델을 대리 호출하고 base64 를 돌려준다.
+    /// 성공 시 이미지 1장 이상을 담은 응답, 그 외(엔드포인트 미구현 404·401/403·429·5xx·응답 상한 초과)는
+    /// 전부 <see cref="AgentException"/>. graceful null 이 아닌 이유: 호출자(generate_image 도구)는 실패를
+    /// 반드시 모델에게 사유와 함께 알려야 하고, 조용한 실패는 "재시도"로 턴을 낭비하게 만든다.
+    /// </summary>
+    Task<ImageGenerationResponse> GenerateImagesAsync(ImageGenerationRequest request, CancellationToken ct = default);
+
     // ── 서버 도구 정책 게이트. 미구현 서버(404/501)/오프라인은 graceful null. ──
 
     /// <summary>GET /api/v1/tools/policy (Bearer). 200→ToolPolicy, 404/오류/오프라인→null(graceful).</summary>

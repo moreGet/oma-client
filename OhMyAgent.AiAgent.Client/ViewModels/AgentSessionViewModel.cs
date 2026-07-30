@@ -39,6 +39,13 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     private readonly ITodoService _todos;
     private readonly ILoopController _loop;
 
+    /// <summary>
+    /// 상단바 "진행 N" 칩이 읽는 태스크 매니저 등기소. 생성자 인자가 아니라 나중에 대입하는 이유는
+    /// 이 VM 의 생성자 시그니처가 런처 계약으로 고정돼 있기 때문이다(<see cref="Projects"/> 와 같은 관례).
+    /// 배선되지 않으면 칩은 그냥 나타나지 않는다(0 개) — 기존 동작이 깨지지 않는다.
+    /// </summary>
+    private IAgentActivityRegistry? _activities;
+
     private AgentSession _session = new();
     private CancellationTokenSource? _cts;
 
@@ -139,9 +146,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     /// </summary>
     [ObservableProperty] private string _loopStatusText = string.Empty;
 
-    /// <summary>컴포저 "에이전트" 서랍(Popup) 개폐. ToggleButton.IsChecked 와 TwoWay 로 묶인다.</summary>
-    [ObservableProperty] private bool _isAgentDrawerOpen;
-
     /// <summary>
     /// 중지 버튼 노출 조건. 루프 대기 중에는 턴이 안 돌아 <see cref="IsBusy"/> 가 false 라,
     /// IsBusy 만 보면 "중지할 수단이 화면에서 사라지는" 상태가 생긴다.
@@ -210,6 +214,16 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
 
     /// <summary>좌측 사이드바 접힘 상태. ToggleSidebarCommand로 토글, 설정에 영속(세션 간 유지).</summary>
     [ObservableProperty] private bool _isSidebarCollapsed;
+
+    // ── 창 상태 ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 메인 창 최상위 고정(항상 위). 상단바 핀 토글이 바인딩하고, 설정에 영속(세션 간 유지).
+    ///
+    /// <c>Window.Topmost</c> 는 VM 이 만질 수 없는 View 속성이라 여기서는 "의도"만 들고 있고,
+    /// 실제 반영은 MainWindow 코드비하인드가 이 속성을 구독해서 한다.
+    /// </summary>
+    [ObservableProperty] private bool _isAlwaysOnTop;
 
     // ── UI scale (accessibility) ───────────────────────────────────────
 
@@ -338,9 +352,19 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         _ = _settings.UpdateSidebarCollapsedAsync(value);
     }
 
+    partial void OnIsAlwaysOnTopChanged(bool value)
+    {
+        if (_suppressPersist) return;
+        _ = _settings.UpdateAlwaysOnTopAsync(value);
+    }
+
     /// <summary>좌측 사이드바를 접거나 편다(상단바 햄버거 버튼이 바인딩).</summary>
     [RelayCommand]
     private void ToggleSidebar() => IsSidebarCollapsed = !IsSidebarCollapsed;
+
+    /// <summary>메인 창 최상위 고정을 켜고 끈다(상단바 핀 버튼이 바인딩).</summary>
+    [RelayCommand]
+    private void ToggleAlwaysOnTop() => IsAlwaysOnTop = !IsAlwaysOnTop;
 
     // ── Initialization ─────────────────────────────────────────────────
 
@@ -370,10 +394,11 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
             CurrentPermissionMode = s.PermissionMode;
             WindowOpacity = s.Opacity;
 
-            // 상단바/사이드바/접근성 — 설정에서 복원(역기록 가드 구간).
+            // 상단바/사이드바/접근성/창 상태 — 설정에서 복원(역기록 가드 구간).
             QuotaChipWindow = s.QuotaChipWindow;
             IsSidebarCollapsed = s.SidebarCollapsed;
             UiScale = s.UiScale;
+            IsAlwaysOnTop = s.AlwaysOnTop;
 
             // F — greeting from settings display name, falling back to the OS user name.
             var rawName = string.IsNullOrWhiteSpace(s.UserDisplayName) ? Environment.UserName : s.UserDisplayName;
@@ -919,37 +944,118 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         }
     });
 
-    // ── 컴포저 "에이전트" 서랍 ─────────────────────────────────────────
+    // ── 에이전트 동작 진입점(런처 창 타일 + 컴포저 첨부) ────────────────
+    //
+    // 표면은 두 번 옮겨졌다: 컴포저의 "에이전트" 서랍(Popup) → 좌측 사이드바 평면 항목 →
+    // 지금은 별도 런처 창(AgentLauncherWindow)의 격자 타일이다. 사이드바에는 그 창을 여는
+    // 항목 하나만 남고(OpenAgentLauncherCommand), 파일 첨부만 컴포저 "+" 에도 함께 남는다
+    // (자주 쓰는 동작이라 의도적 중복).
+    //
+    // 이 커맨드들의 이름·동작은 세 표면을 거치며 한 번도 바꾸지 않았다(바인딩 계약 유지). 개폐 상태를
+    // 만지는 코드도 없다 — 런처는 창이라 창 수명이 곧 상태이고, 창을 닫는 순서는 래퍼
+    // (AgentLauncherViewModel.Launch)가 쥔다. 그러니 여기에 개폐 플래그를 되살리지 말 것.
 
-    /// <summary>서랍의 "파일 첨부" — 파일 대화상자는 View 책임이라 코드비하인드에 요청만 보낸다.</summary>
+    /// <summary>사이드바 "에이전트" 항목 → 런처 창을 열어 달라는 요청(App 이 코디네이터로 받는다).</summary>
+    public event EventHandler? AgentLauncherRequested;
+
+    /// <summary>
+    /// 사이드바 "에이전트" 항목. 창 생성·수명·Owner 는 View 계층(App + AgentLauncherCoordinator)이
+    /// 쥐고 있으므로 VM 은 "열어 달라"는 요청만 보낸다.
+    /// 구독자가 없으면 조용히 삼키지 않고 전사에 남긴다 — App 배선이 빠지면 사용자에게는
+    /// "눌렀는데 아무 일도 안 남"으로만 보여 원인을 찾을 수 없다(무증상 회귀 방지).
+    /// </summary>
+    [RelayCommand]
+    private void OpenAgentLauncher()
+    {
+        if (AgentLauncherRequested is null)
+        {
+            AppLog.Warn("AgentLauncher", "런처 창 열기 요청을 받을 구독자가 없다(App 배선 누락).");
+            Transcript.Add(new SystemNoticeViewModel { Text = "에이전트 런처 창을 열 수 없습니다(내부 배선 누락)." });
+            return;
+        }
+
+        AgentLauncherRequested.Invoke(this, EventArgs.Empty);
+    }
+
+    // ── 태스크 매니저 진입점(상단바 "진행 N" 칩 + 런처 타일) ──────────────
+    //
+    // 창을 여는 경로를 여기 하나로 모은 이유: 런처 타일은 AgentLauncherViewModel.Launch 래퍼를 통해
+    // 이 커맨드를 재사용한다(닫고 → 실행). 그래서 App 배선은 TaskManagerRequested 한 곳만 잡으면 되고,
+    // 배선이 빠졌을 때의 안내 문구도 한 번만 정의된다.
+
+    /// <summary>상단바 "진행 N" 칩 / 런처 타일 → 태스크 매니저 창을 열어 달라는 요청.</summary>
+    public event EventHandler? TaskManagerRequested;
+
+    /// <summary>
+    /// 태스크 매니저 창 열기. 런처와 같은 이유로 창 수명은 View 계층(App + TaskManagerCoordinator)이 쥔다.
+    /// 구독자가 없으면 조용히 삼키지 않고 전사에 남긴다(무증상 회귀 방지 — 런처와 같은 장치).
+    /// </summary>
+    [RelayCommand]
+    private void OpenTaskManager()
+    {
+        if (TaskManagerRequested is null)
+        {
+            AppLog.Warn("TaskManager", "태스크 매니저 창 열기 요청을 받을 구독자가 없다(App 배선 누락).");
+            Transcript.Add(new SystemNoticeViewModel { Text = "작업 관리 창을 열 수 없습니다(내부 배선 누락)." });
+            return;
+        }
+
+        TaskManagerRequested.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 진행 중(취소 요청 포함) 작업 수. 0 이면 상단바 칩을 감춘다 —
+    /// 평소에 "진행 0" 이 상주하면 칩이 정보가 아니라 배경이 된다.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveTasks))]
+    [NotifyPropertyChangedFor(nameof(ActiveTaskChipText))]
+    private int _activeTaskCount;
+
+    /// <summary>칩 표시 여부.</summary>
+    public bool HasActiveTasks => ActiveTaskCount > 0;
+
+    /// <summary>칩 문구. 폭을 예측 가능하게 유지하려고 짧게 둔다(상단바 좌측이 이미 혼잡하다).</summary>
+    public string ActiveTaskChipText => $"진행 {ActiveTaskCount}";
+
+    /// <summary>
+    /// 상단바 칩에 태스크 매니저 등기소를 연결한다(App 조립에서 1회).
+    ///
+    /// <c>Changed</c> 는 <b>구조 변화에만</b> 발화하며 임의의 배경 스레드에서 온다 → UI 마샬 필수.
+    /// 경과 시간용 1초 타이머는 여기 두지 않는다 — 칩은 개수만 보여 주므로 구조 변화만 알면 충분하고,
+    /// 창을 열지 않은 동안 매초 프로세스를 관측할 이유가 없다(그 타이머는 태스크 매니저 창의 몫이다).
+    /// 해제 경로를 두지 않는 근거: 등기소와 이 VM 은 둘 다 App 수명 싱글턴이다.
+    /// </summary>
+    internal void AttachActivityRegistry(IAgentActivityRegistry activities)
+    {
+        _activities = activities ?? throw new ArgumentNullException(nameof(activities));
+        activities.Changed += (_, _) => _ = UiInvokeAsync(RefreshActiveTaskCount);
+        RefreshActiveTaskCount();
+    }
+
+    private void RefreshActiveTaskCount()
+        => ActiveTaskCount = _activities?.Snapshot().RunningCount ?? 0;
+
+    /// <summary>"파일 첨부" — 파일 대화상자는 View 책임이라 코드비하인드에 요청만 보낸다.</summary>
     public event EventHandler? AttachFileRequested;
 
     /// <summary>입력창을 프리필한 뒤 포커스·캐럿을 넘겨달라는 요청(코드비하인드가 처리).</summary>
     public event EventHandler? ComposerFocusRequested;
 
-    [RelayCommand]
-    private void OpenAgentDrawer() => IsAgentDrawerOpen = true;
-
-    [RelayCommand]
-    private void CloseAgentDrawer() => IsAgentDrawerOpen = false;
-
     /// <summary>
-    /// 서랍 "파일 첨부" — 첨부의 유일한 진입점이다. 파일 대화상자는 View 소유라
-    /// 여기서는 <see cref="AttachFileRequested"/> 로 요청만 보내고, 코드비하인드가 고른 경로를
-    /// <see cref="AddAttachmentPublic"/> 로 되돌려 준다.
+    /// 첨부 진입점 — 컴포저 "+" 버튼과 런처 창 "파일 첨부" 타일이 <b>둘 다</b> 여기로 온다(의도된 중복).
+    /// 파일 대화상자는 View 소유라 여기서는 <see cref="AttachFileRequested"/> 로 요청만 보내고,
+    /// 메인 창 코드비하인드가 고른 경로를 <see cref="AddAttachmentPublic"/> 로 되돌려 준다.
+    /// 런처에서 눌렀을 때는 래퍼가 창을 먼저 닫으므로 대화상자가 런처 뒤로 숨지 않는다.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanAttachFile))]
     private void RequestAttachFile()
-    {
-        IsAgentDrawerOpen = false;
-        AttachFileRequested?.Invoke(this, EventArgs.Empty);
-    }
+        => AttachFileRequested?.Invoke(this, EventArgs.Empty);
 
-    /// <summary>서랍 "마지막 메시지(/retry)" — 이력은 건드리지 않고 입력창에 되불러 편집하게 한다.</summary>
+    /// <summary>런처 타일 "마지막 입력(/retry)" — 이력은 건드리지 않고 입력창에 되불러 편집하게 한다.</summary>
     [RelayCommand]
     private void RetryLast()
     {
-        IsAgentDrawerOpen = false;
         if (string.IsNullOrEmpty(LastSentMessage))
         {
             Transcript.Add(new SystemNoticeViewModel { Text = "되불러올 이전 메시지가 없습니다." });
@@ -961,24 +1067,20 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
     }
 
     /// <summary>
-    /// 서랍 "반복 실행(/loop)" — 여기서 바로 시작하지 않는다. 간격과 프롬프트는 사용자가 정해야 하므로
+    /// 런처 타일 "반복 실행(/loop)" — 여기서 바로 시작하지 않는다. 간격과 프롬프트는 사용자가 정해야 하므로
     /// 입력창에 "/loop " 만 깔아 주고 이어 치게 한다.
     /// </summary>
     [RelayCommand]
     private void StartLoop()
     {
-        IsAgentDrawerOpen = false;
         InputText = "/loop ";
         ComposerFocusRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>서랍 "도움말(/help)" — 입력창에 치지 않고 바로 안내를 전사에 남긴다.</summary>
+    /// <summary>런처 타일 "도움말(/help)" — 입력창에 치지 않고 바로 안내를 전사에 남긴다.</summary>
     [RelayCommand]
     private void ShowHelp()
-    {
-        IsAgentDrawerOpen = false;
-        Transcript.Add(new SystemNoticeViewModel { Text = SlashCommands.HelpText });
-    }
+        => Transcript.Add(new SystemNoticeViewModel { Text = SlashCommands.HelpText });
 
     /// <summary>루프 대기 중에는 <see cref="IsBusy"/> 가 false 라 IsBusy 만 보면 중지 수단이 사라진다.</summary>
     private bool CanStop() => IsBusy || IsLoopRunning;
@@ -1004,7 +1106,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
 
         IsLoopRunning = false;
         LoopStatusText = string.Empty;
-        IsAgentDrawerOpen = false;
 
         Transcript.Clear();
         _toolCards.Clear();
@@ -1112,7 +1213,6 @@ public sealed partial class AgentSessionViewModel : ObservableObject, IDisposabl
         {
             IsLoopRunning = false;
             LoopStatusText = string.Empty;
-            IsAgentDrawerOpen = false;
             Transcript.Clear();
             _toolCards.Clear();
             _currentAssistant = null; _currentThinking = null;

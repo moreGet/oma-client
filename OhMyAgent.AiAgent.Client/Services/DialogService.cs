@@ -33,6 +33,24 @@ public sealed class DialogService : IDialogService
     public string? PromptText(string title, string message, string defaultValue = "", bool multiline = false)
         => ChatInputDialog.Prompt(ActiveOwner(), title, message, defaultValue, multiline);
 
+    public bool Confirm(string title, string message, DialogSeverity severity = DialogSeverity.Warning)
+    {
+        var image = severity switch
+        {
+            DialogSeverity.Error       => MessageBoxImage.Error,
+            DialogSeverity.Information => MessageBoxImage.Information,
+            _                          => MessageBoxImage.Warning,
+        };
+
+        // 기본 선택을 "아니오"로 둔다 — Enter 연타로 프로세스를 강제 종료하는 사고를 막는다.
+        var owner = ActiveOwner();
+        var result = owner is not null
+            ? MessageBox.Show(owner, message, title, MessageBoxButton.YesNo, image, MessageBoxResult.No)
+            : MessageBox.Show(message, title, MessageBoxButton.YesNo, image, MessageBoxResult.No);
+
+        return result == MessageBoxResult.Yes;
+    }
+
     /// <summary>현재 활성(포커스) 창 → 없으면 MainWindow. 모달 소유·센터링 기준.</summary>
     private static Window? ActiveOwner()
     {

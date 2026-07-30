@@ -54,7 +54,8 @@ public sealed class HeadlessAgentHost
     /// task 도구는 Program.cs 에서 subOrchestrator 조립 후 별도 추가.
     /// </summary>
     public static ITool[] BuildHeadlessTools(
-        IScriptExecutor exec, System.Net.Http.HttpClient toolHttp, TodoService todos, IWakeupSink wakeups) =>
+        IScriptExecutor exec, System.Net.Http.HttpClient toolHttp, TodoService todos, IWakeupSink wakeups,
+        IAgentApiClient api) =>
     new ITool[]
     {
         new RunCommandTool(exec),
@@ -77,6 +78,13 @@ public sealed class HeadlessAgentHost
         new ReadPptxTool(), new WritePptxTool(), new ReadHwpxTool(),
         // ── 압축 ──
         new CompressFilesTool(), new ExtractArchiveTool(),
+        // ── 이미지 생성 ──
+        // 헤드리스에도 넣는 근거: 이미지 생성은 서버가 대리 호출하고 결과를 파일로 떨어뜨리는 순수
+        // 네트워크+파일 작업이다. UI/클립보드/화면 의존이 전혀 없어(Clipboard·Screenshot 제외 사유와 다르다)
+        // 크로스플랫폼으로 그대로 동작하고, 배치·A2A 위임("보고서용 삽화를 만들어 둬")에서 실제로 값이 있다.
+        // 주의: Risk=Write 이므로 승인 핸들러가 없는 기본(deny) 모드에서는 실행되지 않는다 —
+        // OHMYAGENT_HEADLESS_APPROVAL=auto 로 명시적으로 열었을 때만 도는 게 의도된 동작이다(쿼터 보호).
+        new GenerateImageTool(api),
     };
 
     /// <summary>프롬프트 1건을 새 세션으로 처리(파이프/인자 1회 처리, A2A 요청 핸들러 재사용점).</summary>

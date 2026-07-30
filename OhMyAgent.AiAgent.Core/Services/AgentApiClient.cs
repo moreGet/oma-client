@@ -43,6 +43,7 @@ public sealed class AgentApiClient(
     private const string AuthorizePath = "/api/v1/tools/authorize";
     private const string CommandPolicyPath = "/api/v1/security/command-policy";
     private const string AgentSessionsPath = "/api/v1/agent/sessions";
+    private const string ImagesPath = "/api/v1/images/generations";
 
     /// <summary>
     /// 요청 URI 를 매번 현재 설정의 ServerBaseUrl 기준으로 만든다.
@@ -196,10 +197,16 @@ public sealed class AgentApiClient(
     private const int ControlPlaneTimeoutSeconds = 30;
 
     // 모든 비스트리밍 REST 호출이 이 한 곳을 지난다 — 응답 압축은 여기서만 켜진다(_rest 주석 참조).
-    private async Task<HttpResponseMessage> SendControlAsync(HttpRequestMessage req, CancellationToken ct)
+    //
+    // timeoutSeconds 는 이 상한을 호출별로 늘리기 위한 예외 창구다(기본은 위 30초).
+    // 늘려야 하는 호출이 실제로 있다: 이미지 생성은 서버가 이미지 모델을 대리 호출하고 기다리므로
+    // 30초 안에 끝나지 않는 것이 정상이다 — 기본값을 그대로 쓰면 성공할 요청을 우리가 끊어버린다.
+    // 반대로 기본값을 전역으로 올리면 로그인/헬스 같은 즉답 엔드포인트에서 무응답 서버를 오래 붙잡는다.
+    private async Task<HttpResponseMessage> SendControlAsync(
+        HttpRequestMessage req, CancellationToken ct, int? timeoutSeconds = null)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(ControlPlaneTimeoutSeconds));
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds ?? ControlPlaneTimeoutSeconds));
         return await _rest.SendAsync(req, timeoutCts.Token).ConfigureAwait(false);
     }
 
@@ -432,6 +439,109 @@ public sealed class AgentApiClient(
         catch
         {
             return null;   // 오프라인/파싱 실패 → graceful null
+        }
+    }
+
+    /// <summary>
+    /// 이미지 생성 응답 본문 상한. base64 응답은 본문 크기가 곧 우리 힙 사용량이라 상한이 없으면
+    /// 서버(또는 중간자)가 보낸 만큼 그대로 쌓인다. 32MB 근거: PNG 1024x1024 는 보통 1~3MB,
+    /// 4096 급 한 장이 20MB 를 넘기기 어렵고, 도구가 count 를 4로 제한하므로 정상 응답은 여기에 다 들어온다.
+    /// </summary>
+    private const int MaxImageResponseBytes = 32 * 1024 * 1024;
+
+    /// <summary>
+    /// 이미지 생성 요청 상한(초). 컨트롤플레인 기본 30초로는 정상 요청도 끊긴다 —
+    /// 서버가 이미지 모델 호출을 동기로 기다리는 구간이 있어 수십 초가 정상이다.
+    /// 무한이 아닌 이유: 응답 없는 서버에 턴이 영구히 매달리면 사용자가 취소밖에 할 수 없다.
+    /// </summary>
+    private const int ImageGenerationTimeoutSeconds = 180;
+
+    public async Task<ImageGenerationResponse> GenerateImagesAsync(
+        ImageGenerationRequest request, CancellationToken ct = default)
+    {
+        try
+        {
+            var payload = JsonSerializer.Serialize(request, AgentJson.Options);
+            using var req = new HttpRequestMessage(HttpMethod.Post, Url(ImagesPath))
+            {
+                Content = JsonBody(payload)
+            };
+            ApplyAuth(req);
+
+            using var resp = await SendControlAsync(req, ct, ImageGenerationTimeoutSeconds).ConfigureAwait(false);
+
+            // 404 만 따로 잡는다 — 이 엔드포인트는 신설 요구이므로 "아직 없는 서버"가 가장 흔한 실패다.
+            // 일반 오류 문구로 뭉개면 모델이 프롬프트를 고쳐 재시도하며 턴을 태운다. 재시도 무의미를 명시한다.
+            if (resp.StatusCode == HttpStatusCode.NotFound)
+                throw new AgentException(
+                    "서버에 이미지 생성 엔드포인트(POST /api/v1/images/generations)가 없습니다 — " +
+                    "관리자에게 문의하세요. 재시도해도 동일합니다.");
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                // 401/403/429/5xx 는 기존 관례대로 상태코드 기반 한국어 문구로 변환한다(서버 원문 비노출).
+                var err = await ReadErrorAsync(resp, ct).ConfigureAwait(false);
+                throw new AgentException($"이미지 생성 실패: {UserErrorMessages.ForAgentError(err.Code, err.Message)}");
+            }
+
+            using var body = await ReadCappedAsync(resp.Content, MaxImageResponseBytes, ct).ConfigureAwait(false);
+            var dto = JsonSerializer.Deserialize<ImageGenerationResponse>(
+                body.GetBuffer().AsSpan(0, (int)body.Length), AgentJson.Options);
+
+            if (dto?.Images is not { Count: > 0 })
+                throw new AgentException("이미지 생성 응답에 images 가 없습니다.");
+
+            return dto;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (AgentException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // 타임아웃(요청별 상한)도 여기로 온다 — 기존 관례대로 연결 실패로 다룬다.
+            throw new AgentException($"AI 서버에 연결할 수 없습니다: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// 응답 본문을 상한까지만 읽는다. ReadAsStringAsync/DeserializeAsync 에는 상한이 없어
+    /// 거대한 base64 응답 하나로 프로세스 메모리가 터질 수 있다.
+    /// Content-Length 선검사만으로는 부족하다 — chunked 응답에는 헤더가 없으므로 실제 읽는 양으로 다시 막는다.
+    /// </summary>
+    private static async Task<MemoryStream> ReadCappedAsync(HttpContent content, int maxBytes, CancellationToken ct)
+    {
+        if (content.Headers.ContentLength is { } declared && declared > maxBytes)
+            throw new AgentException(
+                $"이미지 응답이 너무 큽니다({declared:N0} 바이트 > 상한 {maxBytes:N0} 바이트). size 나 count 를 줄이세요.");
+
+        await using var stream = await content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        var buffer = new MemoryStream();
+        try
+        {
+            var chunk = new byte[81920];
+            while (true)
+            {
+                var read = await stream.ReadAsync(chunk, ct).ConfigureAwait(false);
+                if (read == 0) break;
+
+                if (buffer.Length + read > maxBytes)
+                    throw new AgentException(
+                        $"이미지 응답이 상한({maxBytes:N0} 바이트)을 넘어 중단했습니다. size 나 count 를 줄이세요.");
+
+                buffer.Write(chunk, 0, read);
+            }
+
+            return buffer;
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
         }
     }
 

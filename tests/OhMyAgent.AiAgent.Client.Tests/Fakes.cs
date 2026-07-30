@@ -65,6 +65,7 @@ internal sealed class FakeSettingsService : ISettingsService
     public Task UpdateQuotaChipWindowAsync(string window) { Current.QuotaChipWindow = window; return Raise(); }
     public Task UpdateSidebarCollapsedAsync(bool collapsed) { Current.SidebarCollapsed = collapsed; return Raise(); }
     public Task UpdateUiScaleAsync(double scale) { Current.UiScale = scale; return Raise(); }
+    public Task UpdateAlwaysOnTopAsync(bool alwaysOnTop) { Current.AlwaysOnTop = alwaysOnTop; return Raise(); }
 
     public Task UpdateWorkspacesAsync(IReadOnlyList<WorkspaceFolder> folders)
     {
@@ -102,6 +103,7 @@ internal abstract class StubAgentApi : IAgentApiClient
     public virtual IAsyncEnumerable<AgentStreamEvent> SendAsync(AgentRequest request, CancellationToken ct = default) => NotUsed<IAsyncEnumerable<AgentStreamEvent>>();
     public virtual Task<ToolPolicyFetch> GetToolPolicyAsync(CancellationToken ct = default) => NotUsed<Task<ToolPolicyFetch>>();
     public virtual Task<ToolAuthorization?> AuthorizeToolAsync(string tool, JsonElement arguments, CancellationToken ct = default) => NotUsed<Task<ToolAuthorization?>>();
+    public virtual Task<ImageGenerationResponse> GenerateImagesAsync(ImageGenerationRequest request, CancellationToken ct = default) => NotUsed<Task<ImageGenerationResponse>>();
 
     public Task<bool> CheckHealthAsync(CancellationToken ct = default) => NotUsed<Task<bool>>();
     public Task<ServerReadiness> CheckReadinessAsync(CancellationToken ct = default) => NotUsed<Task<ServerReadiness>>();

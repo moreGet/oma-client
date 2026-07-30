@@ -18,7 +18,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 ## 핵심 특징
 
 - **에이전트 루프**: `질의 → 도구 호출 → 실행 → 결과 반환 → 반복`을 `end_turn` 까지 자동 수행
-- **34개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷, 압축(zip), 사무직 문서·데이터(CSV·Excel·PDF·Word·**PowerPoint·한글 HWPX**), 작업 계획 추적(manage_todos), 반복 실행 페이싱(schedule_wakeup), 서브에이전트 위임(task)까지 (아래 표 참조)
+- **35개 내장 도구**: 파일/셸부터 클립보드·프로세스·HTTP·스크린샷, 압축(zip), 사무직 문서·데이터(CSV·Excel·PDF·Word·**PowerPoint·한글 HWPX**), 작업 계획 추적(manage_todos), 반복 실행 페이싱(schedule_wakeup), 서브에이전트 위임(task)까지 (아래 표 참조)
 - **데이터 주권 / 국외 반출 차단**: 클라이언트는 **어떤 LLM 벤더에도 직접 접속하지 않고** 사내 서버하고만 통신합니다. 서버가 연동할 모델을 **Azure OpenAI 국내 리전·지역별 폐쇄망 모델·온프레미스(Ollama 등)** 로 고정하면 내부 정보가 **국경을 넘을 경로 자체가 없습니다**. 클라이언트에는 벤더 API 키가 존재하지 않습니다 ([상세](#데이터-주권--국외-반출-차단))
 - **멀티루트 워크스페이스**: 최대 **10개** 작업 디렉토리를 동시 등록, **폴더별 접근 허용/차단 토글**. 모든 파일/셸 작업이 활성 루트 기준으로 resolve되고 경로 탈출은 차단
 - **프로젝트(대화 묶음)**: 여러 대화 세션을 상위 컨테이너로 묶어 관리. **로컬 우선 저장 + 선택적 서버 동기화**, 사이드바에서 대화를 **드래그앤드롭**으로 프로젝트에 분류
@@ -75,7 +75,7 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 
 ---
 
-## 내장 도구 (34)
+## 내장 도구 (35)
 
 | 도구 | 위험도 | 설명 |
 |------|--------|------|
@@ -97,11 +97,12 @@ Codex / Claude Code를 설치할 수 없는 보안망에서, 사내 AI API 서�
 | `read_hwpx` | ReadOnly | 한글 .hwpx(OWPML) 본문 추출(BCL) |
 | `compress_files` / `extract_archive` | Write | 파일·폴더 → zip 압축 / zip 해제(zip-slip 차단, BCL `System.IO.Compression`) |
 | `manage_todos` | ReadOnly | 에이전트 작업 계획 추적(다단계 작업 분해·진행상태) — 메인 화면 계획 카드에 반영 |
+| `generate_image` | Write | 이미지 생성 — 사내 서버가 이미지 모델을 대리 호출(`POST /api/v1/images/generations`), 결과 PNG를 워크스페이스에 저장하고 모델에는 경로만 반환(base64는 컨텍스트에 넣지 않음). **서버 엔드포인트 대기**([요구 스펙](docs/server-image-api.md)) |
 | `schedule_wakeup` | ReadOnly | 자율 페이싱 `/loop` 에서 모델이 다음 실행 시점을 스스로 예약(`delaySeconds`·`reason`·`done`). 루프 밖 호출과 서브에이전트 호출은 거부 |
 | `task` | ReadOnly | 하위 작업을 **서브에이전트**에 위임(별도 오케스트레이터). 서브에이전트 도구 목록은 `TaskTool.AllowedToolNames` 로 제한되며 `task`·`manage_todos` 는 제외(무한 중첩 방지) |
 
-> 위 34개는 **데스크톱 클라이언트 기준**입니다. 헤드리스 호스트는 클립보드·스크린샷 3개를 빼고
-> [A2A 도구](docs/a2a-registry.md) `discover_agents`·`ask_agent` 2개를 더해 **33개**를 노출합니다(전체 고유 도구 **36개**).
+> 위 35개는 **데스크톱 클라이언트 기준**입니다. 헤드리스 호스트는 클립보드·스크린샷 3개를 빼고
+> [A2A 도구](docs/a2a-registry.md) `discover_agents`·`ask_agent` 2개를 더해 **34개**를 노출합니다(전체 고유 도구 **37개**).
 >
 > 도구 실행 결정 순서: **모델 요청 → 서버 도구 정책 게이트 → 로컬 권한 게이트(승인 카드) → 샌드박스(경로 검증) → 실행**.
 > Destructive / Write / Execute 도구는 권한 모드에 따라 **실행 전 승인 카드**를 띄웁니다.
@@ -337,8 +338,8 @@ GUI·헤드리스가 같은 파서를 공유합니다.
 <repo-root>/
 ├── README.md · CHANGELOG.md · CLAUDE.md
 ├── docs/                     API_CONTRACT(서버 연동 계약) · tool-system(도구 설계) ·
-│                             realtime-chat(메신저) · server-*.md(프로필·쿼터·버전·도구정책·서비스계정·
-│                             압축(gzip) 요구 스펙) ·
+│                             realtime-chat(메신저) · server-*.md(프로필·쿼터·버전·도구정책·서비스계정·이미지·
+│                             압축(gzip) 요구 스펙 · open-requests(미해결 요구 종합)) ·
 │                             a2a-registry(에이전트 간 통신·레지스트리 계약) ·
 │                             headless-deployment(배포·운영) · design-tokens ·
 │                             발표자료(presentation_*.html)
