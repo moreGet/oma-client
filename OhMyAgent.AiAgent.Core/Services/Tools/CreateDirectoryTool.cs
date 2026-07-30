@@ -20,11 +20,9 @@ public sealed class CreateDirectoryTool : ITool
 
     public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var path = ToolSchemas.GetString(args, "path");
-        if (string.IsNullOrWhiteSpace(path))
-            return Task.FromResult(ToolResult.Fail("path 가 비어 있습니다."));
+        if (!ToolPaths.TryResolvePath(args, ctx, out var path, out var full, out var error))
+            return Task.FromResult(error);
 
-        var full = ctx.Workspace.ResolvePath(path);
         Directory.CreateDirectory(full);
         return Task.FromResult(ToolResult.Json(new { path }));
     }

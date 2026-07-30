@@ -26,11 +26,9 @@ public sealed class ReadFileTool : ITool
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var path = ToolSchemas.GetString(args, "path");
-        if (string.IsNullOrWhiteSpace(path))
-            return ToolResult.Fail("path 가 비어 있습니다.");
+        if (!ToolPaths.TryResolvePath(args, ctx, out var path, out var full, out var error))
+            return error;
 
-        var full = ctx.Workspace.ResolvePath(path);
         if (!File.Exists(full))
         {
             // 단순히 "없습니다"로 끝내면 모델에게 다음 수가 없다 — 닮은 이름 후보와 대안을 함께 준다.

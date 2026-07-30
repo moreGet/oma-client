@@ -20,13 +20,10 @@ public sealed class DeleteTool : ITool
 
     public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var path = ToolSchemas.GetString(args, "path");
         var recursive = ToolSchemas.GetBool(args, "recursive");
 
-        if (string.IsNullOrWhiteSpace(path))
-            return Task.FromResult(ToolResult.Fail("path 가 비어 있습니다."));
-
-        var full = ctx.Workspace.ResolvePath(path);
+        if (!ToolPaths.TryResolvePath(args, ctx, out var path, out var full, out var error))
+            return Task.FromResult(error);
 
         // R2: 작업 디렉토리 루트 자체 삭제 차단(예: path "." 또는 "sub/..").
         // 종전에는 주 루트(Roots[0])만 막아, 두 번째 워크스페이스 폴더가 통째로 지워졌다.
